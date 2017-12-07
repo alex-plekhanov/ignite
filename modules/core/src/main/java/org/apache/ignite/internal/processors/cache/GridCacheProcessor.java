@@ -306,6 +306,8 @@ public class GridCacheProcessor extends GridProcessorAdapter {
 
             return msg0;
         }
+        else if (msg instanceof CacheConfigurationChangeMessage)
+            return new CacheConfigurationChangeTask((CacheConfigurationChangeMessage)msg);
 
         return null;
     }
@@ -341,6 +343,11 @@ public class GridCacheProcessor extends GridProcessorAdapter {
             ClientCacheUpdateTimeout task0 = (ClientCacheUpdateTimeout)task;
 
             sharedCtx.affinity().sendClientCacheChangesMessage(task0);
+        }
+        else if (task instanceof CacheConfigurationChangeTask) {
+            CacheConfigurationChangeTask task0 = (CacheConfigurationChangeTask)task;
+
+            cachesInfo.onCacheConfigurationChange(task0.message());
         }
         else
             U.warn(log, "Unsupported custom exchange task: " + task);
@@ -2995,9 +3002,6 @@ public class GridCacheProcessor extends GridProcessorAdapter {
 
         if (msg instanceof ClientCacheChangeDiscoveryMessage)
             cachesInfo.onClientCacheChange((ClientCacheChangeDiscoveryMessage)msg, node);
-
-        if (msg instanceof CacheConfigurationChangeMessage)
-            cachesInfo.onCacheConfigurationChange((CacheConfigurationChangeMessage)msg);
 
         return false;
     }
