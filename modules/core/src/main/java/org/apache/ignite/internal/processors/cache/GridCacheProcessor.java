@@ -87,9 +87,9 @@ import org.apache.ignite.internal.processors.cache.dr.GridCacheDrManager;
 import org.apache.ignite.internal.processors.cache.jta.CacheJtaManagerAdapter;
 import org.apache.ignite.internal.processors.cache.local.GridLocalCache;
 import org.apache.ignite.internal.processors.cache.local.atomic.GridLocalAtomicCache;
+import org.apache.ignite.internal.processors.cache.persistence.DataRegion;
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
 import org.apache.ignite.internal.processors.cache.persistence.IgniteCacheDatabaseSharedManager;
-import org.apache.ignite.internal.processors.cache.persistence.DataRegion;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStoreManager;
 import org.apache.ignite.internal.processors.cache.persistence.freelist.FreeList;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.IgniteCacheSnapshotManager;
@@ -306,8 +306,8 @@ public class GridCacheProcessor extends GridProcessorAdapter {
 
             return msg0;
         }
-        else if (msg instanceof CacheStatisticsChangeMessage)
-            return new CacheStatisticsChangeTask((CacheStatisticsChangeMessage)msg);
+        else if (msg instanceof CacheStatisticsModeChangeMessage)
+            return new CacheStatisticsModeChangeTask((CacheStatisticsModeChangeMessage)msg);
 
         return null;
     }
@@ -344,10 +344,10 @@ public class GridCacheProcessor extends GridProcessorAdapter {
 
             sharedCtx.affinity().sendClientCacheChangesMessage(task0);
         }
-        else if (task instanceof CacheStatisticsChangeTask) {
-            CacheStatisticsChangeTask task0 = (CacheStatisticsChangeTask)task;
+        else if (task instanceof CacheStatisticsModeChangeTask) {
+            CacheStatisticsModeChangeTask task0 = (CacheStatisticsModeChangeTask)task;
 
-            cachesInfo.onCacheStatisticsChange(task0.message());
+            cachesInfo.onCacheStatisticsModeChange(task0.message());
         }
         else
             U.warn(log, "Unsupported custom exchange task: " + task);
@@ -3938,12 +3938,25 @@ public class GridCacheProcessor extends GridProcessorAdapter {
      * @param enabled Statistics enabled flag.
      */
     public void enableStatistics(String cacheName, boolean enabled) throws IgniteCheckedException {
+        assert cacheName != null;
+
+        IgniteInternalCache cache = cache(cacheName);
+
+        if (cache == null)
+            throw new IgniteCheckedException("Cache not found [cacheName=" + cacheName + ']');
+
+        if (cache.context().isLocal()) {
+            cache.configuration().setStatisticsEnabled(enabled);
+
+            return;
+        }
+
         for (ClusterNode n : ctx.discovery().allNodes())
             if (!n.version().greaterThanEqual(2, 4, 0))
                 throw new IgniteCheckedException("Failed to enable/disable statistics for cache cluster wide, "
                     + "some nodes don't support this feature [node=" + n.id() + ", v=" + n.version() + "].");
 
-        CacheStatisticsChangeMessage msg = new CacheStatisticsChangeMessage(cacheName, enabled);
+        CacheStatisticsModeChangeMessage msg = new CacheStatisticsModeChangeMessage(cacheName, enabled);
 
         ctx.grid().context().discovery().sendCustomEvent(msg);
     }
