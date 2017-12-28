@@ -102,6 +102,7 @@ import org.apache.ignite.spi.deployment.local.LocalDeploymentSpi;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.multicast.TcpDiscoveryMulticastIpFinder;
 import org.apache.ignite.spi.eventstorage.NoopEventStorageSpi;
+import org.apache.ignite.spi.eventstorage.memory.MemoryEventStorageSpi;
 import org.apache.ignite.spi.failover.always.AlwaysFailoverSpi;
 import org.apache.ignite.spi.indexing.noop.NoopIndexingSpi;
 import org.apache.ignite.spi.loadbalancing.LoadBalancingSpi;
@@ -2317,8 +2318,13 @@ public class IgnitionEx {
             if (cfg.getDeploymentSpi() == null)
                 cfg.setDeploymentSpi(new LocalDeploymentSpi());
 
-            if (cfg.getEventStorageSpi() == null)
-                cfg.setEventStorageSpi(new NoopEventStorageSpi());
+            if (cfg.getEventStorageSpi() == null) {
+                if (cfg.getIncludeEventTypes() != null && cfg.getIncludeEventTypes().length != 0)
+                    cfg.setEventStorageSpi(new MemoryEventStorageSpi());
+                else
+                    cfg.setEventStorageSpi(new NoopEventStorageSpi());
+            }
+
 
             if (cfg.getCheckpointSpi() == null)
                 cfg.setCheckpointSpi(new NoopCheckpointSpi());
