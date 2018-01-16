@@ -27,6 +27,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.events.CacheEvent;
 import org.apache.ignite.events.Event;
 import org.apache.ignite.internal.IgniteFutureTimeoutCheckedException;
@@ -62,6 +64,9 @@ public abstract class GridCacheEventAbstractTest extends GridCacheAbstractSelfTe
     /** Key. */
     private static final String KEY = "key";
 
+    /** Cache prefix. */
+    private static final String CACHE_PREFIX = "CACHE";
+
     /** */
     private static volatile int gridCnt;
 
@@ -84,7 +89,7 @@ public abstract class GridCacheEventAbstractTest extends GridCacheAbstractSelfTe
 
     /** {@inheritDoc} */
     @Override protected void beforeTest() throws Exception {
-        super.beforeTest();
+        //super.beforeTest();
 
         if (TEST_INFO)
             info("Called beforeTest() callback.");
@@ -100,11 +105,33 @@ public abstract class GridCacheEventAbstractTest extends GridCacheAbstractSelfTe
         TestEventListener.stopListen();
 
         try {
-            super.afterTest();
+            //super.afterTest();
         }
         finally {
             TestEventListener.listen();
         }
+    }
+
+    /** {@inheritDoc} */
+    @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
+        IgniteConfiguration cfg = super.getConfiguration(igniteInstanceName);
+
+        CacheConfiguration<?, ?> ccfg0 = cacheConfiguration(igniteInstanceName).setName(CACHE_PREFIX + 0)
+           /* .setEventsEnabled(false)*/;
+
+        CacheConfiguration<?, ?> ccfg1 = cacheConfiguration(igniteInstanceName).setName(CACHE_PREFIX + 1);
+
+        cfg.setCacheConfiguration(ccfg0, ccfg1);
+
+        return cfg;
+    }
+
+    /**
+     * @param igniteIdx Ignite index.
+     * @param cacheIdx Cache index.
+     */
+    private IgniteCache<String, Integer> getCache(int igniteIdx, int cacheIdx) {
+        return ignite(igniteIdx).cache(CACHE_PREFIX + cacheIdx);
     }
 
     /**
@@ -147,11 +174,13 @@ public abstract class GridCacheEventAbstractTest extends GridCacheAbstractSelfTe
      */
     private void clearCaches() {
         for (int i = 0; i < gridCnt; i++) {
-            IgniteCache<String, Integer> cache = jcache(i);
+            for (int j = 0; j < 2; j++) {
+                IgniteCache<String, Integer> cache = getCache(i, j);
 
-            cache.removeAll();
+                cache.removeAll();
 
-            assert cache.localSize() == 0;
+                assert cache.localSize() == 0;
+            }
         }
     }
 
@@ -164,12 +193,16 @@ public abstract class GridCacheEventAbstractTest extends GridCacheAbstractSelfTe
      */
     @SuppressWarnings({"CaughtExceptionImmediatelyRethrown"})
     private void runTest(TestCacheRunnable run, IgniteBiTuple<Integer, Integer>... evtCnts) throws Exception {
+        X.println("val1: " + getCache(0, 0).putIfAbsent("k", 1));
+        X.println("val2: " + getCache(0, 1).putIfAbsent("k", 1));
+
         for (int i = 0; i < gridCount(); i++) {
             info(">>> Running test for grid [idx=" + i + ", igniteInstanceName=" + grid(i).name() +
                 ", id=" + grid(i).localNode().id() + ']');
 
             try {
-                run.run(jcache(i));
+                run.run(getCache(i, 0));
+                run.run(getCache(i, 1));
 
                 waitForEvents(i, evtCnts);
             }
@@ -533,7 +566,7 @@ public abstract class GridCacheEventAbstractTest extends GridCacheAbstractSelfTe
 
                 Map.Entry<String, Integer> e = iter.next();
 
-                String key = e.getKey();
+                String key = e.getKey() + cache.getName();
                 Integer val = e.getValue();
 
                 try (Transaction tx = grid(0).transactions().txStart();) {
@@ -545,7 +578,7 @@ public abstract class GridCacheEventAbstractTest extends GridCacheAbstractSelfTe
 
                     e = iter.next();
 
-                    key = e.getKey();
+                    key = e.getKey() + cache.getName();
                     val = e.getValue();
 
                     assert cache.putIfAbsent(key, val);
@@ -709,6 +742,8 @@ public abstract class GridCacheEventAbstractTest extends GridCacheAbstractSelfTe
         /** {@inheritDoc} */
         @Override public boolean apply(Event evt) {
             assert evt instanceof CacheEvent;
+
+            //assert ((CacheEvent)evt).cacheName() != CACHE_PREFIX + 0;
 
             if (!listen)
                 return true;
