@@ -26,6 +26,7 @@ import java.util.concurrent.CountDownLatch;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
+import org.apache.ignite.internal.IgniteNodeAttributes;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -205,11 +206,11 @@ public class IgniteSqlMetaViewsSelfTest extends GridCommonAbstractTest {
     }
 
     /**
-     * Test nodes meta view.
+     * Test nodes and node attributes meta views.
      *
      * @throws Exception If failed.
      */
-    public void testNodesView() throws Exception {
+    public void testNodesViews() throws Exception {
         Ignite ignite1 = startGrid(getTestIgniteInstanceName(), getConfiguration());
         Ignite ignite2 = startGrid(getTestIgniteInstanceName(1), getConfiguration().setClientMode(true));
         Ignite ignite3 = startGrid(getTestIgniteInstanceName(2), getConfiguration().setDaemon(true));
@@ -272,5 +273,32 @@ public class IgniteSqlMetaViewsSelfTest extends GridCommonAbstractTest {
 
         // Check quick-count
         assertEquals(3L, execSql("SELECT COUNT(*) FROM IGNITE.NODES").get(0).get(0));
+
+        // Check node attributes view
+        UUID cliNodeId = ignite2.cluster().localNode().id();
+
+        String cliAttrName = IgniteNodeAttributes.ATTR_CLIENT_MODE;
+
+        assertColumnTypes(execSql("SELECT NODE_ID, NAME, VALUE FROM IGNITE.NODE_ATTRIBUTES").get(0),
+            UUID.class, String.class, String.class);
+
+        assertEquals(1,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NAME = ? AND VALUE = 'true'",
+                cliAttrName).size());
+
+        assertEquals(3,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NAME = ?", cliAttrName).size());
+
+        assertEquals(1,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NODE_ID = ? AND NAME = ? AND VALUE = 'true'",
+                cliNodeId, cliAttrName).size());
+
+        assertEquals(0,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NODE_ID = '-' AND NAME = ?",
+                cliAttrName).size());
+
+        assertEquals(0,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NODE_ID = ? AND NAME = '-'",
+                cliNodeId).size());
     }
 }
