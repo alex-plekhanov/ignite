@@ -17,9 +17,6 @@
 
 package org.apache.ignite.internal.processors.query;
 
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.List;
@@ -30,14 +27,11 @@ import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
-import org.apache.ignite.internal.processors.query.h2.IgniteH2Indexing;
-import org.apache.ignite.internal.processors.query.h2.views.IgniteSqlMetaViewProcessor;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.apache.ignite.transactions.Transaction;
-import org.h2.api.ErrorCode;
 
 /**
  * Tests for ignite SQL meta views.
@@ -49,14 +43,36 @@ public class IgniteSqlMetaViewsSelfTest extends GridCommonAbstractTest {
     }
 
     /**
+     * @param ignite Ignite.
+     * @param sql Sql.
+     * @param args Args.
+     */
+    private List<List<?>> execSql(Ignite ignite, String sql, Object ... args) {
+        IgniteCache cache = ignite.getOrCreateCache("cache");
+
+        SqlFieldsQuery qry = new SqlFieldsQuery(sql);
+
+        if (args != null && args.length > 0)
+            qry.setArgs(args);
+
+        return cache.query(qry).getAll();
+    }
+
+    /**
+     * @param sql Sql.
+     * @param args Args.
+     */
+    private List<List<?>> execSql(String sql, Object ... args) {
+        return execSql(grid(), sql, args);
+    }
+
+    /**
      * @param sql Sql.
      */
     private void assertSqlError(final String sql) {
         Throwable t = GridTestUtils.assertThrowsWithCause(new Callable<Void>() {
             @Override public Void call() throws Exception {
-                IgniteCache cache = grid().getOrCreateCache("cache");
-
-                cache.query(new SqlFieldsQuery(sql)).getAll();
+                execSql(sql);
 
                 return null;
             }
@@ -114,7 +130,7 @@ public class IgniteSqlMetaViewsSelfTest extends GridCommonAbstractTest {
      *
      * @throws Exception If failed.
      */
-    public void testLocalTransactionsSystemView() throws Exception {
+    public void testLocalTransactionsView() throws Exception {
         int txCnt = 3;
 
         final Ignite ignite = startGrid();
@@ -186,5 +202,69 @@ public class IgniteSqlMetaViewsSelfTest extends GridCommonAbstractTest {
         assertEquals(0, cache.query(
             new SqlFieldsQuery("SELECT XID FROM LOCAL_TRANSACTIONS").setSchema("IGNITE")
         ).getAll().size());
+    }
+
+    /**
+     * Test nodes meta view.
+     *
+     * @throws Exception If failed.
+     */
+    public void testNodesView() throws Exception {
+        Ignite ignite1 = startGrid(getTestIgniteInstanceName(), getConfiguration());
+        Ignite ignite2 = startGrid(getTestIgniteInstanceName(1), getConfiguration().setClientMode(true));
+        Ignite ignite3 = startGrid(getTestIgniteInstanceName(2), getConfiguration().setDaemon(true));
+
+        awaitPartitionMapExchange();
+
+        List<List<?>> resAll = execSql("SELECT ID, CONSISTENT_ID, VERSION, IS_LOCAL, IS_CLIENT, IS_DAEMON, " +
+                "STARTUP_ORDER, ADDRESSES, HOST_NAMES FROM IGNITE.NODES");
+
+        assertColumnTypes(resAll.get(0), UUID.class, String.class, String.class, Boolean.class, Boolean.class,
+            Boolean.class, Integer.class, String.class, String.class);
+
+        assertEquals(3, resAll.size());
+
+        List<List<?>> resSrv = execSql(
+                "SELECT ID, IS_LOCAL, STARTUP_ORDER FROM IGNITE.NODES WHERE IS_CLIENT = FALSE AND IS_DAEMON = FALSE"
+        );
+
+        assertEquals(1, resSrv.size());
+
+        assertEquals(ignite1.cluster().localNode().id(), resSrv.get(0).get(0));
+
+        assertEquals(true, resSrv.get(0).get(1));
+
+        assertEquals(1, resSrv.get(0).get(2));
+
+        List<List<?>> resCli = execSql(
+            "SELECT ID, IS_LOCAL, STARTUP_ORDER FROM IGNITE.NODES WHERE IS_CLIENT = TRUE");
+
+        assertEquals(1, resCli.size());
+
+        assertEquals(ignite2.cluster().localNode().id(), resCli.get(0).get(0));
+
+        assertEquals(false, resCli.get(0).get(1));
+
+        assertEquals(2, resCli.get(0).get(2));
+
+        List<List<?>> resDaemon = execSql(
+            "SELECT ID, IS_LOCAL, STARTUP_ORDER FROM IGNITE.NODES WHERE IS_DAEMON = TRUE");
+
+        assertEquals(1, resDaemon.size());
+
+        assertEquals(ignite3.cluster().localNode().id(), resDaemon.get(0).get(0));
+
+        assertEquals(false, resDaemon.get(0).get(1));
+
+        assertEquals(3, resDaemon.get(0).get(2));
+
+        assertEquals(0, execSql("SELECT ID FROM IGNITE.NODES WHERE ID = '-'").size());
+
+        assertEquals(1, execSql("SELECT ID FROM IGNITE.NODES WHERE ID = ?",
+            ignite1.cluster().localNode().id()).size());
+
+        assertEquals(1, execSql("SELECT ID FROM IGNITE.NODES WHERE IS_LOCAL = true").size());
+
+        assertEquals(3L, execSql("SELECT COUNT(*) FROM IGNITE.NODES").get(0).get(0));
     }
 }

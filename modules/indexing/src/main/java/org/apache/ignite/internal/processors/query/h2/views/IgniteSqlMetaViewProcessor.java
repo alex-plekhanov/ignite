@@ -50,6 +50,7 @@ public class IgniteSqlMetaViewProcessor {
             Collection<IgniteSqlMetaView> viewsToRegister = new ArrayList<>();
 
             viewsToRegister.add(new IgniteSqlMetaViewLocalTransactions(ctx));
+            viewsToRegister.add(new IgniteSqlMetaViewNodes(ctx));
 
             for (IgniteSqlMetaView view : viewsToRegister) {
                 IgniteSqlMetaTableEngine.registerView(c, view);
