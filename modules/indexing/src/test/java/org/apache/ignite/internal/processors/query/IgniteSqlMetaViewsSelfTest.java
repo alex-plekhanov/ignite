@@ -258,13 +258,19 @@ public class IgniteSqlMetaViewsSelfTest extends GridCommonAbstractTest {
 
         assertEquals(3, resDaemon.get(0).get(2));
 
+        // Check index on ID column
         assertEquals(0, execSql("SELECT ID FROM IGNITE.NODES WHERE ID = '-'").size());
 
         assertEquals(1, execSql("SELECT ID FROM IGNITE.NODES WHERE ID = ?",
             ignite1.cluster().localNode().id()).size());
 
+        assertEquals(1, execSql("SELECT ID FROM IGNITE.NODES WHERE ID = ?",
+            ignite3.cluster().localNode().id()).size());
+
+        // Check index on IS_LOCAL column
         assertEquals(1, execSql("SELECT ID FROM IGNITE.NODES WHERE IS_LOCAL = true").size());
 
+        // Check quick-count
         assertEquals(3L, execSql("SELECT COUNT(*) FROM IGNITE.NODES").get(0).get(0));
     }
 }

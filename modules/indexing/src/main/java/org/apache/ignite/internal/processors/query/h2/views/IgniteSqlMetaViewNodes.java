@@ -31,7 +31,7 @@ import org.h2.result.SearchRow;
 import org.h2.value.Value;
 
 /**
- * System view: nodes.
+ * Meta view: nodes.
  */
 public class IgniteSqlMetaViewNodes extends IgniteSqlMetaView {
     /**
@@ -68,7 +68,7 @@ public class IgniteSqlMetaViewNodes extends IgniteSqlMetaView {
         }
         else if (idCond.isEquality()) {
             if (log.isDebugEnabled())
-                log.debug("Get nodes: node id");
+                log.debug("Get nodes: node id = " + idCond.getValue().getString());
 
             UUID nodeId = uuidFromString(idCond.getValue().getString());
 
