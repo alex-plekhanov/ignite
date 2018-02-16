@@ -19,13 +19,22 @@ package org.apache.ignite.internal.processors.query;
 
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
+import org.apache.ignite.cluster.ClusterNode;
+import org.apache.ignite.compute.ComputeJob;
+import org.apache.ignite.compute.ComputeJobAdapter;
+import org.apache.ignite.compute.ComputeJobResult;
+import org.apache.ignite.compute.ComputeJobResultPolicy;
+import org.apache.ignite.compute.ComputeTask;
 import org.apache.ignite.internal.IgniteNodeAttributes;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.util.typedef.X;
@@ -33,6 +42,7 @@ import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.apache.ignite.transactions.Transaction;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Tests for ignite SQL meta views.
@@ -300,5 +310,54 @@ public class IgniteSqlMetaViewsSelfTest extends GridCommonAbstractTest {
         assertEquals(0,
             execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NODE_ID = ? AND NAME = '-'",
                 cliNodeId).size());
+    }
+
+    /**
+     * Test tasks meta view.
+     *
+     * @throws Exception If failed.
+     */
+    public void testTasksView() throws Exception {
+        startGrid();
+
+        ComputeTask<Void, Void> task = new ComputeTask<Void, Void>() {
+            @Nullable @Override public Map<? extends ComputeJob, ClusterNode> map(List<ClusterNode> subgrid,
+                @Nullable Void arg) throws IgniteException {
+                Map<ComputeJob, ClusterNode> jobs = new HashMap<>();
+
+                for (ClusterNode node : subgrid)
+                    jobs.put(new ComputeJobAdapter() {
+                        @Override public void cancel() {
+                            super.cancel();
+
+                            log.info("Job canceled");
+                        }
+
+                        @Override public Object execute() throws IgniteException {
+                            doSleep(300_000L);
+
+                            return null;
+                        }
+                    }, node);
+
+                return jobs;
+            }
+
+            @Override public ComputeJobResultPolicy result(ComputeJobResult res,
+                List<ComputeJobResult> rcvd) throws IgniteException {
+                return ComputeJobResultPolicy.WAIT;
+            }
+
+            @Nullable @Override public Void reduce(List<ComputeJobResult> results) throws IgniteException {
+                return null;
+            }
+        };
+
+        grid().compute().executeAsync(task, null);
+
+        assertEquals(1,
+            execSql("SELECT ID FROM IGNITE.LOCAL_TASKS").size());
+
+        doSleep(300_000);
     }
 }

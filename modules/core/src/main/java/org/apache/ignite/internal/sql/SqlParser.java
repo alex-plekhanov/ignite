@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.sql;
 
+import org.apache.ignite.internal.sql.command.SqlAlterGridCommand;
 import org.apache.ignite.internal.sql.command.SqlAlterTableCommand;
 import org.apache.ignite.internal.sql.command.SqlCommand;
 import org.apache.ignite.internal.sql.command.SqlCreateIndexCommand;
@@ -30,6 +31,7 @@ import static org.apache.ignite.internal.sql.SqlKeyword.HASH;
 import static org.apache.ignite.internal.sql.SqlKeyword.INDEX;
 import static org.apache.ignite.internal.sql.SqlKeyword.PRIMARY;
 import static org.apache.ignite.internal.sql.SqlKeyword.SPATIAL;
+import static org.apache.ignite.internal.sql.SqlKeyword.GRID;
 import static org.apache.ignite.internal.sql.SqlKeyword.TABLE;
 import static org.apache.ignite.internal.sql.SqlKeyword.UNIQUE;
 import static org.apache.ignite.internal.sql.SqlParserUtils.errorUnexpectedToken;
@@ -199,12 +201,16 @@ public class SqlParser {
                     cmd = new SqlAlterTableCommand();
 
                     break;
+                case GRID:
+                    cmd = new SqlAlterGridCommand();
+
+                    break;
             }
 
             if (cmd != null)
                 return cmd.parse(lex);
         }
 
-        throw errorUnexpectedToken(lex, TABLE);
+        throw errorUnexpectedToken(lex, TABLE, GRID);
     }
 }

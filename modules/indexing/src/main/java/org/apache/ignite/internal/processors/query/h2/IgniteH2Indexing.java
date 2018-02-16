@@ -120,6 +120,7 @@ import org.apache.ignite.internal.processors.query.schema.SchemaIndexCacheVisito
 import org.apache.ignite.internal.processors.timeout.GridTimeoutProcessor;
 import org.apache.ignite.internal.sql.SqlParseException;
 import org.apache.ignite.internal.sql.SqlParser;
+import org.apache.ignite.internal.sql.command.SqlAlterGridCommand;
 import org.apache.ignite.internal.sql.command.SqlAlterTableCommand;
 import org.apache.ignite.internal.sql.command.SqlCommand;
 import org.apache.ignite.internal.sql.command.SqlCreateIndexCommand;
@@ -1459,7 +1460,7 @@ public class IgniteH2Indexing implements GridQueryIndexing {
 
             // Only CREATE/DROP INDEX and ALTER TABLE commands are supported for now.
             if (!(cmd instanceof SqlCreateIndexCommand || cmd instanceof SqlDropIndexCommand ||
-                cmd instanceof SqlAlterTableCommand))
+                cmd instanceof SqlAlterTableCommand || cmd instanceof SqlAlterGridCommand))
                 return null;
         }
         catch (Exception e) {

@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.query.h2.ddl;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -31,12 +32,14 @@ import org.apache.ignite.cache.QueryEntity;
 import org.apache.ignite.cache.QueryIndex;
 import org.apache.ignite.cache.QueryIndexType;
 import org.apache.ignite.cache.query.FieldsQueryCursor;
+import org.apache.ignite.compute.ComputeTaskFuture;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.processors.cache.GridCacheContext;
 import org.apache.ignite.internal.processors.cache.QueryCursorImpl;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
+import org.apache.ignite.internal.processors.cache.transactions.IgniteInternalTx;
 import org.apache.ignite.internal.processors.query.GridQueryProperty;
 import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 import org.apache.ignite.internal.processors.query.IgniteSQLException;
@@ -56,6 +59,8 @@ import org.apache.ignite.internal.processors.query.h2.sql.GridSqlQueryParser;
 import org.apache.ignite.internal.processors.query.h2.sql.GridSqlStatement;
 import org.apache.ignite.internal.processors.query.h2.views.IgniteSqlMetaViewProcessor;
 import org.apache.ignite.internal.processors.query.schema.SchemaOperationException;
+import org.apache.ignite.internal.sql.SqlKeyword;
+import org.apache.ignite.internal.sql.command.SqlAlterGridCommand;
 import org.apache.ignite.internal.sql.command.SqlAlterTableCommand;
 import org.apache.ignite.internal.sql.command.SqlCommand;
 import org.apache.ignite.internal.sql.command.SqlCreateIndexCommand;
@@ -63,6 +68,8 @@ import org.apache.ignite.internal.sql.command.SqlDropIndexCommand;
 import org.apache.ignite.internal.sql.command.SqlIndexColumn;
 import org.apache.ignite.internal.util.future.GridFinishedFuture;
 import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.lang.IgnitePredicate;
+import org.apache.ignite.lang.IgniteUuid;
 import org.h2.command.Prepared;
 import org.h2.command.ddl.AlterTableAlterColumn;
 import org.h2.command.ddl.CreateIndex;
@@ -195,6 +202,46 @@ public class DdlStatementsProcessor {
                     cluster.enableWal(tbl.cacheName());
                 else
                     cluster.disableWal(tbl.cacheName());
+
+                fut = new GridFinishedFuture();
+            }
+            else if (cmd instanceof SqlAlterGridCommand) {
+                SqlAlterGridCommand cmd0 = (SqlAlterGridCommand)cmd;
+
+                IgniteUuid idToCancel;
+
+                switch (cmd0.entityToCancel()){
+                    case SqlKeyword.TRANSACTION:
+                        Collection<IgniteInternalTx> txs = ctx.cache().context().tm().activeTransactions();
+
+                        idToCancel = IgniteUuid.fromString(cmd0.idToCancel());
+
+                        IgniteInternalTx txToKill = F.find(txs, null, new IgnitePredicate<IgniteInternalTx>() {
+                            @Override public boolean apply(IgniteInternalTx tx) {
+                                return idToCancel.equals(tx.xid());
+                            }
+                        });
+
+                        if (txToKill != null)
+                            txToKill.rollbackAsync();
+                        else
+                            throw new IgniteSQLException("Transaction not found " + cmd0.idToCancel());
+
+                        break;
+                    case SqlKeyword.TASK:
+                        Map<IgniteUuid, ComputeTaskFuture<Object>> tasks = ctx.grid().compute().<Object>activeTaskFutures();
+
+                        idToCancel = IgniteUuid.fromString(cmd0.idToCancel());
+
+                        ComputeTaskFuture<?> task = tasks.get(idToCancel);
+
+                        if (task != null)
+                            task.cancel();
+                        else
+                            throw new IgniteSQLException("Task not found " + cmd0.idToCancel());
+
+                        break;
+                }
 
                 fut = new GridFinishedFuture();
             }

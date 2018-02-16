@@ -213,6 +213,18 @@ public class SqlKeyword {
     /** Keyword: PARALLEL. */
     public static final String PARALLEL = "PARALLEL";
 
+    /** Keyword: GRID. */
+    public static final String GRID = "GRID";
+
+    /** Keyword: CANCEL. */
+    public static final String CANCEL = "CANCEL";
+
+    /** Keyword: TRANSACTION. */
+    public static final String TRANSACTION = "TRANSACTION";
+
+    /** Keyword: TASK. */
+    public static final String TASK = "TASK";
+
     /** All keywords. */
     private static final HashSet<String> KEYWORDS;
 
