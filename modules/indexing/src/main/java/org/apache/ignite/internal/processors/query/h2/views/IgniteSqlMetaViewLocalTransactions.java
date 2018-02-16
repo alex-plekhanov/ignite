@@ -30,7 +30,7 @@ import org.h2.value.Value;
 /**
  * Meta view: local transactions.
  */
-public class IgniteSqlMetaViewLocalTransactions extends IgniteSqlMetaView {
+public class IgniteSqlMetaViewLocalTransactions extends IgniteSqlAbstractLocalMetaView {
     /**
      * @param ctx Grid context.
      */

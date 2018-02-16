@@ -24,6 +24,7 @@ import org.h2.engine.Constants;
 import org.h2.engine.Session;
 import org.h2.index.BaseIndex;
 import org.h2.index.Cursor;
+import org.h2.index.IndexCondition;
 import org.h2.index.IndexType;
 import org.h2.message.DbException;
 import org.h2.result.Row;
@@ -81,7 +82,26 @@ public class IgniteSqlMetaIndex extends BaseIndex {
     /** {@inheritDoc} */
     @Override public double getCost(Session ses, int[] masks, TableFilter[] filters, int filter, SortOrder sortOrder,
         HashSet<Column> allColsSet) {
-        return Constants.COST_ROW_OFFSET + getRowCountApproximation();
+        double colsCost = 2d;
+
+        boolean isIdxUsed = false;
+
+        if (masks != null) {
+            double colWeight = 2d;
+
+            for (Column col : columns) {
+                colWeight /= 2d;
+
+                if ((masks[col.getColumnId()] & IndexCondition.EQUALITY) != 0) {
+                    isIdxUsed = true;
+
+                    colsCost -= colWeight;
+                } else
+                    colsCost += colWeight;
+            }
+        }
+
+        return isIdxUsed ? colsCost : Constants.COST_ROW_OFFSET + getRowCountApproximation();
     }
 
     /** {@inheritDoc} */

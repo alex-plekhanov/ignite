@@ -37,7 +37,7 @@ import org.h2.value.Value;
 /**
  * Meta view: node attributes.
  */
-public class IgniteSqlMetaViewNodeAttributes extends IgniteSqlMetaView {
+public class IgniteSqlMetaViewNodeAttributes extends IgniteSqlAbstractLocalMetaView {
     /**
      * @param ctx Grid context.
      */
