@@ -17,7 +17,15 @@
 
 package org.apache.ignite.internal.processors.query.h2.views;
 
+import java.util.UUID;
+import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.GridKernalContext;
+import org.apache.ignite.internal.GridTopic;
+import org.apache.ignite.internal.managers.communication.GridIoPolicy;
+import org.apache.ignite.internal.managers.communication.GridMessageListener;
+import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.lang.IgniteBiTuple;
 import org.h2.engine.Session;
 import org.h2.result.Row;
 import org.h2.result.SearchRow;
@@ -31,21 +39,11 @@ public class IgniteSqlDistributedMetaViewAdapter extends IgniteSqlAbstractMetaVi
     /** Delegate view. */
     protected final IgniteSqlMetaView delegate;
 
-    /**
-     * Adds first element to array.
-     *
-     * @param arr Array.
-     * @param element Element.
-     */
-    private static <T> T[] addFirstElement(T[] arr, T element) {
-        T[] newArr = (T[])new Object[arr.length + 1];
+    /** Message topic. */
+    protected final Object msgTopic;
 
-        newArr[0] = element;
-
-        System.arraycopy(arr, 0, newArr, 1, arr.length);
-
-        return newArr;
-    }
+    /** Message listener. */
+    protected final GridMessageListener msgLsnr;
 
     /**
      * @param cols Columns.
@@ -64,11 +62,10 @@ public class IgniteSqlDistributedMetaViewAdapter extends IgniteSqlAbstractMetaVi
      * @param idxs Indexes.
      */
     private static String[] addDistributedIndexes(String[] idxs) {
-        String[] newIdxs = new String[idxs.length + 1];
+        String[] newIdxs = new String[idxs.length];
 
-        newIdxs[0] = "NODE_ID";
-
-        System.arraycopy(idxs, 0, newIdxs, 1, idxs.length);
+        for (int i = 0; i < idxs.length; i++)
+            newIdxs[i] = "NODE_ID," + idxs[i];
 
         return idxs;
     }
@@ -85,10 +82,72 @@ public class IgniteSqlDistributedMetaViewAdapter extends IgniteSqlAbstractMetaVi
             addDistributedIndexes(delegate.getIndexes()));
 
         this.delegate = delegate;
+        this.msgTopic = new IgniteBiTuple<>(GridTopic.TOPIC_QUERY, delegate.getTableName());
+
+        msgLsnr = new GridMessageListener() {
+            @Override public void onMessage(UUID nodeId, Object msg, byte plc) {
+                onMessage0(nodeId, msg);
+            }
+        };
+
+        ctx.io().addMessageListener(msgTopic, msgLsnr);
+    }
+
+    /**
+     * @param nodeId Source node Id.
+     * @param msg Message.
+     */
+    private void onMessage0(UUID nodeId, Object msg) {
+        ClusterNode node = ctx.discovery().node(nodeId);
+
+        if (node == null)
+            return;
+
+        try {
+            if (msg instanceof MetaViewRowsRequest)
+                onRowsRequest(node, (MetaViewRowsRequest)msg);
+            else if (msg instanceof MetaViewRowsResponse)
+                onRowsResponse(node, (MetaViewRowsResponse)msg);
+        }
+        catch (Throwable th) {
+            U.error(log, "Failed to handle message [nodeId=" + nodeId + ", msg=" + msg + "]", th);
+
+            if (th instanceof Error)
+                throw th;
+        }
+    }
+
+    /**
+     * @param node Node.
+     * @param msg Message.
+     */
+    protected void onRowsRequest(ClusterNode node, MetaViewRowsRequest msg) {
+        // TODO: get SearchRow from request, invoke getRows, send response
+    }
+
+    /**
+     * @param node Node.
+     * @param msg Message.
+     */
+    protected void onRowsResponse(ClusterNode node, MetaViewRowsResponse msg) {
+        // TODO: update future
     }
 
     /** {@inheritDoc} */
     @Override public Iterable<Row> getRows(Session ses, SearchRow first, SearchRow last) {
+        // TODO: send request, get future, create iterable based on future
+
+/*
+        for (ClusterNode node : ctx.discovery().allNodes()) {
+            try {
+                ctx.io().sendOrderedMessage(node, msgTopic, new MetaViewRowsRequest(), GridIoPolicy.QUERY_POOL, 0, false);
+            }
+            catch (IgniteCheckedException e) {
+                e.printStackTrace();
+            }
+        }
+*/
+
         return null;
     }
 }
