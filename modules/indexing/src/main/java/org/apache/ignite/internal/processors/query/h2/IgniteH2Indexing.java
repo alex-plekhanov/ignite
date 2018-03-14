@@ -113,6 +113,7 @@ import org.apache.ignite.internal.processors.query.h2.sql.GridSqlStatement;
 import org.apache.ignite.internal.processors.query.h2.twostep.GridMapQueryExecutor;
 import org.apache.ignite.internal.processors.query.h2.twostep.GridReduceQueryExecutor;
 import org.apache.ignite.internal.processors.query.h2.twostep.MapQueryLazyWorker;
+import org.apache.ignite.internal.processors.query.h2.views.IgniteSqlMetaView;
 import org.apache.ignite.internal.processors.query.h2.views.IgniteSqlMetaViewProcessor;
 import org.apache.ignite.internal.processors.query.schema.SchemaIndexCacheVisitor;
 import org.apache.ignite.internal.processors.query.schema.SchemaIndexCacheVisitorClosure;
@@ -1851,7 +1852,9 @@ public class IgniteH2Indexing implements GridQueryIndexing {
 
         List<Integer> cacheIds = collectCacheIds(null, res);
 
-        if (F.isEmpty(cacheIds))
+        List<IgniteSqlMetaView> distrMetaViews = collectDistributedMetaViews(res);
+
+        if (F.isEmpty(cacheIds) && F.isEmpty(distrMetaViews))
             res.local(true);
         else {
             res.cacheIds(cacheIds);
@@ -2954,6 +2957,29 @@ public class IgniteH2Indexing implements GridQueryIndexing {
 
             return cacheIds;
         }
+    }
+
+    /**
+     * Collect cache identifiers from two-step query.
+     *
+     * @param twoStepQry Two-step query.
+     * @return Result.
+     */
+    private List<IgniteSqlMetaView> collectDistributedMetaViews(GridCacheTwoStepQuery twoStepQry) {
+        List<IgniteSqlMetaView> views = new ArrayList<>();
+
+        if (twoStepQry.tablesCount() > 0) {
+            Map<String, IgniteSqlMetaView> registeredViews = metaViewProc.getRegisteredViews();
+
+            for (QueryTable tbl : twoStepQry.tables()) {
+                if (IgniteSqlMetaViewProcessor.SCHEMA_NAME.equals(tbl.schema())
+                    && registeredViews.containsKey(tbl.table())
+                    && registeredViews.get(tbl.table()).isDistributed() )
+                    views.add(registeredViews.get(tbl.table()));
+            }
+        }
+
+        return views;
     }
 
     /**

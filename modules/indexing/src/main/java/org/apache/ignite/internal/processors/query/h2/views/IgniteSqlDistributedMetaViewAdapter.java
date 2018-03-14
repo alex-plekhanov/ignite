@@ -79,6 +79,11 @@ public class IgniteSqlDistributedMetaViewAdapter extends IgniteSqlAbstractMetaVi
         return new NodeRowIterable(delegate.getRows(ses, first, last), ctx.localNodeId(), ses);
     }
 
+    /** {@inheritDoc} */
+    @Override public boolean isDistributed() {
+        return true;
+    }
+
     /**
      * Row iterable with nodeId column.
      */

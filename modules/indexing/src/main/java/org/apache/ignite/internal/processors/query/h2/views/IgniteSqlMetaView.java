@@ -71,4 +71,9 @@ public interface IgniteSqlMetaView {
      * Gets SQL script for creating table.
      */
     public String getCreateSQL();
+
+    /**
+     * Is view distributed.
+     */
+    public boolean isDistributed();
 }

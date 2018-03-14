@@ -21,6 +21,9 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.GridKernalContext;
@@ -32,6 +35,9 @@ import org.apache.ignite.internal.processors.query.h2.IgniteH2Indexing;
 public class IgniteSqlMetaViewProcessor {
     /** Table schema name. */
     public static final String SCHEMA_NAME = "IGNITE";
+
+    /** Registered views. */
+    private final Map<String, IgniteSqlMetaView> registeredViews = new HashMap<>();
 
     /**
      * Starts meta views processor.
@@ -45,16 +51,20 @@ public class IgniteSqlMetaViewProcessor {
         log.info("Starting meta views processor");
 
         Connection c = idx.connectionForSchema(SCHEMA_NAME);
-
         try {
+            registeredViews.clear();
+
             Collection<IgniteSqlMetaView> viewsToRegister = new ArrayList<>();
 
             viewsToRegister.add(new IgniteSqlMetaViewLocalTransactions(ctx));
+            viewsToRegister.add(new IgniteSqlMetaViewClusterTransactions(ctx));
             viewsToRegister.add(new IgniteSqlMetaViewNodes(ctx));
             viewsToRegister.add(new IgniteSqlMetaViewNodeAttributes(ctx));
 
             for (IgniteSqlMetaView view : viewsToRegister) {
                 IgniteSqlMetaTableEngine.registerView(c, view);
+
+                registeredViews.put(view.getTableName(), view);
 
                 if (log.isDebugEnabled())
                     log.debug("Registered meta view: " + view.getTableName());
@@ -65,5 +75,12 @@ public class IgniteSqlMetaViewProcessor {
 
             throw new IgniteException(e);
         }
+    }
+
+    /**
+     * Gets registered views.
+     */
+    public Map<String, IgniteSqlMetaView> getRegisteredViews() {
+        return Collections.unmodifiableMap(registeredViews);
     }
 }

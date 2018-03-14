@@ -141,6 +141,11 @@ public abstract class IgniteSqlAbstractLocalMetaView extends IgniteSqlAbstractMe
         return -1;
     }
 
+    /** {@inheritDoc} */
+    @Override public boolean isDistributed() {
+        return false;
+    }
+
     /**
      * Parse condition for column.
      *
