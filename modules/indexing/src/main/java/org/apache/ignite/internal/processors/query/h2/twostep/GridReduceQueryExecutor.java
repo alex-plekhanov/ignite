@@ -587,6 +587,9 @@ public class GridReduceQueryExecutor {
 
             if (qry.isLocal())
                 nodes = singletonList(ctx.discovery().localNode());
+            else if (F.isEmpty(cacheIds))
+                // TODO: Calculate nodes for distributed views
+                nodes = ctx.discovery().allNodes();
             else {
                 NodesForPartitionsResult nodesParts = nodesForPartitions(cacheIds, topVer, parts, isReplicatedOnly);
 
@@ -646,6 +649,7 @@ public class GridReduceQueryExecutor {
 
                 // If the query has only replicated tables, we have to run it on a single node only.
                 if (!mapQry.isPartitioned()) {
+                    // TODO: Distributed views
                     ClusterNode node = F.rand(nodes);
 
                     mapQry.node(node.id());
