@@ -32,6 +32,9 @@ import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.events.CacheEvent;
+import org.apache.ignite.events.Event;
+import org.apache.ignite.events.EventType;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.IgniteKernal;
@@ -40,8 +43,10 @@ import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxPr
 import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxPrepareResponse;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
 import org.apache.ignite.internal.util.GridConcurrentHashSet;
+import org.apache.ignite.internal.util.lang.IgnitePredicate2X;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteInClosure;
+import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.spi.IgniteSpiException;
 import org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi;
@@ -62,6 +67,9 @@ import static org.apache.ignite.transactions.TransactionIsolation.REPEATABLE_REA
 public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstractTest {
     /** Nodes count. */
     private static final int NODES_CNT = 3;
+
+    /** Tx count. */
+    private static final int TX_CNT = 2;
 
     /** {@inheritDoc} */
     @SuppressWarnings("unchecked")
@@ -132,7 +140,7 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
      * @throws Exception If failed.
      */
     private boolean doTestDeadlock() throws Exception {
-        TestCommunicationSpi.init(log, 2);
+        TestCommunicationSpi.init(log);
 
         final CyclicBarrier barrier = new CyclicBarrier(2);
 
@@ -144,6 +152,8 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
 
         awaitPartitionMapExchange();
 
+        grid(0).events().localListen(new CacheLockListener(), EventType.EVT_CACHE_OBJECT_LOCKED);
+
         IgniteInternalFuture<Long> fut = GridTestUtils.runMultiThreadedAsync(new Runnable() {
             @Override public void run() {
                 int threadNum = threadCnt.getAndIncrement();
@@ -154,7 +164,7 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
                 IgniteCache<Integer, Integer> cache2 = cacheForThread(ignite, threadNum, 1);
 
                 try (Transaction tx =
-                         ignite.transactions().txStart(OPTIMISTIC, REPEATABLE_READ, 1000, 0)
+                         ignite.transactions().txStart(OPTIMISTIC, REPEATABLE_READ, 500, 0)
                 ) {
                     int key1 = primaryKey(cache1);//remoteKeyForThread(threadNum, 0);
 
@@ -236,9 +246,6 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
      *
      */
     private static class TestCommunicationSpi extends TcpCommunicationSpi {
-        /** Tx count. */
-        private static volatile int TX_CNT;
-
         /** Tx ids. */
         private static final GridConcurrentHashSet<GridCacheVersion> TX_IDS = new GridConcurrentHashSet<>();
 
@@ -251,8 +258,7 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
         /**
          * @param txCnt Tx count.
          */
-        private static void init(IgniteLogger log, int txCnt) {
-            TX_CNT = txCnt;
+        private static void init(IgniteLogger log) {
             TX_IDS.clear();
             latch = new CountDownLatch(TX_CNT);
 
@@ -318,6 +324,35 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
             }
 
             super.sendMessage(node, msg, ackC);
+        }
+    }
+
+    /**
+     * Listener for cache lock events
+     */
+    private static class CacheLockListener implements IgnitePredicate<Event> {
+        /** Latch. */
+        private final CountDownLatch latch = new CountDownLatch(TX_CNT);
+
+        /**
+         * Default constructor.
+         */
+        private CacheLockListener() {
+
+        }
+
+        /** {@inheritDoc} */
+        @Override public boolean apply(Event evt) {
+            latch.countDown();
+
+            try {
+                latch.await();
+            }
+            catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            return true;
         }
     }
 }
