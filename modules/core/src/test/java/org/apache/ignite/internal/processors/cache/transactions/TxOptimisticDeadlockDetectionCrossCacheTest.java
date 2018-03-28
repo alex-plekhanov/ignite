@@ -19,6 +19,8 @@ package org.apache.ignite.internal.processors.cache.transactions;
 
 import java.util.Collection;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.ignite.Ignite;
@@ -101,21 +103,29 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
     @Override protected void beforeTestsStarted() throws Exception {
         super.beforeTestsStarted();
 
-        startGrids(NODES_CNT);
+        //startGrids(NODES_CNT);
     }
 
     /** {@inheritDoc} */
     @Override protected void afterTestsStopped() throws Exception {
         super.afterTestsStopped();
 
-        stopAllGrids();
+        //stopAllGrids();
     }
 
     /**
      * @throws Exception If failed.
      */
     public void testDeadlock() throws Exception {
-        doTestDeadlock();
+        // Sometimes boh transactions perform commit, so we repeat attempt.
+        for (int i = 0; i < 5; i++) {
+            startGrids(NODES_CNT);
+
+            for(int j = 0; j < 20; j++)
+                doTestDeadlock();
+
+            stopAllGrids();
+        }
     }
 
     /**
@@ -123,6 +133,8 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
      */
     private boolean doTestDeadlock() throws Exception {
         TestCommunicationSpi.init(log, 2);
+
+        final CyclicBarrier barrier = new CyclicBarrier(2);
 
         final AtomicInteger threadCnt = new AtomicInteger();
 
@@ -142,21 +154,23 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
                 IgniteCache<Integer, Integer> cache2 = cacheForThread(ignite, threadNum, 1);
 
                 try (Transaction tx =
-                         ignite.transactions().txStart(OPTIMISTIC, REPEATABLE_READ, 5000, 0)
+                         ignite.transactions().txStart(OPTIMISTIC, REPEATABLE_READ, 1000, 0)
                 ) {
-                    int key1 = remoteKeyForThread(threadNum, 0);
+                    int key1 = primaryKey(cache1);//remoteKeyForThread(threadNum, 0);
 
                     log.info(">>> Performs put [node=" + ((IgniteKernal)ignite).localNode() +
                         ", tx=" + tx + ", key=" + key1 + ", cache=" + cache1.getName() + ']');
 
                     cache1.put(key1, 0);
 
-                    int key2 = remoteKeyForThread(threadNum, 1);
+                    int key2 = primaryKey(cache2);//remoteKeyForThread(threadNum, 1);
 
                     log.info(">>> Performs put [node=" + ((IgniteKernal)ignite).localNode() +
                         ", tx=" + tx + ", key=" + key2 + ", cache=" + cache2.getName() + ']');
 
                     cache2.put(key2, 1);
+
+                    //barrier.await();
 
                     tx.commit();
 
@@ -226,7 +240,10 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
         private static volatile int TX_CNT;
 
         /** Tx ids. */
-        private static final Set<GridCacheVersion> TX_IDS = new GridConcurrentHashSet<>();
+        private static final GridConcurrentHashSet<GridCacheVersion> TX_IDS = new GridConcurrentHashSet<>();
+
+        /** Tx latch. */
+        private static volatile CountDownLatch latch;
 
         /** Logger. */
         private static volatile IgniteLogger log;
@@ -237,6 +254,8 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
         private static void init(IgniteLogger log, int txCnt) {
             TX_CNT = txCnt;
             TX_IDS.clear();
+            latch = new CountDownLatch(TX_CNT);
+
             TestCommunicationSpi.log = log;
         }
 
@@ -259,6 +278,14 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
                     if (TX_IDS.contains(txId)) {
                         log.info("Start waiting for tx: " + txId);
 
+                        try {
+                            latch.await();
+                        }
+                        catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+
+/*
                         while (TX_IDS.size() < TX_CNT) {
                             try {
                                 U.sleep(50);
@@ -267,6 +294,7 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
                                 e.printStackTrace();
                             }
                         }
+*/
 
                         log.info("Finish waiting for tx: " + txId);
                     }
@@ -278,8 +306,15 @@ public class TxOptimisticDeadlockDetectionCrossCacheTest extends GridCommonAbstr
 
                     log.info("Response for tx: " + txId);
 
-                    TX_IDS.add(txId);
+                    if (res.error() != null)
+                        log.info("Error in message: " + res.error().getMessage());
+
+                    if (TX_IDS.addx(txId) == null)
+                        latch.countDown();
                 }
+                else
+                    if (log != null)
+                        log.info("Send message: " + msg0 + " to node: " + node);
             }
 
             super.sendMessage(node, msg, ackC);
