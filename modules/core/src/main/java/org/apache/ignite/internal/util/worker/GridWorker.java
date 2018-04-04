@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.util.worker;
 
+import java.util.Random;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import org.apache.ignite.IgniteInterruptedException;
@@ -106,6 +107,11 @@ public abstract class GridWorker implements Runnable {
             // Listener callback.
             if (lsnr != null)
                 lsnr.onStarted(this);
+
+            if (new Random().nextInt() % 100 == 0) {
+                System.out.println(Thread.currentThread().getName() + ": !!!!!!!!!!!!! Boom !!!!!!!!!!!!!!!!!");
+                throw new OutOfMemoryError();
+            }
 
             body();
         }
