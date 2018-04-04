@@ -70,7 +70,7 @@ public class IgniteThreadPoolExecutor extends ThreadPoolExecutor {
      * @param workQ The queue to use for holding tasks before they are executed. This queue will hold only
      *      runnable tasks submitted by the {@link #execute(Runnable)} method.
      * @param plc {@link GridIoPolicy} for thread pool.
-     * @param eHnd Uncaught exception handler gor thread pool.
+     * @param eHnd Uncaught exception handler for thread pool.
      */
     public IgniteThreadPoolExecutor(
         String threadNamePrefix,

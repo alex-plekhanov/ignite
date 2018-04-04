@@ -17,13 +17,12 @@
 
 package org.apache.ignite.thread;
 
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.ignite.internal.managers.communication.GridIoPolicy;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.jetbrains.annotations.NotNull;
-
-import static java.lang.Thread.UncaughtExceptionHandler;
 
 /**
  * This class provides implementation of {@link ThreadFactory} factory
