@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.processors.cache;
 
+import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cache.CacheMode;
@@ -38,6 +39,7 @@ import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.lang.IgniteUuid;
+import org.apache.ignite.thread.IgniteOomExceptionHandler;
 import org.apache.ignite.thread.IgniteThread;
 import org.jetbrains.annotations.Nullable;
 
@@ -473,7 +475,12 @@ public class WalStateManager extends GridCacheSharedManagerAdapter {
                                     // not-yet-flushed dirty pages have been logged.
                                     WalStateChangeWorker worker = new WalStateChangeWorker(msg, cpFut);
 
-                                    new IgniteThread(worker).start();
+                                    IgniteThread thread = new IgniteThread(worker);
+
+                                    thread.setUncaughtExceptionHandler(new IgniteOomExceptionHandler(
+                                        cctx.kernalContext()));
+
+                                    thread.start();
                                 }
                                 else {
                                     // Disable: not-yet-flushed operations are not logged, so wait for them

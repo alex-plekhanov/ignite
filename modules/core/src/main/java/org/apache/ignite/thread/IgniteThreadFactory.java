@@ -19,10 +19,11 @@ package org.apache.ignite.thread;
 
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.ignite.internal.managers.communication.GridIoPolicy;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.jetbrains.annotations.NotNull;
+
+import static java.lang.Thread.UncaughtExceptionHandler;
 
 /**
  * This class provides implementation of {@link ThreadFactory} factory
@@ -41,6 +42,9 @@ public class IgniteThreadFactory implements ThreadFactory {
     /** */
     private final byte plc;
 
+    /** Exception handler. */
+    private final UncaughtExceptionHandler eHnd;
+
     /**
      * Constructs new thread factory for given grid. All threads will belong
      * to the same default thread group.
@@ -49,7 +53,19 @@ public class IgniteThreadFactory implements ThreadFactory {
      * @param threadName Thread name.
      */
     public IgniteThreadFactory(String igniteInstanceName, String threadName) {
-        this(igniteInstanceName, threadName, GridIoPolicy.UNDEFINED);
+        this(igniteInstanceName, threadName, null);
+    }
+
+    /**
+     * Constructs new thread factory for given grid. All threads will belong
+     * to the same default thread group.
+     *
+     * @param igniteInstanceName Ignite instance name.
+     * @param threadName Thread name.
+     * @param eHnd Uncaught exception handler.
+     */
+    public IgniteThreadFactory(String igniteInstanceName, String threadName, UncaughtExceptionHandler eHnd) {
+        this(igniteInstanceName, threadName, GridIoPolicy.UNDEFINED, eHnd);
     }
 
     /**
@@ -59,16 +75,23 @@ public class IgniteThreadFactory implements ThreadFactory {
      * @param igniteInstanceName Ignite instance name.
      * @param threadName Thread name.
      * @param plc {@link GridIoPolicy} for thread pool.
+     * @param eHnd Uncaught exception handler.
      */
-    public IgniteThreadFactory(String igniteInstanceName, String threadName, byte plc) {
+    public IgniteThreadFactory(String igniteInstanceName, String threadName, byte plc, UncaughtExceptionHandler eHnd) {
         this.igniteInstanceName = igniteInstanceName;
         this.threadName = threadName;
         this.plc = plc;
+        this.eHnd = eHnd;
     }
 
     /** {@inheritDoc} */
     @Override public Thread newThread(@NotNull Runnable r) {
-        return new IgniteThread(igniteInstanceName, threadName, r, idxGen.incrementAndGet(), -1, plc);
+        Thread thread = new IgniteThread(igniteInstanceName, threadName, r, idxGen.incrementAndGet(), -1, plc);
+
+        if (eHnd != null)
+            thread.setUncaughtExceptionHandler(eHnd);
+
+        return thread;
     }
 
     /** {@inheritDoc} */

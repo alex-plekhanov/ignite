@@ -840,6 +840,14 @@ public final class IgniteSystemProperties {
      * @see CacheConfiguration#readFromBackup
      */
     public static final String IGNITE_READ_LOAD_BALANCING = "IGNITE_READ_LOAD_BALANCING";
+
+    /**
+     * Amount of memory reserved in the heap at node start, which can be dropped to increase the chances of success when
+     * handling OutOfMemoryError.
+     *
+     * Default is {@code 64kb}.
+     */
+    public static final String IGNITE_FAILURE_HANDLER_RESERVE_BUFFER_SIZE = "IGNITE_FAILURE_HANDLER_RESERVE_BUFFER_SIZE";
   
     /**
      * Enforces singleton.
