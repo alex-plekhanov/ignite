@@ -1764,10 +1764,9 @@ public class IgnitionEx {
 
             validateThreadPoolSize(cfg.getPublicThreadPoolSize(), "public");
 
-            UncaughtExceptionHandler eHnd = new UncaughtExceptionHandler() {
+            UncaughtExceptionHandler oomeHnd = new UncaughtExceptionHandler() {
                 @Override public void uncaughtException(Thread t, Throwable e) {
-                    if (grid != null && (X.hasCause(e, OutOfMemoryError.class) || X.hasSuppressed(e,
-                        OutOfMemoryError.class)))
+                    if (grid != null && X.hasCause(e, OutOfMemoryError.class))
                         grid.context().failure().process(new FailureContext(FailureType.CRITICAL_ERROR, e));
                 }
             };
@@ -1780,7 +1779,7 @@ public class IgnitionEx {
                 DFLT_THREAD_KEEP_ALIVE_TIME,
                 new LinkedBlockingQueue<Runnable>(),
                 GridIoPolicy.PUBLIC_POOL,
-                eHnd);
+                oomeHnd);
 
             execSvc.allowCoreThreadTimeOut(true);
 
@@ -1794,7 +1793,7 @@ public class IgnitionEx {
                 DFLT_THREAD_KEEP_ALIVE_TIME,
                 new LinkedBlockingQueue<Runnable>(),
                 GridIoPolicy.SERVICE_POOL,
-                eHnd);
+                oomeHnd);
 
             svcExecSvc.allowCoreThreadTimeOut(true);
 
@@ -1808,7 +1807,7 @@ public class IgnitionEx {
                 DFLT_THREAD_KEEP_ALIVE_TIME,
                 new LinkedBlockingQueue<Runnable>(),
                 GridIoPolicy.SYSTEM_POOL,
-                eHnd);
+                oomeHnd);
 
             sysExecSvc.allowCoreThreadTimeOut(true);
 
@@ -1834,7 +1833,7 @@ public class IgnitionEx {
                 DFLT_THREAD_KEEP_ALIVE_TIME,
                 new LinkedBlockingQueue<Runnable>(),
                 GridIoPolicy.MANAGEMENT_POOL,
-                eHnd);
+                oomeHnd);
 
             mgmtExecSvc.allowCoreThreadTimeOut(true);
 
@@ -1851,7 +1850,7 @@ public class IgnitionEx {
                 DFLT_THREAD_KEEP_ALIVE_TIME,
                 new LinkedBlockingQueue<Runnable>(),
                 GridIoPolicy.P2P_POOL,
-                eHnd);
+                oomeHnd);
 
             p2pExecSvc.allowCoreThreadTimeOut(true);
 
@@ -1881,7 +1880,7 @@ public class IgnitionEx {
                 cfg.getAsyncCallbackPoolSize(),
                 cfg.getIgniteInstanceName(),
                 "callback",
-                eHnd);
+                oomeHnd);
 
             if (myCfg.getConnectorConfiguration() != null) {
                 validateThreadPoolSize(myCfg.getConnectorConfiguration().getThreadPoolSize(), "connector");
@@ -1894,7 +1893,7 @@ public class IgnitionEx {
                     DFLT_THREAD_KEEP_ALIVE_TIME,
                     new LinkedBlockingQueue<Runnable>(),
                     GridIoPolicy.UNDEFINED,
-                    eHnd
+                    oomeHnd
                 );
 
                 restExecSvc.allowCoreThreadTimeOut(true);
@@ -1910,7 +1909,7 @@ public class IgnitionEx {
                 myCfg.getUtilityCacheKeepAliveTime(),
                 new LinkedBlockingQueue<Runnable>(),
                 GridIoPolicy.UTILITY_CACHE_POOL,
-                eHnd);
+                oomeHnd);
 
             utilityCacheExecSvc.allowCoreThreadTimeOut(true);
 
@@ -1922,7 +1921,7 @@ public class IgnitionEx {
                 DFLT_THREAD_KEEP_ALIVE_TIME,
                 new LinkedBlockingQueue<Runnable>(),
                 GridIoPolicy.AFFINITY_POOL,
-                eHnd);
+                oomeHnd);
 
             affExecSvc.allowCoreThreadTimeOut(true);
 
@@ -1937,7 +1936,7 @@ public class IgnitionEx {
                     3000L,
                     new LinkedBlockingQueue<Runnable>(1000),
                     GridIoPolicy.IDX_POOL,
-                    eHnd
+                    oomeHnd
                 );
             }
 
@@ -1951,7 +1950,7 @@ public class IgnitionEx {
                 DFLT_THREAD_KEEP_ALIVE_TIME,
                 new LinkedBlockingQueue<Runnable>(),
                 GridIoPolicy.QUERY_POOL,
-                eHnd);
+                oomeHnd);
 
             qryExecSvc.allowCoreThreadTimeOut(true);
 
@@ -1963,7 +1962,7 @@ public class IgnitionEx {
                 DFLT_THREAD_KEEP_ALIVE_TIME,
                 new LinkedBlockingQueue<Runnable>(),
                 GridIoPolicy.SCHEMA_POOL,
-                eHnd);
+                oomeHnd);
 
             schemaExecSvc.allowCoreThreadTimeOut(true);
 
@@ -1981,7 +1980,7 @@ public class IgnitionEx {
                         DFLT_THREAD_KEEP_ALIVE_TIME,
                         new LinkedBlockingQueue<Runnable>(),
                         GridIoPolicy.UNDEFINED,
-                        eHnd);
+                        oomeHnd);
 
                     customExecSvcs.put(execCfg.getName(), exec);
                 }

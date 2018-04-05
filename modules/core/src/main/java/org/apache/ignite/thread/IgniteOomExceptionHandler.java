@@ -38,7 +38,7 @@ public class IgniteOomExceptionHandler implements Thread.UncaughtExceptionHandle
 
     /** {@inheritDoc} */
     @Override public void uncaughtException(Thread t, Throwable e) {
-        if (X.hasCause(e, OutOfMemoryError.class) || X.hasSuppressed(e, OutOfMemoryError.class))
+        if (X.hasCause(e, OutOfMemoryError.class))
             ctx.failure().process(new FailureContext(FailureType.CRITICAL_ERROR, e));
     }
 }
