@@ -25,11 +25,16 @@ import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.events.Event;
+import org.apache.ignite.events.EventType;
 import org.apache.ignite.internal.IgniteEx;
+import org.apache.ignite.internal.util.lang.GridAbsPredicate;
 import org.apache.ignite.lang.IgniteCallable;
 import org.apache.ignite.lang.IgniteFuture;
+import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceContext;
+import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 
 /**
@@ -165,7 +170,41 @@ public class OomFailureHandlerTest extends GridCommonAbstractTest {
         ignite0.services().deployKeyAffinitySingleton("fail-execute-service", new FailServiceImpl(true),
             DEFAULT_CACHE_NAME, key);
 
-        ignite0.services().serviceProxy("fail-execute-service", FailService.class, false);
+        GridTestUtils.waitForCondition(new GridAbsPredicate() {
+            @Override public boolean apply() {
+                return dummyFailureHandler(ignite1).failure();
+            }
+        }, 5000L);
+
+        assertFalse(dummyFailureHandler(ignite0).failure());
+    }
+
+    /**
+     * Test OOME in event listener.
+     */
+    public void testEventListenerOomError() throws Exception {
+        IgniteEx ignite0 = startGrid(0);
+        IgniteEx ignite1 = startGrid(1);
+
+        IgniteCache<Integer, Integer> cache0 = ignite0.getOrCreateCache(DEFAULT_CACHE_NAME);
+        IgniteCache<Integer, Integer> cache1 = ignite1.getOrCreateCache(DEFAULT_CACHE_NAME);
+
+        awaitPartitionMapExchange();
+
+        ignite1.events().localListen(new IgnitePredicate<Event>() {
+            @Override public boolean apply(Event evt) {
+                throw new OutOfMemoryError();
+            }
+        }, EventType.EVT_CACHE_OBJECT_PUT);
+
+        Integer key = primaryKey(cache1);
+
+        try {
+            cache0.put(key, key);
+        }
+        catch (Throwable ignore) {
+            // Expected.
+        }
 
         assertFalse(dummyFailureHandler(ignite0).failure());
         assertTrue(dummyFailureHandler(ignite1).failure());
