@@ -206,6 +206,8 @@ public class OomFailureHandlerTest extends GridCommonAbstractTest {
             // Expected.
         }
 
+        log.info("!!!!");
+
         assertFalse(dummyFailureHandler(ignite0).failure());
         assertTrue(dummyFailureHandler(ignite1).failure());
     }
@@ -222,14 +224,14 @@ public class OomFailureHandlerTest extends GridCommonAbstractTest {
     /**
      *
      */
-    private static class DummyFailureHandler implements FailureHandler {
+    private class DummyFailureHandler implements FailureHandler {
         /** Failure. */
-        private boolean failure;
+        private volatile boolean failure;
 
         /** {@inheritDoc} */
         @Override public boolean onFailure(Ignite ignite, FailureContext failureCtx) {
             failure = true;
-
+            log.info("!!! Failure");
             return true;
         }
 
@@ -237,6 +239,7 @@ public class OomFailureHandlerTest extends GridCommonAbstractTest {
          * @return Failure.
          */
         public boolean failure() {
+            log.info("!!! Check failure: " + failure);
             return failure;
         }
     }
