@@ -3164,7 +3164,11 @@ public class GridCacheDatabaseSharedManager extends IgniteCacheDatabaseSharedMan
                         cpPtr = CheckpointStatus.NULL_PTR;
                 }
             }
-            finally {
+            catch (Throwable e) {
+                curCpProgress.cpBeginFut.onDone(e);
+
+                throw e;
+            } finally {
                 checkpointLock.writeLock().unlock();
 
                 tracker.onLockRelease();
