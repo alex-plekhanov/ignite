@@ -2908,7 +2908,7 @@ public class GridCacheDatabaseSharedManager extends IgniteCacheDatabaseSharedMan
                 try {
                     chp = markCheckpointBegin(tracker);
                 }
-                catch (IgniteCheckedException e) {
+                catch (Throwable e) {
                     if (curCpProgress != null)
                         curCpProgress.cpFinishFut.onDone(e);
 
@@ -3667,6 +3667,7 @@ public class GridCacheDatabaseSharedManager extends IgniteCacheDatabaseSharedMan
         private GridFutureAdapter cpBeginFut = new GridFutureAdapter<>();
 
         /** */
+        //private GridFutureAdapter cpFinishFut = new GridFutureAdapter<>();
         private GridFutureAdapter cpFinishFut = new GridFutureAdapter<Void>() {
             @Override protected boolean onDone(@Nullable Void res, @Nullable Throwable err, boolean cancel) {
                 if (err != null && !cpBeginFut.isDone())

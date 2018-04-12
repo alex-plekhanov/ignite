@@ -135,6 +135,8 @@ public class IoomFailureHandlerTest extends AbstractFailureHandlerTest {
             assertFalse(dummyFailureHandler(ignite0).failure());
             assertTrue(dummyFailureHandler(ignite1).failure());
             assertTrue(X.hasCause(dummyFailureHandler(ignite1).failureContext().error(), IgniteOutOfMemoryException.class));
+
+            startGrid(2);
         }
         finally {
             stopGrid(1);

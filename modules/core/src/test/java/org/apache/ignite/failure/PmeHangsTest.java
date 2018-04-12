@@ -18,6 +18,7 @@
 package org.apache.ignite.failure;
 
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.configuration.DataRegionConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -40,6 +41,8 @@ public class PmeHangsTest extends GridCommonAbstractTest {
             )
         );
 
+        //cfg.setFailureHandler(new StopNodeFailureHandler());
+
         return cfg;
     }
 
@@ -49,16 +52,32 @@ public class PmeHangsTest extends GridCommonAbstractTest {
     public void testPmeHangs() throws Exception {
         cleanPersistenceDir();
 
-        IgniteEx ignite = startGrid(0);
+        IgniteEx ignite0 = startGrid(0);
+        IgniteEx ignite1 = startGrid(1);
+        IgniteEx ignite2 = startGrid(2);
 
-        ((GridCacheDatabaseSharedManager)ignite.context().cache().context().database()).addCheckpointListener(
+        ((GridCacheDatabaseSharedManager)ignite1.context().cache().context().database()).addCheckpointListener(
             new DbCheckpointListener() {
                 @Override public void onCheckpointBegin(Context ctx) throws IgniteCheckedException {
-                    throw new IllegalStateException();
+                    doSleep(300_000L);
                 }
             }
         );
 
-        ignite.cluster().active(true);
+        ignite2.cluster().active(true);
+
+        startGrid(3);
+
+
+        ((GridCacheDatabaseSharedManager)ignite1.context().cache().context().database()).addCheckpointListener(
+            new DbCheckpointListener() {
+                @Override public void onCheckpointBegin(Context ctx) throws IgniteCheckedException {
+                    throw new IgniteException();
+                }
+            }
+        );
+
+
+        ignite0.cluster().active(true);
     }
 }
