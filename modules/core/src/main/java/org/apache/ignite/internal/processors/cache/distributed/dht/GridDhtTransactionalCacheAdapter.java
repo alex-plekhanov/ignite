@@ -1001,7 +1001,7 @@ public abstract class GridDhtTransactionalCacheAdapter<K, V> extends GridDhtCach
 
                         entries.add(entry);
 
-                        break;
+                        throw new IgniteCheckedException();
                     }
                     catch (GridCacheEntryRemovedException ignore) {
                         if (log.isDebugEnabled())
