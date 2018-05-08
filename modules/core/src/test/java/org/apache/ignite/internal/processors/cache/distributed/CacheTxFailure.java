@@ -50,7 +50,7 @@ public class CacheTxFailure extends GridCommonAbstractTest {
                 new NoopEventStorageSpi() {
                     @Override public void record(Event evt) throws IgniteSpiException {
                         if (evt.type() == EVT_CACHE_ENTRY_CREATED && getTestIgniteInstanceIndex(igniteInstanceName) == 1)
-                            throw new CacheException();
+                            ;//throw new CacheException();
                     }
                 }
             );
@@ -60,18 +60,19 @@ public class CacheTxFailure extends GridCommonAbstractTest {
      *
      */
     public void testTxFailure() throws Exception {
-        startGrids(2);
+        startGrids(3);
 
         IgniteCache cache0 = grid(0).cache(DEFAULT_CACHE_NAME);
         IgniteCache cache1 = grid(1).cache(DEFAULT_CACHE_NAME);
 
-        for (int i = 0; i < 10; i++) {
+        //for (int i = 0; i < 10; i++) {
             try (Transaction tx = grid(0).transactions().txStart(TransactionConcurrency.PESSIMISTIC, TransactionIsolation.REPEATABLE_READ)) {
                 cache0.put(primaryKey(cache1), 0);
+                tx.commit();
             }
             catch (Exception e) {
                 e.printStackTrace();
             }
-        }
-        }
+        //}
+    }
 }

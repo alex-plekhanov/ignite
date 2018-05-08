@@ -53,6 +53,7 @@ import org.apache.ignite.internal.IgniteNodeAttributes;
 import org.apache.ignite.internal.managers.communication.GridIoMessage;
 import org.apache.ignite.internal.processors.cache.GridCacheAdapter;
 import org.apache.ignite.internal.processors.cache.GridCacheEntryEx;
+import org.apache.ignite.internal.processors.cache.distributed.dht.GridDhtInvalidPartitionException;
 import org.apache.ignite.internal.processors.cache.distributed.near.GridNearCacheAdapter;
 import org.apache.ignite.internal.processors.cache.distributed.near.GridNearCacheEntry;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
@@ -69,7 +70,6 @@ import org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.TcpDiscoveryIpFinder;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
-import org.apache.ignite.spi.eventstorage.EventStorageSpi;
 import org.apache.ignite.spi.eventstorage.NoopEventStorageSpi;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
@@ -125,9 +125,24 @@ public class IgniteCacheClientNodeChangingTopologyTest extends GridCommonAbstrac
         cfg.setEventStorageSpi(new NoopEventStorageSpi() {
             @Override public void record(Event evt) throws IgniteSpiException {
                 if (evt.type() == EventType.EVT_CACHE_ENTRY_CREATED
-                    && Thread.currentThread().getName().indexOf("stripe") >= 0
-                    && ThreadLocalRandom.current().nextInt(100) == 0)
-                    throw new CacheException();
+                    && Thread.currentThread().getName().indexOf("stripe") >= 0) {
+
+                    boolean isLockReq = false;
+
+                    for (StackTraceElement item : Thread.currentThread().getStackTrace())
+                        if (item.getMethodName() == "processNearLockRequest")
+                            isLockReq = true;
+
+/*
+                    if (isLockReq)
+                        log.info(">>> Entry added (lock) " + ((CacheEvent)evt).key());
+                    else
+                        log.info(">>> Entry added (not lock) " + ((CacheEvent)evt).key());
+*/
+
+                    if (isLockReq && ThreadLocalRandom.current().nextInt(100) == 0)
+                        throw new GridDhtInvalidPartitionException(0, "Invalid partition");
+                }
             }
         });
 
@@ -371,8 +386,9 @@ public class IgniteCacheClientNodeChangingTopologyTest extends GridCommonAbstrac
                                         SERIALIZABLE : REPEATABLE_READ;
 
                                     try (Transaction tx = txs.txStart(concurrency, isolation)) {
+                                        log.info(">>>> putAll");
                                         cache.putAll(map);
-
+                                        log.info(">>>> commit");
                                         tx.commit();
                                     }
                                 }
@@ -383,14 +399,19 @@ public class IgniteCacheClientNodeChangingTopologyTest extends GridCommonAbstrac
                             }
                         }
                         catch (CacheException | IgniteException e) {
+                            log.info(">>>> Exception: " + e);
                             log.info("Operation failed, ignore: " + e);
                         }
 
                         if (++cntr % 100 == 0)
                             log.info("Iteration: " + cntr);
 
-                        if (updateBarrier != null)
+                        if (updateBarrier != null) {
+                            log.info(">>>> await barrier: " + updateBarrier.getNumberWaiting());
                             updateBarrier.await();
+                        }
+                        else
+                            log.info(">>>> barrier is null");
                     }
 
                     return null;
@@ -430,7 +451,8 @@ public class IgniteCacheClientNodeChangingTopologyTest extends GridCommonAbstrac
                 });
 
                 try {
-                    updateBarrier.await(150_000, TimeUnit.MILLISECONDS);
+                    log.info(">>>> await barrier MT1: " + updateBarrier.getNumberWaiting());
+                    updateBarrier.await(30_000, TimeUnit.MILLISECONDS);
                 }
                 catch (TimeoutException ignored) {
                     log.error("Failed to wait for update.");
@@ -470,7 +492,8 @@ public class IgniteCacheClientNodeChangingTopologyTest extends GridCommonAbstrac
                 });
 
                 try {
-                    updateBarrier.await(150_000, TimeUnit.MILLISECONDS);
+                    log.info(">>>> await barrier MT2: " + updateBarrier.getNumberWaiting());
+                    updateBarrier.await(30_000, TimeUnit.MILLISECONDS);
                 }
                 catch (TimeoutException ignored) {
                     log.error("Failed to wait for update.");
