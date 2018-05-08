@@ -1196,11 +1196,6 @@ public abstract class GridDhtTransactionalCacheAdapter<K, V> extends GridDhtCach
             }
 
             try {
-/*
-                IgniteException e0 = e instanceof IgniteCheckedException ?
-                    U.convertException((IgniteCheckedException)e) : new IgniteException(e);
-*/
-
                 GridNearLockResponse res = createLockReply(nearNode,
                     Collections.emptyList(),
                     req,
