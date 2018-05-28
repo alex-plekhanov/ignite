@@ -2199,6 +2199,11 @@ public class PageMemoryImpl implements PageMemoryEx {
                         relRmvAddr = metaAddr;
                 }
 
+/*
+                if (relRmvAddr == INVALID_REL_PTR)
+                    return tryToFindSequentially(cap, saveDirtyPage);
+*/
+
                 assert relRmvAddr != INVALID_REL_PTR;
 
                 final long absRmvAddr = absolute(relRmvAddr);
