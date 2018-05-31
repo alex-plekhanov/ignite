@@ -5,6 +5,8 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.configuration.DataRegionConfiguration;
@@ -15,7 +17,7 @@ import org.apache.ignite.internal.mem.DirectMemoryProvider;
 import org.apache.ignite.internal.mem.DirectMemoryRegion;
 import org.apache.ignite.internal.mem.unsafe.UnsafeMemoryProvider;
 import org.apache.ignite.internal.pagemem.PageIdUtils;
-import org.apache.ignite.internal.pagemem.PageSupport;
+import org.apache.ignite.internal.pagemem.PageMemory;
 import org.apache.ignite.internal.pagemem.PageUtils;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
 import org.apache.ignite.internal.pagemem.wal.WALPointer;
@@ -25,6 +27,7 @@ import org.apache.ignite.internal.pagemem.wal.record.delta.PageDeltaRecord;
 import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
+import org.mockito.Mockito;
 
 /**
  *
@@ -159,12 +162,19 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
     /**
      *
      */
-    private static class DirectMemoryPageSupport implements PageSupport {
+    private static class DirectMemoryPageSupport {
         /** Memory region. */
         DirectMemoryRegion memoryRegion;
 
         /** Page size. */
         int pageSize;
+
+        /** Page locks. */
+        Lock[] locks;
+
+        /** Page memory mock. */
+        PageMemory pageMemoryMock;
+
 
         /**
          * @param log Logger.
@@ -181,51 +191,35 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             memoryRegion = memProvider.nextRegion();
 
             this.pageSize = pageSize;
+
+            this.locks = new Lock[(int)(dataRegionCfg.getMaxSize() / pageSize)];
+
+            for (int i = 0; i < locks.length; i++)
+                locks[i] = new ReentrantLock();
+
+            pageMemoryMock = Mockito.mock(PageMemory.class);
+
+            Mockito.doReturn(pageSize).when(pageMemoryMock).pageSize();
         }
 
-        /** {@inheritDoc} */
-        @Override public long acquirePage(int grpId, long pageId) throws IgniteCheckedException {
-            return memoryRegion.address() + PageIdUtils.pageIndex(pageId) * pageSize;
+        /**
+         * @param pageId Page id.
+         */
+        public long acquirePage(long pageId) throws IgniteCheckedException {
+            int pageIdx = PageIdUtils.pageIndex(pageId);
+
+            locks[pageIdx].lock();
+
+            return memoryRegion.address() + ((long)pageIdx) * pageSize;
         }
 
-        /** {@inheritDoc} */
-        @Override public void releasePage(int grpId, long pageId, long page) {
-            // No-op
-        }
+        /**
+         * @param pageId Page id.
+         */
+        public void releasePage(long pageId) {
+            int pageIdx = PageIdUtils.pageIndex(pageId);
 
-        /** {@inheritDoc} */
-        @Override public long readLock(int grpId, long pageId, long page) {
-            return page;
-        }
-
-        /** {@inheritDoc} */
-        @Override public long readLockForce(int grpId, long pageId, long page) {
-            return page;
-        }
-
-        /** {@inheritDoc} */
-        @Override public void readUnlock(int grpId, long pageId, long page) {
-
-        }
-
-        /** {@inheritDoc} */
-        @Override public long writeLock(int grpId, long pageId, long page) {
-            return page;
-        }
-
-        /** {@inheritDoc} */
-        @Override public long tryWriteLock(int grpId, long pageId, long page) {
-            return page;
-        }
-
-        /** {@inheritDoc} */
-        @Override public void writeUnlock(int grpId, long pageId, long page, Boolean walPlc, boolean dirtyFlag) {
-
-        }
-
-        /** {@inheritDoc} */
-        @Override public boolean isDirty(int grpId, long pageId, long page) {
-            return false;
+            locks[pageIdx].unlock();
         }
 
         /**
@@ -235,45 +229,29 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             if (record instanceof PageSnapshot) {
                 PageSnapshot snapshot = (PageSnapshot)record;
 
-                int grpId = snapshot.fullPageId().groupId();
                 long pageId = snapshot.fullPageId().pageId();
 
-                long curPage = acquirePage(grpId, pageId);
+                long pageAddr = acquirePage(pageId);
 
                 try {
-                    long curAddr = readLock(grpId, pageId, curPage);
-
-                    try {
-                        PageUtils.putBytes(curAddr, 0, snapshot.pageData());
-                    }
-                    finally {
-                        readUnlock(grpId, pageId, curPage);
-                    }
+                    PageUtils.putBytes(pageAddr, 0, snapshot.pageData());
                 }
                 finally {
-                    releasePage(grpId, pageId, curPage);
+                    releasePage(pageId);
                 }
             }
             else if (record instanceof PageDeltaRecord) {
                 PageDeltaRecord deltaRecord = (PageDeltaRecord)record;
 
-                int grpId = deltaRecord.groupId();
                 long pageId = deltaRecord.pageId();
 
-                long curPage = acquirePage(grpId, pageId);
+                long pageAddr = acquirePage(pageId);
 
                 try {
-                    long curAddr = readLock(grpId, pageId, curPage);
-
-                    try {
-                        deltaRecord.applyDelta(pageMemoryCp, curAddr);
-                    }
-                    finally {
-                        readUnlock(grpId, pageId, curPage);
-                    }
+                    deltaRecord.applyDelta(pageMemoryMock, pageAddr);
                 }
                 finally {
-                    releasePage(grpId, pageId, curPage);
+                    releasePage(pageId);
                 }
             }
         }
