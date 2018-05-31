@@ -1,39 +1,30 @@
 package org.apache.ignite.internal.processors.cache.persistence.wal;
 
-import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.nio.ByteBuffer;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.configuration.DataRegionConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.mem.DirectMemoryProvider;
-import org.apache.ignite.internal.mem.file.MappedFileMemoryProvider;
+import org.apache.ignite.internal.mem.DirectMemoryRegion;
 import org.apache.ignite.internal.mem.unsafe.UnsafeMemoryProvider;
-import org.apache.ignite.internal.pagemem.FullPageId;
-import org.apache.ignite.internal.pagemem.PageMemory;
+import org.apache.ignite.internal.pagemem.PageIdUtils;
+import org.apache.ignite.internal.pagemem.PageSupport;
 import org.apache.ignite.internal.pagemem.PageUtils;
-import org.apache.ignite.internal.pagemem.impl.PageMemoryNoStoreImpl;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
-import org.apache.ignite.internal.pagemem.wal.WALIterator;
 import org.apache.ignite.internal.pagemem.wal.WALPointer;
 import org.apache.ignite.internal.pagemem.wal.record.PageSnapshot;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
 import org.apache.ignite.internal.pagemem.wal.record.delta.PageDeltaRecord;
 import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
-import org.apache.ignite.internal.processors.cache.persistence.DataRegionMetricsImpl;
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
-import org.apache.ignite.internal.util.GridUnsafe;
-import org.apache.ignite.lang.IgniteBiTuple;
-import org.apache.ignite.lang.IgniteOutClosure;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
-
-import static org.apache.ignite.internal.util.GridUnsafe.wrapPointer;
 
 /**
  *
@@ -54,7 +45,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
     protected IgniteEx ignite;
 
     /** Page memory copy. */
-    protected PageMemory pageMemoryCp;
+    protected DirectMemoryPageSupport pageMemoryCp;
 
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String gridName) throws Exception {
@@ -72,43 +63,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         return cfg;
     }
 
-
-    /**
-     *
-     */
-    private PageMemory pageMemoryCopy() {
-        DataStorageConfiguration dataStorageCfg = ignite.configuration().getDataStorageConfiguration();
-        DataRegionConfiguration dataRegionCfg = dataStorageCfg.getDefaultDataRegionConfiguration();
-
-        DataRegionMetricsImpl memMetrics = new DataRegionMetricsImpl(dataRegionCfg, new IgniteOutClosure<Long>() {
-            @Override public Long apply() {
-                return null;
-            }
-        });
-
-        File allocPath = null; //buildAllocPath(plcCfg);
-
-        DirectMemoryProvider memProvider = allocPath == null ?
-            new UnsafeMemoryProvider(log) :
-            new MappedFileMemoryProvider(
-                log,
-                allocPath);
-
-        PageMemory pageMem = new PageMemoryNoStoreImpl(
-            log,
-            memProvider,
-            ignite.context().cache().context(),
-            dataStorageCfg.getPageSize(),
-            dataRegionCfg,
-            memMetrics,
-            false
-        );
-
-        pageMem.start();
-
-        return pageMem;
-    }
-
     /**
      *
      */
@@ -119,7 +73,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
         injectWalMgr();
 
-        pageMemoryCp = pageMemoryCopy();
+        pageMemoryCp = new DirectMemoryPageSupport(log,
+            ignite.configuration().getDataStorageConfiguration().getDefaultDataRegionConfiguration(),
+            ignite.configuration().getDataStorageConfiguration().getPageSize());
 
         ignite.cluster().active(true);
 
@@ -146,10 +102,12 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
         dbMgr.enableCheckpoints(false).get();
 
+/*
         try (WALIterator it = ignite.context().cache().context().wal().replay(null)) {
             for (IgniteBiTuple<WALPointer, WALRecord> tuple : it)
                 applyWalRecord(tuple.getKey(), tuple.getValue());
         }
+*/
     }
 
     /**
@@ -164,61 +122,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
      */
     public abstract void process();
 
-    /**
-     *
-     */
-    private void applyWalRecord(WALPointer pointer, WALRecord record) throws IgniteCheckedException {
-        if (record instanceof PageSnapshot) {
-            PageSnapshot snapshot = (PageSnapshot)record;
-
-            int grpId = snapshot.fullPageId().groupId();
-            long pageId = snapshot.fullPageId().pageId();
-
-            long curPage = pageMemoryCp.acquirePage(grpId, pageId);
-
-            try {
-                long curAddr = pageMemoryCp.readLock(grpId, pageId, curPage);
-
-                try {
-                    PageUtils.putBytes(curAddr, 0, snapshot.pageData());
-                }
-                finally {
-                    pageMemoryCp.readUnlock(grpId, pageId, curPage);
-                }
-            }
-            catch (Throwable t) {
-                t.printStackTrace();
-            }
-            finally {
-                pageMemoryCp.releasePage(grpId, pageId, curPage);
-            }
-        }
-        else if (record instanceof PageDeltaRecord) {
-            PageDeltaRecord deltaRecord = (PageDeltaRecord)record;
-
-            int grpId = deltaRecord.groupId();
-            long pageId = deltaRecord.pageId();
-
-            long curPage = pageMemoryCp.acquirePage(grpId, pageId);
-
-            try {
-                long curAddr = pageMemoryCp.readLock(grpId, pageId, curPage);
-
-                try {
-                    deltaRecord.applyDelta(pageMemoryCp, curAddr);
-                }
-                finally {
-                    pageMemoryCp.readUnlock(grpId, pageId, curPage);
-                }
-            }
-            catch (Throwable t) {
-                t.printStackTrace();
-            }
-            finally {
-                pageMemoryCp.releasePage(grpId, pageId, curPage);
-            }
-        }
-    }
 
     /**
      *
@@ -235,7 +138,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                         Object res = mtd.invoke(walMgrOld, args);
 
                         if ("log".equals(mtd.getName()) && args.length > 0 && args[0] instanceof WALRecord)
-                            applyWalRecord((WALPointer)res, (WALRecord)args[0]);
+                            pageMemoryCp.applyWalRecord((WALPointer)res, (WALRecord)args[0]);
 
                         return res;
                     }
@@ -252,4 +155,128 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
         walMgrField.set(ignite.context().cache().context(), walMgrNew);
     }
+
+    /**
+     *
+     */
+    private static class DirectMemoryPageSupport implements PageSupport {
+        /** Memory region. */
+        DirectMemoryRegion memoryRegion;
+
+        /** Page size. */
+        int pageSize;
+
+        /**
+         * @param log Logger.
+         * @param dataRegionCfg Data region configuration.
+         * @param pageSize Page size.
+         */
+        public DirectMemoryPageSupport(IgniteLogger log, DataRegionConfiguration dataRegionCfg, int pageSize) {
+            DirectMemoryProvider memProvider = new UnsafeMemoryProvider(log);
+
+            long[] chunks = new long[] { dataRegionCfg.getMaxSize() };
+
+            memProvider.initialize(chunks);
+
+            memoryRegion = memProvider.nextRegion();
+
+            this.pageSize = pageSize;
+        }
+
+        /** {@inheritDoc} */
+        @Override public long acquirePage(int grpId, long pageId) throws IgniteCheckedException {
+            return memoryRegion.address() + PageIdUtils.pageIndex(pageId) * pageSize;
+        }
+
+        /** {@inheritDoc} */
+        @Override public void releasePage(int grpId, long pageId, long page) {
+            // No-op
+        }
+
+        /** {@inheritDoc} */
+        @Override public long readLock(int grpId, long pageId, long page) {
+            return page;
+        }
+
+        /** {@inheritDoc} */
+        @Override public long readLockForce(int grpId, long pageId, long page) {
+            return page;
+        }
+
+        /** {@inheritDoc} */
+        @Override public void readUnlock(int grpId, long pageId, long page) {
+
+        }
+
+        /** {@inheritDoc} */
+        @Override public long writeLock(int grpId, long pageId, long page) {
+            return page;
+        }
+
+        /** {@inheritDoc} */
+        @Override public long tryWriteLock(int grpId, long pageId, long page) {
+            return page;
+        }
+
+        /** {@inheritDoc} */
+        @Override public void writeUnlock(int grpId, long pageId, long page, Boolean walPlc, boolean dirtyFlag) {
+
+        }
+
+        /** {@inheritDoc} */
+        @Override public boolean isDirty(int grpId, long pageId, long page) {
+            return false;
+        }
+
+        /**
+         *
+         */
+        public void applyWalRecord(WALPointer pointer, WALRecord record) throws IgniteCheckedException {
+            if (record instanceof PageSnapshot) {
+                PageSnapshot snapshot = (PageSnapshot)record;
+
+                int grpId = snapshot.fullPageId().groupId();
+                long pageId = snapshot.fullPageId().pageId();
+
+                long curPage = acquirePage(grpId, pageId);
+
+                try {
+                    long curAddr = readLock(grpId, pageId, curPage);
+
+                    try {
+                        PageUtils.putBytes(curAddr, 0, snapshot.pageData());
+                    }
+                    finally {
+                        readUnlock(grpId, pageId, curPage);
+                    }
+                }
+                finally {
+                    releasePage(grpId, pageId, curPage);
+                }
+            }
+            else if (record instanceof PageDeltaRecord) {
+                PageDeltaRecord deltaRecord = (PageDeltaRecord)record;
+
+                int grpId = deltaRecord.groupId();
+                long pageId = deltaRecord.pageId();
+
+                long curPage = acquirePage(grpId, pageId);
+
+                try {
+                    long curAddr = readLock(grpId, pageId, curPage);
+
+                    try {
+                        deltaRecord.applyDelta(pageMemoryCp, curAddr);
+                    }
+                    finally {
+                        readUnlock(grpId, pageId, curPage);
+                    }
+                }
+                finally {
+                    releasePage(grpId, pageId, curPage);
+                }
+            }
+        }
+    }
 }
+
