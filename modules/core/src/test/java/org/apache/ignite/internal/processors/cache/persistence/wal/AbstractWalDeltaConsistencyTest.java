@@ -5,9 +5,13 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.configuration.DataRegionConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
@@ -33,9 +37,6 @@ import org.mockito.Mockito;
  *
  */
 public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstractTest {
-    /** Page size. */
-    private static final int PAGE_SIZE = 2048;
-
     /** Plan:
      *      1. Disable checkpoints.
      *      2. Prepare.
@@ -164,17 +165,22 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
      */
     private static class DirectMemoryPageSupport {
         /** Memory region. */
-        DirectMemoryRegion memoryRegion;
+        private final DirectMemoryRegion memoryRegion;
+
+        /** Last allocated page index. */
+        private final AtomicInteger lastPageIdx = new AtomicInteger();
+
+        /** Pages. */
+        private final Map<PageKey, DirectMemoryPage> pages = new ConcurrentHashMap<>();
 
         /** Page size. */
-        int pageSize;
+        private final int pageSize;
 
-        /** Page locks. */
-        Lock[] locks;
+        /** Max pages. */
+        private final int maxPages;
 
         /** Page memory mock. */
-        PageMemory pageMemoryMock;
-
+        private final PageMemory pageMemoryMock;
 
         /**
          * @param log Logger.
@@ -192,10 +198,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
             this.pageSize = pageSize;
 
-            this.locks = new Lock[(int)(dataRegionCfg.getMaxSize() / pageSize)];
-
-            for (int i = 0; i < locks.length; i++)
-                locks[i] = new ReentrantLock();
+            maxPages = (int)(dataRegionCfg.getMaxSize() / pageSize);
 
             pageMemoryMock = Mockito.mock(PageMemory.class);
 
@@ -205,21 +208,63 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         /**
          * @param pageId Page id.
          */
-        public long acquirePage(long pageId) throws IgniteCheckedException {
-            int pageIdx = PageIdUtils.pageIndex(pageId);
+        private synchronized DirectMemoryPage allocatePage(int grpId, long pageId) {
+            // Double check.
+            DirectMemoryPage page = pages.get(pageKey(grpId, pageId));
 
-            locks[pageIdx].lock();
+            if (page != null)
+                return page;
 
-            return memoryRegion.address() + ((long)pageIdx) * pageSize;
+            page = new DirectMemoryPage(lastPageIdx.getAndIncrement());
+
+            if (page.pageIndex() >= maxPages)
+                throw new IgniteException("Can't allocate new page");
+
+            pages.put(pageKey(grpId, pageId), page);
+
+            return page;
+        }
+
+        /**
+         *
+         * @param grpId Group id.
+         * @param pageId Page id.
+         * @return Page.
+         */
+        private DirectMemoryPage page(int grpId, long pageId) {
+            DirectMemoryPage page = pages.get(pageKey(grpId, pageId)); // TODO
+
+            if (page == null)
+                page = allocatePage(grpId, pageId);
+
+            return page;
+        }
+
+        /**
+         * @param grpId Group id.
+         * @param pageId Page id.
+         */
+        private static PageKey pageKey(int grpId, long pageId) {
+            return new PageKey(grpId, PageIdUtils.effectivePageId(pageId));
+        }
+        /**
+         * @param pageId Page id.
+         */
+        public long acquirePage(int grpId, long pageId) throws IgniteCheckedException {
+            DirectMemoryPage page = page(grpId, pageId);
+
+            page.lock().lock();
+
+            return memoryRegion.address() + ((long)page.pageIndex()) * pageSize;
         }
 
         /**
          * @param pageId Page id.
          */
-        public void releasePage(long pageId) {
-            int pageIdx = PageIdUtils.pageIndex(pageId);
+        public void releasePage(int grpId, long pageId) {
+            DirectMemoryPage page = page(grpId, pageId);
 
-            locks[pageIdx].unlock();
+            page.lock().unlock();
         }
 
         /**
@@ -229,32 +274,98 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             if (record instanceof PageSnapshot) {
                 PageSnapshot snapshot = (PageSnapshot)record;
 
+                int grpId = snapshot.fullPageId().groupId();
                 long pageId = snapshot.fullPageId().pageId();
 
-                long pageAddr = acquirePage(pageId);
+                long pageAddr = acquirePage(grpId, pageId);
 
                 try {
                     PageUtils.putBytes(pageAddr, 0, snapshot.pageData());
                 }
                 finally {
-                    releasePage(pageId);
+                    releasePage(grpId, pageId);
                 }
             }
             else if (record instanceof PageDeltaRecord) {
                 PageDeltaRecord deltaRecord = (PageDeltaRecord)record;
 
+                int grpId = deltaRecord.groupId();
                 long pageId = deltaRecord.pageId();
 
-                long pageAddr = acquirePage(pageId);
+                long pageAddr = acquirePage(grpId, pageId);
 
                 try {
                     deltaRecord.applyDelta(pageMemoryMock, pageAddr);
                 }
                 finally {
-                    releasePage(pageId);
+                    releasePage(grpId, pageId);
                 }
+            }
+        }
+
+        /**
+         *
+         */
+        private static class DirectMemoryPage {
+            /** Page index. */
+            private final int pageIdx;
+
+            /** Page lock. */
+            private final Lock lock = new ReentrantLock();
+
+            /**
+             * @param idx Page index.
+             */
+            private DirectMemoryPage(int idx) {
+                pageIdx = idx;
+            }
+
+            /**
+             * @return Page lock.
+             */
+            public Lock lock() {
+                return lock;
+            }
+
+            /**
+             * @return Page index.
+             */
+            public int pageIndex() {
+                return pageIdx;
+            }
+        }
+
+        /**
+         *
+         */
+        private static class PageKey {
+            /** Group id. */
+            private final int grpId;
+
+            /** Effective page id. */
+            private final long effPageId;
+
+            /**
+             * @param grpId Group id.
+             * @param effPageId Eff page id.
+             */
+            private PageKey(int grpId, long effPageId) {
+                this.grpId = grpId;
+                this.effPageId = effPageId;
+            }
+
+            /** {@inheritDoc} */
+            @Override public int hashCode() {
+                return PageIdUtils.partId(effPageId) << 16 ^ PageIdUtils.pageIndex(effPageId) ^ grpId;
+            }
+
+            /** {@inheritDoc} */
+            @Override public boolean equals(Object obj) {
+                if (obj instanceof PageKey)
+                    return ((PageKey)obj).effPageId == this.effPageId && ((PageKey)obj).grpId == this.grpId;
+
+                return false;
             }
         }
     }
 }
-
