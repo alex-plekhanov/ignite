@@ -29,7 +29,9 @@ import org.apache.ignite.internal.pagemem.wal.record.PageSnapshot;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
 import org.apache.ignite.internal.pagemem.wal.record.delta.PageDeltaRecord;
 import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
+import org.apache.ignite.internal.processors.cache.persistence.DataRegion;
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
+import org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.mockito.Mockito;
 
@@ -153,11 +155,22 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             }
         );
 
-        Field walMgrField = GridCacheSharedContext.class.getDeclaredField("walMgr");
+        // Inject new walMgr into GridCacheSharedContext
+        Field walMgrFieldCtx = GridCacheSharedContext.class.getDeclaredField("walMgr");
 
-        walMgrField.setAccessible(true);
+        walMgrFieldCtx.setAccessible(true);
 
-        walMgrField.set(ignite.context().cache().context(), walMgrNew);
+        walMgrFieldCtx.set(ignite.context().cache().context(), walMgrNew);
+
+        // Inject new walMgr into each PageMemoryImpl
+        Field walMgrFieldPageMem = PageMemoryImpl.class.getDeclaredField("walMgr");
+
+        walMgrFieldPageMem.setAccessible(true);
+
+        for (DataRegion dataRegion : ignite.context().cache().context().database().dataRegions()) {
+            if (dataRegion.pageMemory() instanceof PageMemoryImpl)
+                walMgrFieldPageMem.set(dataRegion.pageMemory(), walMgrNew);
+        }
     }
 
     /**
