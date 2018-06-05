@@ -6,6 +6,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
@@ -233,7 +235,8 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             if (page != null)
                 return page;
 
-            page = new DirectMemoryPage(lastPageIdx.getAndIncrement());
+            int pageIdx = lastPageIdx.getAndIncrement();
+            page = new DirectMemoryPage(pageIdx);
 
             if (page.pageIndex() >= maxPages)
                 throw new IgniteException("Can't allocate new page");
@@ -271,7 +274,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         public long acquirePage(int grpId, long pageId) throws IgniteCheckedException {
             DirectMemoryPage page = page(grpId, pageId);
 
-            page.lock().lock();
+            page.lock();
 
             return memoryRegion.address() + ((long)page.pageIndex()) * pageSize;
         }
@@ -282,7 +285,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         public void releasePage(int grpId, long pageId) {
             DirectMemoryPage page = page(grpId, pageId);
 
-            page.lock().unlock();
+            page.unlock();
         }
 
         /**
@@ -339,7 +342,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                         long locPageAddr = acquirePage(pageKey.groupId(), pageKey.pageId());
 
                         try {
-
                             ByteBuffer locBuffer = GridUnsafe.wrapPointer(locPageAddr, pageSize);
                             ByteBuffer rmtBuffer = GridUnsafe.wrapPointer(rmtPageAddr, pageSize);
 
@@ -380,10 +382,17 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             }
 
             /**
-             * @return Page lock.
+             * Lock page.
              */
-            public Lock lock() {
-                return lock;
+            public void lock() {
+                lock.lock();
+            }
+
+            /**
+             * Unlock page.
+             */
+            public void unlock() {
+                lock.unlock();
             }
 
             /**
@@ -406,6 +415,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
             /** Effective page id. */
             private final long effPageId;
+
+            /** Change history. */
+            private final List<WALRecord> changeHist = new LinkedList<>();
 
             /**
              * @param grpId Group id.
@@ -442,6 +454,13 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
              */
             public int groupId() {
                 return grpId;
+            }
+
+            /**
+             * Change history.
+             */
+            public List<WALRecord> changeHistory() {
+                return changeHist;
             }
         }
     }
