@@ -32,9 +32,12 @@ import org.apache.ignite.internal.pagemem.wal.WALPointer;
 import org.apache.ignite.internal.pagemem.wal.record.PageSnapshot;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
 import org.apache.ignite.internal.pagemem.wal.record.delta.PageDeltaRecord;
+import org.apache.ignite.internal.processors.cache.GridCacheProcessor;
 import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
 import org.apache.ignite.internal.processors.cache.persistence.DataRegion;
+import org.apache.ignite.internal.processors.cache.persistence.DbCheckpointListener;
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
+import org.apache.ignite.internal.processors.cache.persistence.metastorage.MetaStorage;
 import org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl;
 import org.apache.ignite.internal.util.GridUnsafe;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
@@ -54,9 +57,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
      *      7. Apply & compare.
      */
     protected IgniteEx ignite;
-
-    /** Page memory copy. */
-    protected DirectMemoryPageSupport pageMemoryCp;
 
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String gridName) throws Exception {
@@ -82,11 +82,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
         ignite = startGrid(0);
 
-        injectWalMgr();
-
-        pageMemoryCp = new DirectMemoryPageSupport(log,
-            ignite.configuration().getDataStorageConfiguration().getDefaultDataRegionConfiguration(),
-            ignite.configuration().getDataStorageConfiguration().getPageSize());
+        PageTracker tracker = startPageTracker(ignite);
 
         ignite.cluster().active(true);
 
@@ -113,14 +109,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
         dbMgr.enableCheckpoints(false).get();
 
-        pageMemoryCp.compareTo(dbMgr.dataRegion("dflt-plc"));
-
-/*
-        try (WALIterator it = ignite.context().cache().context().wal().replay(null)) {
-            for (IgniteBiTuple<WALPointer, WALRecord> tuple : it)
-                applyWalRecord(tuple.getKey(), tuple.getValue());
-        }
-*/
+        tracker.checkPages(true);
     }
 
     /**
@@ -135,57 +124,26 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
      */
     public abstract void process();
 
-
     /**
-     *
+     * @param ignite Ignite.
      */
-    private void injectWalMgr() throws NoSuchFieldException, IllegalAccessException {
-        IgniteWriteAheadLogManager walMgrOld = ignite.context().cache().context().wal();
+    protected PageTracker startPageTracker(IgniteEx ignite) throws Exception {
+        PageTracker tracker = new PageTracker(ignite);
 
-        IgniteWriteAheadLogManager walMgrNew =  (IgniteWriteAheadLogManager) Proxy.newProxyInstance(
-            IgniteWriteAheadLogManager.class.getClassLoader(),
-            new Class[] {IgniteWriteAheadLogManager.class},
-            new InvocationHandler() {
-                @Override public Object invoke(Object proxy, Method mtd, Object[] args) throws Throwable {
-                    try {
-                        Object res = mtd.invoke(walMgrOld, args);
+        tracker.start();
 
-                        if ("log".equals(mtd.getName()) && args.length > 0 && args[0] instanceof WALRecord)
-                            pageMemoryCp.applyWalRecord((WALPointer)res, (WALRecord)args[0]);
-
-                        return res;
-                    }
-                    catch (InvocationTargetException e) {
-                        throw e.getTargetException();
-                    }
-                }
-            }
-        );
-
-        // Inject new walMgr into GridCacheSharedContext
-        Field walMgrFieldCtx = GridCacheSharedContext.class.getDeclaredField("walMgr");
-
-        walMgrFieldCtx.setAccessible(true);
-
-        walMgrFieldCtx.set(ignite.context().cache().context(), walMgrNew);
-
-        // Inject new walMgr into each PageMemoryImpl
-        Field walMgrFieldPageMem = PageMemoryImpl.class.getDeclaredField("walMgr");
-
-        walMgrFieldPageMem.setAccessible(true);
-
-        for (DataRegion dataRegion : ignite.context().cache().context().database().dataRegions()) {
-            if (dataRegion.pageMemory() instanceof PageMemoryImpl)
-                walMgrFieldPageMem.set(dataRegion.pageMemory(), walMgrNew);
-        }
+        return tracker;
     }
 
     /**
      *
      */
-    private static class DirectMemoryPageSupport {
-        /** Memory region. */
-        private final DirectMemoryRegion memoryRegion;
+    private static class PageTracker {
+        /** Ignite instance. */
+        private final IgniteEx ignite;
+
+        /** Logger. */
+        private final IgniteLogger log;
 
         /** Last allocated page index. */
         private final AtomicInteger lastPageIdx = new AtomicInteger();
@@ -196,36 +154,130 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         /** Page size. */
         private final int pageSize;
 
-        /** Max pages. */
-        private final int maxPages;
-
         /** Page memory mock. */
         private final PageMemory pageMemoryMock;
 
+        /** Memory provider. */
+        private volatile DirectMemoryProvider memoryProvider;
+
+        /** Memory region. */
+        private volatile DirectMemoryRegion memoryRegion;
+
+        /** Max pages. */
+        private volatile int maxPages;
+
+        /** Tracking started. */
+        private volatile boolean started = false;
+
+        /** Tracking stopped. */
+        private volatile boolean stopped = false;
+
         /**
-         * @param log Logger.
-         * @param dataRegionCfg Data region configuration.
-         * @param pageSize Page size.
+         * @param ignite Ignite instance.
          */
-        public DirectMemoryPageSupport(IgniteLogger log, DataRegionConfiguration dataRegionCfg, int pageSize) {
-            DirectMemoryProvider memProvider = new UnsafeMemoryProvider(log);
-
-            long[] chunks = new long[] { dataRegionCfg.getMaxSize() };
-
-            memProvider.initialize(chunks);
-
-            memoryRegion = memProvider.nextRegion();
-
-            this.pageSize = pageSize;
-
-            maxPages = (int)(dataRegionCfg.getMaxSize() / pageSize);
-
-            pageMemoryMock = Mockito.mock(PageMemory.class);
+        public PageTracker(IgniteEx ignite) {
+            this.log = ignite.log();
+            this.ignite = ignite;
+            this.pageSize = ignite.configuration().getDataStorageConfiguration().getPageSize();
+            this.pageMemoryMock = Mockito.mock(PageMemory.class);
 
             Mockito.doReturn(pageSize).when(pageMemoryMock).pageSize();
         }
 
         /**
+         * Start tracking pages.
+         */
+        public void start() throws Exception {
+            GridCacheSharedContext sharedCtx = ignite.context().cache().context();
+
+            // Initialize memory region.
+            long maxMemorySize = 0;
+
+            for (DataRegion dataRegion : sharedCtx.database().dataRegions()) {
+                if (dataRegion.pageMemory() instanceof PageMemoryImpl)
+                    maxMemorySize += dataRegion.config().getMaxSize();
+            }
+
+            long[] chunks = new long[] { maxMemorySize };
+
+            memoryProvider = new UnsafeMemoryProvider(log);
+
+            memoryProvider.initialize(chunks);
+
+            memoryRegion = memoryProvider.nextRegion();
+
+            maxPages = (int)(maxMemorySize / pageSize);
+
+            // Create WAL interceptor.
+            IgniteWriteAheadLogManager walMgrOld = sharedCtx.wal();
+
+            IgniteWriteAheadLogManager walMgrNew =  (IgniteWriteAheadLogManager) Proxy.newProxyInstance(
+                IgniteWriteAheadLogManager.class.getClassLoader(),
+                new Class[] {IgniteWriteAheadLogManager.class},
+                new InvocationHandler() {
+                    @Override public Object invoke(Object proxy, Method mtd, Object[] args) throws Throwable {
+                        try {
+                            Object res = mtd.invoke(walMgrOld, args);
+
+                            if ("log".equals(mtd.getName()) && args.length > 0 && args[0] instanceof WALRecord)
+                                applyWalRecord((WALPointer)res, (WALRecord)args[0]);
+
+                            return res;
+                        }
+                        catch (InvocationTargetException e) {
+                            throw e.getTargetException();
+                        }
+                    }
+                }
+            );
+
+            // Inject new walMgr into GridCacheSharedContext
+            Field walMgrFieldCtx = GridCacheSharedContext.class.getDeclaredField("walMgr");
+
+            walMgrFieldCtx.setAccessible(true);
+
+            walMgrFieldCtx.set(sharedCtx, walMgrNew);
+
+            // Inject new walMgr into each PageMemoryImpl
+            Field walMgrFieldPageMem = PageMemoryImpl.class.getDeclaredField("walMgr");
+
+            walMgrFieldPageMem.setAccessible(true);
+
+            for (DataRegion dataRegion : sharedCtx.database().dataRegions()) {
+                if (dataRegion.pageMemory() instanceof PageMemoryImpl)
+                    walMgrFieldPageMem.set(dataRegion.pageMemory(), walMgrNew);
+            }
+
+            // Change start tracking flag.
+            if (ignite.cluster().active()) {
+                // If cluster already activated, we should force checkpoint to ensure each tracking page gets
+                // PageSnapshot record in WAL first
+                if (sharedCtx.database() instanceof GridCacheDatabaseSharedManager)
+                    ((GridCacheDatabaseSharedManager)sharedCtx.database()).addCheckpointListener(
+                        new DbCheckpointListener() {
+                            @Override public void onCheckpointBegin(Context ctx) throws IgniteCheckedException {
+                                started = true;
+                            }
+                        }
+                    );
+
+                sharedCtx.database().forceCheckpoint("Start page tracking");
+            }
+            else
+                started = true;
+        }
+
+        /**
+         * Stop tracking, release resources.
+         */
+        public void stop() {
+            stopped = true;
+
+            memoryProvider.shutdown();
+        }
+
+        /**
+         * @param grpId Group id.
          * @param pageId Page id.
          */
         private synchronized DirectMemoryPage allocatePage(int grpId, long pageId) {
@@ -256,7 +308,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
          * @return Page.
          */
         private DirectMemoryPage page(int grpId, long pageId) {
-            DirectMemoryPage page = pages.get(pageKey(grpId, pageId)); // TODO
+            DirectMemoryPage page = pages.get(pageKey(grpId, pageId));
 
             if (page == null)
                 page = allocatePage(grpId, pageId);
@@ -276,6 +328,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
          *
          */
         public void applyWalRecord(WALPointer pointer, WALRecord record) throws IgniteCheckedException {
+            if (!started || stopped)
+                return;
+
             if (record instanceof PageSnapshot) {
                 PageSnapshot snapshot = (PageSnapshot)record;
 
@@ -324,14 +379,34 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         }
 
         /**
-         * @param dataRegion Data region.
+         * Checks if there are any differences between the ignite data regions content and pages inside the tracker.
+         *
+         * @param checkAll Check all tracked pages, otherwise check until first error.
+         * @return {@code true} if content of all tracked pages equals to content of these pages in the ignite instance.
          */
-        public boolean compareTo(DataRegion dataRegion) throws IgniteCheckedException {
+        public boolean checkPages(boolean checkAll) throws IgniteCheckedException {
+            if (!started)
+                throw new IgniteCheckedException("Page tracking is not started.");
+
+            if (stopped)
+                throw new IgniteCheckedException("Page tracking is already stopped.");
+
+            boolean res = true;
+
+            GridCacheProcessor cacheProc = ignite.context().cache();
+
             for (PageKey pageKey : pages.keySet()) {
-                long rmtPage = dataRegion.pageMemory().acquirePage(pageKey.groupId(), pageKey.pageId());
+                PageMemory pageMem;
+
+                if (pageKey.grpId == MetaStorage.METASTORAGE_CACHE_ID)
+                    pageMem = cacheProc.context().database().metaStorage().pageMemory();
+                else
+                    pageMem = cacheProc.cacheGroup(pageKey.grpId).dataRegion().pageMemory();
+
+                long rmtPage = pageMem.acquirePage(pageKey.groupId(), pageKey.pageId());
 
                 try {
-                    long rmtPageAddr = dataRegion.pageMemory().readLock(pageKey.groupId(), pageKey.pageId(), rmtPage);
+                    long rmtPageAddr = pageMem.readLock(pageKey.groupId(), pageKey.pageId(), rmtPage);
 
                     try {
                         DirectMemoryPage page = page(pageKey.groupId(), pageKey.pageId());
@@ -342,23 +417,74 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                             ByteBuffer locBuf = GridUnsafe.wrapPointer(page.address(), pageSize);
                             ByteBuffer rmtBuf = GridUnsafe.wrapPointer(rmtPageAddr, pageSize);
 
-                            if (!locBuf.equals(rmtBuf))
-                                System.out.println("Not equals page buffer for grpId: " + pageKey.groupId() + ",  pageId: " + pageKey.pageId());
+                            if (!locBuf.equals(rmtBuf)) {
+                                res = false;
+
+                                log.info("Page buffers are not equals [grpId=" + pageKey.groupId() +
+                                    ", pageId=" + pageKey.pageId() + ']');
+
+                                dumpDiff(log, locBuf, rmtBuf);
+
+                                dumpHistory(log, page);
+
+                                if (!checkAll)
+                                    return res;
+                            }
                         }
                         finally {
                             page.unlock();
                         }
                     }
                     finally {
-                        dataRegion.pageMemory().readUnlock(pageKey.groupId(), pageKey.pageId(), rmtPage);
+                        pageMem.readUnlock(pageKey.groupId(), pageKey.pageId(), rmtPage);
                     }
                 }
                 finally {
-                    dataRegion.pageMemory().releasePage(pageKey.groupId(), pageKey.pageId(), rmtPage);
+                    pageMem.releasePage(pageKey.groupId(), pageKey.pageId(), rmtPage);
                 }
             }
 
-            return true;
+            return res;
+        }
+
+        /**
+         * Dump difference between two ByteBuffers to log.
+         *
+         * @param log Logger.
+         * @param buf1 Buffer 1.
+         * @param buf2 Buffer 2.
+         */
+        private static void dumpDiff(IgniteLogger log, ByteBuffer buf1, ByteBuffer buf2) {
+            log.info(">>> Diff:");
+
+            for (int i = 0; i < Math.min(buf1.remaining(), buf2.remaining()); i++) {
+                byte b1 = buf1.get(buf1.position() + i);
+                byte b2 = buf2.get(buf2.position() + i);
+
+                if (b1 != b2)
+                    log.info(String.format("        0x%04X: %02X %02X", i, b1, b2));
+            }
+
+            if (buf1.remaining() < buf2.remaining()) {
+                for (int i = buf1.remaining(); i < buf2.remaining(); i++)
+                    log.info(String.format("        0x%04X:    %02X", i, buf2.get(buf2.position() + i)));
+            }
+            else if (buf1.remaining() > buf2.remaining()) {
+                for (int i = buf2.remaining(); i < buf1.remaining(); i++)
+                    log.info(String.format("        0x%04X: %02X", i, buf1.get(buf1.position() + i)));
+            }
+        }
+
+        /**
+         * Dump page change history to log.
+         *
+         * @param log Logger.
+         */
+        private static void dumpHistory(IgniteLogger log, DirectMemoryPage page) {
+            log.info(">>> Change history:");
+
+            for (WALRecord record : page.changeHistory())
+                log.info("        " + record.type() + " (" + record.getClass().getSimpleName() + ')');
         }
 
         /**
