@@ -5,7 +5,9 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
@@ -32,6 +34,7 @@ import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
 import org.apache.ignite.internal.processors.cache.persistence.DataRegion;
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
 import org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl;
+import org.apache.ignite.internal.util.GridUnsafe;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.mockito.Mockito;
 
@@ -107,6 +110,8 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         dbMgr.forceCheckpoint("After process").finishFuture().get();
 
         dbMgr.enableCheckpoints(false).get();
+
+        pageMemoryCp.compareTo(dbMgr.dataRegion("dflt-plc"));
 
 /*
         try (WALIterator it = ignite.context().cache().context().wal().replay(null)) {
@@ -258,7 +263,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
          * @param pageId Page id.
          */
         private static PageKey pageKey(int grpId, long pageId) {
-            return new PageKey(grpId, PageIdUtils.effectivePageId(pageId));
+            return new PageKey(grpId, pageId);
         }
         /**
          * @param pageId Page id.
@@ -309,11 +314,52 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
                 try {
                     deltaRecord.applyDelta(pageMemoryMock, pageAddr);
+
+                    // Page corruptor TODO: remove
+                    if (new Random().nextInt(2000) == 0)
+                        GridUnsafe.putByte(pageAddr + new Random().nextInt(pageSize), (byte)(new Random().nextInt(256)));
                 }
                 finally {
                     releasePage(grpId, pageId);
                 }
             }
+        }
+
+        /**
+         * @param dataRegion Data region.
+         */
+        public boolean compareTo(DataRegion dataRegion) throws IgniteCheckedException {
+            for (PageKey pageKey : pages.keySet()) {
+                long rmtPage = dataRegion.pageMemory().acquirePage(pageKey.groupId(), pageKey.pageId());
+
+                try {
+                    long rmtPageAddr = dataRegion.pageMemory().readLock(pageKey.groupId(), pageKey.pageId(), rmtPage);
+
+                    try {
+                        long locPageAddr = acquirePage(pageKey.groupId(), pageKey.pageId());
+
+                        try {
+
+                            ByteBuffer locBuffer = GridUnsafe.wrapPointer(locPageAddr, pageSize);
+                            ByteBuffer rmtBuffer = GridUnsafe.wrapPointer(rmtPageAddr, pageSize);
+
+                            if (!locBuffer.equals(rmtBuffer))
+                                System.out.println("Not equals page buffer for grpId: " + pageKey.groupId() + ",  pageId: " + pageKey.pageId());
+                        }
+                        finally {
+                            releasePage(pageKey.groupId(), pageKey.pageId());
+                        }
+                    }
+                    finally {
+                        dataRegion.pageMemory().readUnlock(pageKey.groupId(), pageKey.pageId(), rmtPage);
+                    }
+                }
+                finally {
+                    dataRegion.pageMemory().releasePage(pageKey.groupId(), pageKey.pageId(), rmtPage);
+                }
+            }
+
+            return true;
         }
 
         /**
@@ -349,22 +395,26 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         }
 
         /**
-         *
+         * Page key.
          */
         private static class PageKey {
             /** Group id. */
             private final int grpId;
+
+            /** Page id. */
+            private final long pageId;
 
             /** Effective page id. */
             private final long effPageId;
 
             /**
              * @param grpId Group id.
-             * @param effPageId Eff page id.
+             * @param pageId Page id.
              */
-            private PageKey(int grpId, long effPageId) {
+            private PageKey(int grpId, long pageId) {
                 this.grpId = grpId;
-                this.effPageId = effPageId;
+                this.pageId = pageId;
+                this.effPageId = PageIdUtils.effectivePageId(pageId);
             }
 
             /** {@inheritDoc} */
@@ -378,6 +428,20 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                     return ((PageKey)obj).effPageId == this.effPageId && ((PageKey)obj).grpId == this.grpId;
 
                 return false;
+            }
+
+            /**
+             * Page id.
+             */
+            public long pageId() {
+                return pageId;
+            }
+
+            /**
+             * Group id.
+             */
+            public int groupId() {
+                return grpId;
             }
         }
     }
