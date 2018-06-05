@@ -35,6 +35,7 @@ import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
 import org.apache.ignite.internal.pagemem.wal.WALPointer;
 import org.apache.ignite.internal.pagemem.wal.record.PageSnapshot;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
+import org.apache.ignite.internal.pagemem.wal.record.delta.InitNewPageRecord;
 import org.apache.ignite.internal.pagemem.wal.record.delta.PageDeltaRecord;
 import org.apache.ignite.internal.pagemem.wal.record.delta.RecycleRecord;
 import org.apache.ignite.internal.processors.cache.GridCacheProcessor;
@@ -281,6 +282,8 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         public void stop() {
             stopped = true;
 
+            pages.clear();
+
             memoryProvider.shutdown();
         }
 
@@ -346,7 +349,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 try {
                     PageUtils.putBytes(page.address(), 0, snapshot.pageData());
 
-                    // Always force set new fullPageId because page can be recycled and tag in pageId changed.
                     page.fullPageId(fullPageId);
 
                     page.changeHistory().clear();
@@ -372,8 +374,11 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 try {
                     deltaRecord.applyDelta(pageMemoryMock, page.address());
 
-                    // Always force set new fullPageId because page can be recycled and tag in pageId changed.
-                    page.fullPageId(fullPageId);
+                    // Set new fullPageId after recycle or after new page init, because pageId tag is changed.
+                    if (record instanceof RecycleRecord)
+                        page.fullPageId(new FullPageId(((RecycleRecord)record).newPageId(), grpId));
+                    else if (record instanceof InitNewPageRecord)
+                        page.fullPageId(new FullPageId(((InitNewPageRecord)record).newPageId(), grpId));
 
                     page.changeHistory().add(record);
 
@@ -442,9 +447,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 try {
                     long rmtPageAddr = pageMem.readLock(fullPageId.groupId(), fullPageId.pageId(), rmtPage);
 
-                    if (rmtPageAddr == 0L)
-                        System.out.println("rmtPageAddr == 0");
-
                     assert rmtPageAddr != 0L;
 
                     try {
@@ -453,11 +455,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                         try {
                             ByteBuffer locBuf = GridUnsafe.wrapPointer(page.address(), pageSize);
                             ByteBuffer rmtBuf = GridUnsafe.wrapPointer(rmtPageAddr, pageSize);
-
-/*
-                            log.info("page.addr=" + page.address() + ", rmtPageAddr=" + rmtPageAddr
-                                + ", grpId=" + fullPageId.groupId() + ", pageId=" + fullPageId.pageId());
-*/
 
                             if (!locBuf.equals(rmtBuf)) {
                                 res = false;
@@ -490,7 +487,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         }
 
         /**
-         * Dump statistics.
+         * Dump statistics to log.
          */
         private void dumpStats() {
             log.info(">>> Processed WAL records:");
