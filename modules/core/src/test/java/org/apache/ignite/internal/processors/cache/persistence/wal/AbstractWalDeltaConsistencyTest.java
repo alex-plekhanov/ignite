@@ -236,10 +236,13 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 return page;
 
             int pageIdx = lastPageIdx.getAndIncrement();
-            page = new DirectMemoryPage(pageIdx);
 
-            if (page.pageIndex() >= maxPages)
+            if (pageIdx >= maxPages)
                 throw new IgniteException("Can't allocate new page");
+
+            long pageAddr = memoryRegion.address() + ((long)pageIdx) * pageSize;
+
+            page = new DirectMemoryPage(pageAddr);
 
             pages.put(pageKey(grpId, pageId), page);
 
@@ -268,25 +271,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         private static PageKey pageKey(int grpId, long pageId) {
             return new PageKey(grpId, pageId);
         }
-        /**
-         * @param pageId Page id.
-         */
-        public long acquirePage(int grpId, long pageId) throws IgniteCheckedException {
-            DirectMemoryPage page = page(grpId, pageId);
-
-            page.lock();
-
-            return memoryRegion.address() + ((long)page.pageIndex()) * pageSize;
-        }
-
-        /**
-         * @param pageId Page id.
-         */
-        public void releasePage(int grpId, long pageId) {
-            DirectMemoryPage page = page(grpId, pageId);
-
-            page.unlock();
-        }
 
         /**
          *
@@ -298,13 +282,19 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 int grpId = snapshot.fullPageId().groupId();
                 long pageId = snapshot.fullPageId().pageId();
 
-                long pageAddr = acquirePage(grpId, pageId);
+                DirectMemoryPage page = page(grpId, pageId);
+
+                page.lock();
 
                 try {
-                    PageUtils.putBytes(pageAddr, 0, snapshot.pageData());
+                    PageUtils.putBytes(page.address(), 0, snapshot.pageData());
+
+                    page.changeHistory().clear();
+
+                    page.changeHistory().add(record);
                 }
                 finally {
-                    releasePage(grpId, pageId);
+                    page.unlock();
                 }
             }
             else if (record instanceof PageDeltaRecord) {
@@ -313,17 +303,22 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 int grpId = deltaRecord.groupId();
                 long pageId = deltaRecord.pageId();
 
-                long pageAddr = acquirePage(grpId, pageId);
+                DirectMemoryPage page = page(grpId, pageId);
+
+                page.lock();
 
                 try {
-                    deltaRecord.applyDelta(pageMemoryMock, pageAddr);
+                    deltaRecord.applyDelta(pageMemoryMock, page.address());
+
+                    page.changeHistory().add(record);
 
                     // Page corruptor TODO: remove
                     if (new Random().nextInt(2000) == 0)
-                        GridUnsafe.putByte(pageAddr + new Random().nextInt(pageSize), (byte)(new Random().nextInt(256)));
+                        GridUnsafe.putByte(page.address() + new Random().nextInt(pageSize),
+                            (byte)(new Random().nextInt(256)));
                 }
                 finally {
-                    releasePage(grpId, pageId);
+                    page.unlock();
                 }
             }
         }
@@ -339,17 +334,19 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                     long rmtPageAddr = dataRegion.pageMemory().readLock(pageKey.groupId(), pageKey.pageId(), rmtPage);
 
                     try {
-                        long locPageAddr = acquirePage(pageKey.groupId(), pageKey.pageId());
+                        DirectMemoryPage page = page(pageKey.groupId(), pageKey.pageId());
+
+                        page.lock();
 
                         try {
-                            ByteBuffer locBuffer = GridUnsafe.wrapPointer(locPageAddr, pageSize);
-                            ByteBuffer rmtBuffer = GridUnsafe.wrapPointer(rmtPageAddr, pageSize);
+                            ByteBuffer locBuf = GridUnsafe.wrapPointer(page.address(), pageSize);
+                            ByteBuffer rmtBuf = GridUnsafe.wrapPointer(rmtPageAddr, pageSize);
 
-                            if (!locBuffer.equals(rmtBuffer))
+                            if (!locBuf.equals(rmtBuf))
                                 System.out.println("Not equals page buffer for grpId: " + pageKey.groupId() + ",  pageId: " + pageKey.pageId());
                         }
                         finally {
-                            releasePage(pageKey.groupId(), pageKey.pageId());
+                            page.unlock();
                         }
                     }
                     finally {
@@ -368,17 +365,20 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
          *
          */
         private static class DirectMemoryPage {
-            /** Page index. */
-            private final int pageIdx;
+            /** Page address. */
+            private final long addr;
 
             /** Page lock. */
             private final Lock lock = new ReentrantLock();
 
+            /** Change history. */
+            private final List<WALRecord> changeHist = new LinkedList<>();
+
             /**
-             * @param idx Page index.
+             * @param addr Page address.
              */
-            private DirectMemoryPage(int idx) {
-                pageIdx = idx;
+            private DirectMemoryPage(long addr) {
+                this.addr = addr;
             }
 
             /**
@@ -396,10 +396,17 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             }
 
             /**
-             * @return Page index.
+             * @return Page address.
              */
-            public int pageIndex() {
-                return pageIdx;
+            public long address() {
+                return addr;
+            }
+
+            /**
+             * Change history.
+             */
+            public List<WALRecord> changeHistory() {
+                return changeHist;
             }
         }
 
@@ -415,9 +422,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
             /** Effective page id. */
             private final long effPageId;
-
-            /** Change history. */
-            private final List<WALRecord> changeHist = new LinkedList<>();
 
             /**
              * @param grpId Group id.
@@ -436,10 +440,8 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
             /** {@inheritDoc} */
             @Override public boolean equals(Object obj) {
-                if (obj instanceof PageKey)
-                    return ((PageKey)obj).effPageId == this.effPageId && ((PageKey)obj).grpId == this.grpId;
-
-                return false;
+                return obj instanceof PageKey && ((PageKey)obj).effPageId == this.effPageId
+                    && ((PageKey)obj).grpId == this.grpId;
             }
 
             /**
@@ -454,13 +456,6 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
              */
             public int groupId() {
                 return grpId;
-            }
-
-            /**
-             * Change history.
-             */
-            public List<WALRecord> changeHistory() {
-                return changeHist;
             }
         }
     }
