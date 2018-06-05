@@ -9,9 +9,12 @@ import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.ignite.IgniteCheckedException;
@@ -24,6 +27,7 @@ import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.mem.DirectMemoryProvider;
 import org.apache.ignite.internal.mem.DirectMemoryRegion;
 import org.apache.ignite.internal.mem.unsafe.UnsafeMemoryProvider;
+import org.apache.ignite.internal.pagemem.FullPageId;
 import org.apache.ignite.internal.pagemem.PageIdUtils;
 import org.apache.ignite.internal.pagemem.PageMemory;
 import org.apache.ignite.internal.pagemem.PageUtils;
@@ -32,6 +36,7 @@ import org.apache.ignite.internal.pagemem.wal.WALPointer;
 import org.apache.ignite.internal.pagemem.wal.record.PageSnapshot;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
 import org.apache.ignite.internal.pagemem.wal.record.delta.PageDeltaRecord;
+import org.apache.ignite.internal.pagemem.wal.record.delta.RecycleRecord;
 import org.apache.ignite.internal.processors.cache.GridCacheProcessor;
 import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
 import org.apache.ignite.internal.processors.cache.persistence.DataRegion;
@@ -149,7 +154,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         private final AtomicInteger lastPageIdx = new AtomicInteger();
 
         /** Pages. */
-        private final Map<PageKey, DirectMemoryPage> pages = new ConcurrentHashMap<>();
+        private final Map<FullPageId, DirectMemoryPage> pages = new ConcurrentHashMap<>();
 
         /** Page size. */
         private final int pageSize;
@@ -171,6 +176,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
         /** Tracking stopped. */
         private volatile boolean stopped = false;
+
+        /** Statisctics. */
+        private final ConcurrentMap<WALRecord.RecordType, AtomicInteger> stats = new ConcurrentHashMap();
 
         /**
          * @param ignite Ignite instance.
@@ -277,12 +285,11 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         }
 
         /**
-         * @param grpId Group id.
-         * @param pageId Page id.
+         * @param fullPageId Full page id.
          */
-        private synchronized DirectMemoryPage allocatePage(int grpId, long pageId) {
+        private synchronized DirectMemoryPage allocatePage(FullPageId fullPageId) {
             // Double check.
-            DirectMemoryPage page = pages.get(pageKey(grpId, pageId));
+            DirectMemoryPage page = pages.get(fullPageId);
 
             if (page != null)
                 return page;
@@ -290,38 +297,31 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             int pageIdx = lastPageIdx.getAndIncrement();
 
             if (pageIdx >= maxPages)
-                throw new IgniteException("Can't allocate new page");
+                fail("Can't allocate new page");
 
             long pageAddr = memoryRegion.address() + ((long)pageIdx) * pageSize;
 
             page = new DirectMemoryPage(pageAddr);
 
-            pages.put(pageKey(grpId, pageId), page);
+            page.fullPageId(fullPageId);
+
+            pages.put(fullPageId, page);
 
             return page;
         }
 
         /**
          *
-         * @param grpId Group id.
-         * @param pageId Page id.
+         * @param fullPageId Full page id.
          * @return Page.
          */
-        private DirectMemoryPage page(int grpId, long pageId) {
-            DirectMemoryPage page = pages.get(pageKey(grpId, pageId));
+        private DirectMemoryPage page(FullPageId fullPageId) {
+            DirectMemoryPage page = pages.get(fullPageId);
 
             if (page == null)
-                page = allocatePage(grpId, pageId);
+                page = allocatePage(fullPageId);
 
             return page;
-        }
-
-        /**
-         * @param grpId Group id.
-         * @param pageId Page id.
-         */
-        private static PageKey pageKey(int grpId, long pageId) {
-            return new PageKey(grpId, pageId);
         }
 
         /**
@@ -337,12 +337,17 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 int grpId = snapshot.fullPageId().groupId();
                 long pageId = snapshot.fullPageId().pageId();
 
-                DirectMemoryPage page = page(grpId, pageId);
+                FullPageId fullPageId = new FullPageId(pageId, grpId);
+
+                DirectMemoryPage page = page(fullPageId);
 
                 page.lock();
 
                 try {
                     PageUtils.putBytes(page.address(), 0, snapshot.pageData());
+
+                    // Always force set new fullPageId because page can be recycled and tag in pageId changed.
+                    page.fullPageId(fullPageId);
 
                     page.changeHistory().clear();
 
@@ -358,17 +363,22 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 int grpId = deltaRecord.groupId();
                 long pageId = deltaRecord.pageId();
 
-                DirectMemoryPage page = page(grpId, pageId);
+                FullPageId fullPageId = new FullPageId(pageId, grpId);
+
+                DirectMemoryPage page = page(fullPageId);
 
                 page.lock();
 
                 try {
                     deltaRecord.applyDelta(pageMemoryMock, page.address());
 
+                    // Always force set new fullPageId because page can be recycled and tag in pageId changed.
+                    page.fullPageId(fullPageId);
+
                     page.changeHistory().add(record);
 
                     // Page corruptor TODO: remove
-                    if (new Random().nextInt(2000) == 0)
+                    if (new Random().nextInt(5000) == 0)
                         GridUnsafe.putByte(page.address() + new Random().nextInt(pageSize),
                             (byte)(new Random().nextInt(256)));
                 }
@@ -376,6 +386,22 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                     page.unlock();
                 }
             }
+            else
+                return;
+
+            // Increment statistics.
+            AtomicInteger statCnt = stats.get(record.type());
+
+            if (statCnt == null) {
+                statCnt = new AtomicInteger();
+
+                AtomicInteger oldCnt = stats.putIfAbsent(record.type(), statCnt);
+
+                if (oldCnt != null)
+                    statCnt = oldCnt;
+            }
+
+            statCnt.incrementAndGet();
         }
 
         /**
@@ -391,41 +417,57 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             if (stopped)
                 throw new IgniteCheckedException("Page tracking is already stopped.");
 
+            log.info(">>> Total tracked pages: " + pages.size());
+
+            dumpStats();
+
             boolean res = true;
 
             GridCacheProcessor cacheProc = ignite.context().cache();
 
-            for (PageKey pageKey : pages.keySet()) {
+            for (DirectMemoryPage page : pages.values()) {
+                FullPageId fullPageId = page.fullPageId();
+
                 PageMemory pageMem;
 
-                if (pageKey.grpId == MetaStorage.METASTORAGE_CACHE_ID)
+                if (fullPageId.groupId() == MetaStorage.METASTORAGE_CACHE_ID)
                     pageMem = cacheProc.context().database().metaStorage().pageMemory();
                 else
-                    pageMem = cacheProc.cacheGroup(pageKey.grpId).dataRegion().pageMemory();
+                    pageMem = cacheProc.cacheGroup(fullPageId.groupId()).dataRegion().pageMemory();
 
-                long rmtPage = pageMem.acquirePage(pageKey.groupId(), pageKey.pageId());
+                assert pageMem instanceof PageMemoryImpl;
+
+                long rmtPage = pageMem.acquirePage(fullPageId.groupId(), fullPageId.pageId());
 
                 try {
-                    long rmtPageAddr = pageMem.readLock(pageKey.groupId(), pageKey.pageId(), rmtPage);
+                    long rmtPageAddr = pageMem.readLock(fullPageId.groupId(), fullPageId.pageId(), rmtPage);
+
+                    if (rmtPageAddr == 0L)
+                        System.out.println("rmtPageAddr == 0");
+
+                    assert rmtPageAddr != 0L;
 
                     try {
-                        DirectMemoryPage page = page(pageKey.groupId(), pageKey.pageId());
-
                         page.lock();
 
                         try {
                             ByteBuffer locBuf = GridUnsafe.wrapPointer(page.address(), pageSize);
                             ByteBuffer rmtBuf = GridUnsafe.wrapPointer(rmtPageAddr, pageSize);
 
+/*
+                            log.info("page.addr=" + page.address() + ", rmtPageAddr=" + rmtPageAddr
+                                + ", grpId=" + fullPageId.groupId() + ", pageId=" + fullPageId.pageId());
+*/
+
                             if (!locBuf.equals(rmtBuf)) {
                                 res = false;
 
-                                log.info("Page buffers are not equals [grpId=" + pageKey.groupId() +
-                                    ", pageId=" + pageKey.pageId() + ']');
+                                log.info("Page buffers are not equals [grpId=" + fullPageId.groupId() +
+                                    ", pageId=" + fullPageId.pageId() + ']');
 
-                                dumpDiff(log, locBuf, rmtBuf);
+                                dumpDiff(locBuf, rmtBuf);
 
-                                dumpHistory(log, page);
+                                dumpHistory(page);
 
                                 if (!checkAll)
                                     return res;
@@ -436,11 +478,11 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                         }
                     }
                     finally {
-                        pageMem.readUnlock(pageKey.groupId(), pageKey.pageId(), rmtPage);
+                        pageMem.readUnlock(fullPageId.groupId(), fullPageId.pageId(), rmtPage);
                     }
                 }
                 finally {
-                    pageMem.releasePage(pageKey.groupId(), pageKey.pageId(), rmtPage);
+                    pageMem.releasePage(fullPageId.groupId(), fullPageId.pageId(), rmtPage);
                 }
             }
 
@@ -448,13 +490,22 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         }
 
         /**
+         * Dump statistics.
+         */
+        private void dumpStats() {
+            log.info(">>> Processed WAL records:");
+
+            for (Map.Entry<WALRecord.RecordType, AtomicInteger> entry : stats.entrySet())
+                log.info("        " + entry.getKey() + '=' + entry.getValue().get());
+        }
+
+        /**
          * Dump difference between two ByteBuffers to log.
          *
-         * @param log Logger.
          * @param buf1 Buffer 1.
          * @param buf2 Buffer 2.
          */
-        private static void dumpDiff(IgniteLogger log, ByteBuffer buf1, ByteBuffer buf2) {
+        private void dumpDiff(ByteBuffer buf1, ByteBuffer buf2) {
             log.info(">>> Diff:");
 
             for (int i = 0; i < Math.min(buf1.remaining(), buf2.remaining()); i++) {
@@ -478,9 +529,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         /**
          * Dump page change history to log.
          *
-         * @param log Logger.
+         * @param page Page.
          */
-        private static void dumpHistory(IgniteLogger log, DirectMemoryPage page) {
+        private void dumpHistory(DirectMemoryPage page) {
             log.info(">>> Change history:");
 
             for (WALRecord record : page.changeHistory())
@@ -498,7 +549,10 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             private final Lock lock = new ReentrantLock();
 
             /** Change history. */
-            private final List<WALRecord> changeHist = new LinkedList<>();
+            private final Queue<WALRecord> changeHist = new LinkedList<>();
+
+            /** Full page id. */
+            private volatile FullPageId fullPageId;
 
             /**
              * @param addr Page address.
@@ -531,57 +585,22 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             /**
              * Change history.
              */
-            public List<WALRecord> changeHistory() {
+            public Queue<WALRecord> changeHistory() {
                 return changeHist;
             }
-        }
-
-        /**
-         * Page key.
-         */
-        private static class PageKey {
-            /** Group id. */
-            private final int grpId;
-
-            /** Page id. */
-            private final long pageId;
-
-            /** Effective page id. */
-            private final long effPageId;
 
             /**
-             * @param grpId Group id.
-             * @param pageId Page id.
+             * @return Full page id.
              */
-            private PageKey(int grpId, long pageId) {
-                this.grpId = grpId;
-                this.pageId = pageId;
-                this.effPageId = PageIdUtils.effectivePageId(pageId);
-            }
-
-            /** {@inheritDoc} */
-            @Override public int hashCode() {
-                return PageIdUtils.partId(effPageId) << 16 ^ PageIdUtils.pageIndex(effPageId) ^ grpId;
-            }
-
-            /** {@inheritDoc} */
-            @Override public boolean equals(Object obj) {
-                return obj instanceof PageKey && ((PageKey)obj).effPageId == this.effPageId
-                    && ((PageKey)obj).grpId == this.grpId;
+            public FullPageId fullPageId() {
+                return fullPageId;
             }
 
             /**
-             * Page id.
+             * @param fullPageId Full page id.
              */
-            public long pageId() {
-                return pageId;
-            }
-
-            /**
-             * Group id.
-             */
-            public int groupId() {
-                return grpId;
+            public void fullPageId(FullPageId fullPageId) {
+                this.fullPageId = fullPageId;
             }
         }
     }

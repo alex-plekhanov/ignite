@@ -11,7 +11,7 @@ public class WalDeltaConsistencyTest extends AbstractWalDeltaConsistencyTest {
         super.prepare();
 
         IgniteCache cache = ignite.getOrCreateCache(DEFAULT_CACHE_NAME);
-        for (int i = 0; i < 1_000; i++)
+        for (int i = 0; i < 500; i++)
             cache.put(i, "Cache value " + i);
     }
 
@@ -19,10 +19,10 @@ public class WalDeltaConsistencyTest extends AbstractWalDeltaConsistencyTest {
     @Override public void process() {
         IgniteCache cache = ignite.cache(DEFAULT_CACHE_NAME);
 
-        for (int i = 0; i < 3_000; i++)
+        for (int i = 0; i < 1500; i++)
             cache.put(i, "Changed cache value " + i);
 
-        for (int i = 500; i < 1_500; i++)
+        for (int i = 250; i < 750; i++)
             cache.remove(i);
     }
 }
