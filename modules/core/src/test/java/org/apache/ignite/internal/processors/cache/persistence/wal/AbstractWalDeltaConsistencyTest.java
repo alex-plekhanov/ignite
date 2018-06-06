@@ -48,82 +48,44 @@ import org.mockito.Mockito;
  *
  */
 public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstractTest {
-    /** Plan:
-     *      1. Disable checkpoints.
-     *      2. Prepare.
-     *      3. Trigger checkpoint.
-     *      4. Dump LFS state.
-     *      5. Test code.
-     *      6. Trigger checkpoint.
-     *      7. Apply & compare.
-     */
-    protected IgniteEx ignite;
-
     /** {@inheritDoc} */
-    @Override protected IgniteConfiguration getConfiguration(String gridName) throws Exception {
-        IgniteConfiguration cfg = super.getConfiguration(gridName);
+    @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
+        IgniteConfiguration cfg = super.getConfiguration(igniteInstanceName);
 
-        cfg.setConsistentId(gridName);
+        cfg.setConsistentId(igniteInstanceName);
 
-        DataStorageConfiguration memCfg = new DataStorageConfiguration()
-            .setDefaultDataRegionConfiguration(new DataRegionConfiguration()
-                .setPersistenceEnabled(true)
-                .setName("dflt-plc"));
-
-        cfg.setDataStorageConfiguration(memCfg);
+        cfg.setDataStorageConfiguration(getDataStorageConfiguration(igniteInstanceName));
 
         return cfg;
     }
 
     /**
+     * Default configuration contains one data region ('dflt-plc') with persistence enabled.
+     * This method should be overridden by subclasses if another data storage configuration is needed.
      *
+     * @param igniteInstanceName Ignite instance name.
+     * @return Data storage configuration used for starting of grid.
      */
-    public final void testWalDeltaConsistency() throws Exception {
+    protected DataStorageConfiguration getDataStorageConfiguration(String igniteInstanceName) {
+        return new DataStorageConfiguration()
+            .setDefaultDataRegionConfiguration(new DataRegionConfiguration()
+                .setPersistenceEnabled(true)
+                .setName("dflt-plc"));
+    }
+
+    /** {@inheritDoc} */
+    @Override protected void beforeTest() throws Exception {
+        super.beforeTest();
+
         cleanPersistenceDir();
-
-        ignite = startGrid(0);
-
-        PageMemoryTracker tracker = trackPageMemory(ignite);
-
-        ignite.cluster().active(true);
-
-        GridCacheDatabaseSharedManager dbMgr = (GridCacheDatabaseSharedManager)ignite.context().cache().context().database();
-
-        // TODO: page replacement must fail test
-
-        prepare();
-
-        dbMgr.forceCheckpoint("Before PDS dump").finishFuture().get();
-
-        // TODO: disable checkpoint in beginFuture listener
-
-        dbMgr.enableCheckpoints(false).get();
-
-        // TODO: Dump LFS (DataRegion?) inside listener
-
-        process();
-
-        // Enable checkpoint - forces checkpoint.
-        dbMgr.enableCheckpoints(true).get();
-
-        dbMgr.forceCheckpoint("After process").finishFuture().get();
-
-        dbMgr.enableCheckpoints(false).get();
-
-        tracker.checkPages(true);
     }
 
-    /**
-     *
-     */
-    public void prepare() {
+    /** {@inheritDoc} */
+    @Override protected void afterTest() throws Exception {
+        super.afterTest();
 
+        cleanPersistenceDir();
     }
-
-    /**
-     *
-     */
-    public abstract void process();
 
     /**
      * @param ignite Ignite.
@@ -142,7 +104,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
      * Replicates Ignite's page memory changes to own managed memory region by intercepting WAL records and
      * applying page snapshots and deltas.
      */
-    private static class PageMemoryTracker {
+    protected static class PageMemoryTracker {
         /** Ignite instance. */
         private final IgniteEx ignite;
 
@@ -260,6 +222,10 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                     walMgrFieldPageMem.set(dataRegion.pageMemory(), walMgrNew);
             }
 
+            // Inject new walMgr into shared cache context managers list.
+            if (sharedCtx.managers().indexOf(walMgrOld) >= 0)
+                sharedCtx.managers().set(sharedCtx.managers().indexOf(walMgrOld), walMgrNew);
+
             // Change start tracking flag.
             if (ignite.cluster().active()) {
                 // If cluster already activated, we should force checkpoint to ensure each tracking page gets
@@ -283,7 +249,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
          * Stop tracking, release resources.
          */
         public void stop() {
-            if (stopped)
+            if (!started || stopped)
                 return;
 
             stopped = true;
@@ -294,6 +260,8 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         }
 
         /**
+         * Allocates new page for given FullPageId
+         *
          * @param fullPageId Full page id.
          */
         private synchronized DirectMemoryPage allocatePage(FullPageId fullPageId) {
@@ -320,6 +288,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         }
 
         /**
+         * Gets or allocates page for given FullPageId
          *
          * @param fullPageId Full page id.
          * @return Page.
@@ -334,9 +303,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         }
 
         /**
-         *
+         * Apply WAL record to local memory region.
          */
-        public void applyWalRecord(WALRecord record) throws IgniteCheckedException {
+        private void applyWalRecord(WALRecord record) throws IgniteCheckedException {
             if (!started || stopped)
                 return;
 
@@ -416,7 +385,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         }
 
         /**
-         * Checks if there are any differences between the ignite data regions content and pages inside the tracker.
+         * Checks if there are any differences between the Ignite's data regions content and pages inside the tracker.
          *
          * @param checkAll Check all tracked pages, otherwise check until first error.
          * @return {@code true} if content of all tracked pages equals to content of these pages in the ignite instance.
@@ -458,12 +427,11 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
                         try {
                             if (rmtPageAddr == 0L) {
+                                res = false;
+
                                 log.info("Can't lock page: " + fullPageId);
 
                                 dumpHistory(page);
-
-                                if (!checkAll)
-                                    return res;
                             }
                             else {
                                 ByteBuffer locBuf = GridUnsafe.wrapPointer(page.address(), pageSize);
@@ -477,11 +445,11 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                                     dumpDiff(locBuf, rmtBuf);
 
                                     dumpHistory(page);
-
-                                    if (!checkAll)
-                                        return res;
                                 }
                             }
+
+                            if (!res && !checkAll)
+                                return res;
                         }
                         finally {
                             page.unlock();
