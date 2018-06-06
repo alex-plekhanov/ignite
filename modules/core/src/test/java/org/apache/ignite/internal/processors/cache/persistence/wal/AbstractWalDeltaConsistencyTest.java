@@ -7,18 +7,15 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.configuration.DataRegionConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
@@ -28,11 +25,9 @@ import org.apache.ignite.internal.mem.DirectMemoryProvider;
 import org.apache.ignite.internal.mem.DirectMemoryRegion;
 import org.apache.ignite.internal.mem.unsafe.UnsafeMemoryProvider;
 import org.apache.ignite.internal.pagemem.FullPageId;
-import org.apache.ignite.internal.pagemem.PageIdUtils;
 import org.apache.ignite.internal.pagemem.PageMemory;
 import org.apache.ignite.internal.pagemem.PageUtils;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
-import org.apache.ignite.internal.pagemem.wal.WALPointer;
 import org.apache.ignite.internal.pagemem.wal.record.PageSnapshot;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
 import org.apache.ignite.internal.pagemem.wal.record.delta.InitNewPageRecord;
@@ -88,7 +83,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
         ignite = startGrid(0);
 
-        PageTracker tracker = startPageTracker(ignite);
+        PageMemoryTracker tracker = trackPageMemory(ignite);
 
         ignite.cluster().active(true);
 
@@ -133,8 +128,8 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
     /**
      * @param ignite Ignite.
      */
-    protected PageTracker startPageTracker(IgniteEx ignite) throws Exception {
-        PageTracker tracker = new PageTracker(ignite);
+    protected PageMemoryTracker trackPageMemory(IgniteEx ignite) throws Exception {
+        PageMemoryTracker tracker = new PageMemoryTracker(ignite);
 
         tracker.start();
 
@@ -142,9 +137,12 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
     }
 
     /**
+     * Page memory tracker.
      *
+     * Replicates Ignite's page memory changes to own managed memory region by intercepting WAL records and
+     * applying page snapshots and deltas.
      */
-    private static class PageTracker {
+    private static class PageMemoryTracker {
         /** Ignite instance. */
         private final IgniteEx ignite;
 
@@ -184,7 +182,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         /**
          * @param ignite Ignite instance.
          */
-        public PageTracker(IgniteEx ignite) {
+        public PageMemoryTracker(IgniteEx ignite) {
             this.log = ignite.log();
             this.ignite = ignite;
             this.pageSize = ignite.configuration().getDataStorageConfiguration().getPageSize();
@@ -197,6 +195,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
          * Start tracking pages.
          */
         public void start() throws Exception {
+            if (started)
+                throw new IgniteCheckedException("Page tracking is already started");
+
             GridCacheSharedContext sharedCtx = ignite.context().cache().context();
 
             // Initialize memory region.
@@ -229,7 +230,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                             Object res = mtd.invoke(walMgrOld, args);
 
                             if ("log".equals(mtd.getName()) && args.length > 0 && args[0] instanceof WALRecord)
-                                applyWalRecord((WALPointer)res, (WALRecord)args[0]);
+                                applyWalRecord((WALRecord)args[0]);
+                            else if ("stop".equals(mtd.getName()))
+                                stop();
 
                             return res;
                         }
@@ -280,6 +283,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
          * Stop tracking, release resources.
          */
         public void stop() {
+            if (stopped)
+                return;
+
             stopped = true;
 
             pages.clear();
@@ -330,7 +336,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         /**
          *
          */
-        public void applyWalRecord(WALPointer pointer, WALRecord record) throws IgniteCheckedException {
+        public void applyWalRecord(WALRecord record) throws IgniteCheckedException {
             if (!started || stopped)
                 return;
 
@@ -447,27 +453,34 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 try {
                     long rmtPageAddr = pageMem.readLock(fullPageId.groupId(), fullPageId.pageId(), rmtPage);
 
-                    assert rmtPageAddr != 0L;
-
                     try {
                         page.lock();
 
                         try {
-                            ByteBuffer locBuf = GridUnsafe.wrapPointer(page.address(), pageSize);
-                            ByteBuffer rmtBuf = GridUnsafe.wrapPointer(rmtPageAddr, pageSize);
-
-                            if (!locBuf.equals(rmtBuf)) {
-                                res = false;
-
-                                log.info("Page buffers are not equals [grpId=" + fullPageId.groupId() +
-                                    ", pageId=" + fullPageId.pageId() + ']');
-
-                                dumpDiff(locBuf, rmtBuf);
+                            if (rmtPageAddr == 0L) {
+                                log.info("Can't lock page: " + fullPageId);
 
                                 dumpHistory(page);
 
                                 if (!checkAll)
                                     return res;
+                            }
+                            else {
+                                ByteBuffer locBuf = GridUnsafe.wrapPointer(page.address(), pageSize);
+                                ByteBuffer rmtBuf = GridUnsafe.wrapPointer(rmtPageAddr, pageSize);
+
+                                if (!locBuf.equals(rmtBuf)) {
+                                    res = false;
+
+                                    log.info("Page buffers are not equals: " + fullPageId);
+
+                                    dumpDiff(locBuf, rmtBuf);
+
+                                    dumpHistory(page);
+
+                                    if (!checkAll)
+                                        return res;
+                                }
                             }
                         }
                         finally {
@@ -475,7 +488,8 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                         }
                     }
                     finally {
-                        pageMem.readUnlock(fullPageId.groupId(), fullPageId.pageId(), rmtPage);
+                        if (rmtPageAddr != 0L)
+                            pageMem.readUnlock(fullPageId.groupId(), fullPageId.pageId(), rmtPage);
                     }
                 }
                 finally {
@@ -532,7 +546,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             log.info(">>> Change history:");
 
             for (WALRecord record : page.changeHistory())
-                log.info("        " + record.type() + " (" + record.getClass().getSimpleName() + ')');
+                log.info("        " + record);
         }
 
         /**
