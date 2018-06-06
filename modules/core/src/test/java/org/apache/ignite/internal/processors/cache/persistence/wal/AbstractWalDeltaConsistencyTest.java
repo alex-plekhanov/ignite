@@ -476,7 +476,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
             Set<Integer> c = new HashSet<Integer>();
             Set<FullPageId> k = new HashSet<>(pages.keySet());
-            b.removeAll(changedPages);
+            k.removeAll(changedPages);
             for (FullPageId pageId : k) c.add(pageId.groupId());
 */
 
