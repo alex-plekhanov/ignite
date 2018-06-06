@@ -117,7 +117,8 @@ import static org.apache.ignite.internal.util.GridUnsafe.wrapPointer;
  * on whether the page is in use or not.
  */
 @SuppressWarnings({"LockAcquiredButNotSafelyReleased", "FieldAccessedSynchronizedAndUnsynchronized"})
-public class PageMemoryImpl implements PageMemoryEx {
+public class
+PageMemoryImpl implements PageMemoryEx {
     /** */
     public static final long PAGE_MARKER = 0x0000000000000001L;
 

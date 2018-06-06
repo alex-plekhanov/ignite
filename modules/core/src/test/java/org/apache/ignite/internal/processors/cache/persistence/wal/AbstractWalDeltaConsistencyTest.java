@@ -6,10 +6,12 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -40,9 +42,13 @@ import org.apache.ignite.internal.processors.cache.persistence.DbCheckpointListe
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
 import org.apache.ignite.internal.processors.cache.persistence.metastorage.MetaStorage;
 import org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl;
+import org.apache.ignite.internal.processors.cache.persistence.snapshot.IgniteCacheSnapshotManager;
+import org.apache.ignite.internal.util.GridConcurrentHashSet;
 import org.apache.ignite.internal.util.GridUnsafe;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 /**
  *
@@ -117,6 +123,9 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
         /** Pages. */
         private final Map<FullPageId, DirectMemoryPage> pages = new ConcurrentHashMap<>();
 
+        /** Changed pages */
+        private final Set<FullPageId> changedPages = new GridConcurrentHashSet<>();
+
         /** Page size. */
         private final int pageSize;
 
@@ -180,7 +189,7 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
 
             maxPages = (int)(maxMemorySize / pageSize);
 
-            // Create WAL interceptor.
+            // Create WAL manager interceptor.
             IgniteWriteAheadLogManager walMgrOld = sharedCtx.wal();
 
             IgniteWriteAheadLogManager walMgrNew =  (IgniteWriteAheadLogManager) Proxy.newProxyInstance(
@@ -205,6 +214,34 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 }
             );
 
+            // Create snapshot manager interceptor.
+            IgniteCacheSnapshotManager snpMgrOld = sharedCtx.snapshot();
+
+            IgniteCacheSnapshotManager snpMgrNew = Mockito.spy(snpMgrOld);
+
+            Mockito.doAnswer(new Answer() {
+                @Override public Object answer(InvocationOnMock mock) throws Throwable {
+                    if (mock.getArguments().length > 1 && mock.getArguments()[1] instanceof FullPageId)
+                        onPageChanged((FullPageId)mock.getArguments()[1]);
+                    else
+                        fail("Wrong argument type");
+
+                    return mock.callRealMethod();
+                }
+            }).when(snpMgrNew).onChangeTrackerPage(Mockito.any(Long.class), Mockito.any(FullPageId.class),
+                Mockito.any());
+
+/*
+            IgniteCacheSnapshotManager snpMgrNew = new IgniteCacheSnapshotManager() {
+                @Override public void onPageWrite(FullPageId fullId, ByteBuffer tmpWriteBuf, int writtenPages,
+                    int totalPages) {
+                    super.onPageWrite(fullId, tmpWriteBuf, writtenPages, totalPages);
+
+                    PageMemoryTracker.this.onPageWrite(fullId);
+                }
+            };
+*/
+
             // Inject new walMgr into GridCacheSharedContext
             Field walMgrFieldCtx = GridCacheSharedContext.class.getDeclaredField("walMgr");
 
@@ -225,6 +262,13 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             // Inject new walMgr into shared cache context managers list.
             if (sharedCtx.managers().indexOf(walMgrOld) >= 0)
                 sharedCtx.managers().set(sharedCtx.managers().indexOf(walMgrOld), walMgrNew);
+
+            // Inject new snpMgr into GridCacheSharedContext
+            Field snpMgrFieldCtx = GridCacheSharedContext.class.getDeclaredField("snpMgr");
+
+            snpMgrFieldCtx.setAccessible(true);
+
+            snpMgrFieldCtx.set(sharedCtx, snpMgrNew);
 
             // Change start tracking flag.
             if (ignite.cluster().active()) {
@@ -255,6 +299,8 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
             stopped = true;
 
             pages.clear();
+
+            changedPages.clear();
 
             memoryProvider.shutdown();
         }
@@ -300,6 +346,17 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 page = allocatePage(fullPageId);
 
             return page;
+        }
+
+
+        /**
+         * @param fullId Full id.
+         */
+        public void onPageChanged(FullPageId fullId) {
+            if (!started || stopped)
+                return;
+
+            changedPages.add(fullId);
         }
 
         /**
@@ -398,10 +455,30 @@ public abstract class AbstractWalDeltaConsistencyTest extends GridCommonAbstract
                 throw new IgniteCheckedException("Page tracking is already stopped.");
 
             log.info(">>> Total tracked pages: " + pages.size());
+            log.info(">>> Total changed pages: " + changedPages.size());
 
             dumpStats();
 
             boolean res = true;
+
+            if (!pages.keySet().containsAll(changedPages)) {
+                log.error("Tracked pages contains not all set of changed pages");
+
+                return false;
+            }
+
+/*
+            Set<Integer> a = new HashSet<Integer>();
+            for (FullPageId pageId : pages.keySet()) a.add(pageId.groupId());
+
+            Set<Integer> b = new HashSet<Integer>();
+            for (FullPageId pageId : changedPages) b.add(pageId.groupId());
+
+            Set<Integer> c = new HashSet<Integer>();
+            Set<FullPageId> k = new HashSet<>(pages.keySet());
+            b.removeAll(changedPages);
+            for (FullPageId pageId : k) c.add(pageId.groupId());
+*/
 
             GridCacheProcessor cacheProc = ignite.context().cache();
 
