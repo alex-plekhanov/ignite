@@ -17,17 +17,22 @@
 
 package org.apache.ignite.internal.processors.query;
 
+import java.sql.Time;
+import java.sql.Timestamp;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.QueryEntity;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.internal.IgniteNodeAttributes;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.util.typedef.X;
+import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.apache.ignite.transactions.Transaction;
@@ -154,6 +159,85 @@ public class SqlMetaViewsSelfTest extends GridCommonAbstractTest {
     }
 
     /**
+     * Test local transactions meta view.
+     *
+     * @throws Exception If failed.
+     */
+    public void testLocalTransactionsView() throws Exception {
+        int txCnt = 3;
+
+        final Ignite ignite = startGrid();
+
+        IgniteCache cache = ignite.getOrCreateCache("cache");
+
+        final CountDownLatch latchTxStart = new CountDownLatch(txCnt);
+
+        final CountDownLatch latchTxBody = new CountDownLatch(1);
+
+        final CountDownLatch latchTxEnd = new CountDownLatch(txCnt);
+
+        multithreadedAsync(new Runnable() {
+            @Override public void run() {
+                try(Transaction tx = ignite.transactions().txStart()) {
+                    tx.timeout(1_000_000L);
+
+                    latchTxStart.countDown();
+
+                    latchTxBody.await();
+
+                    tx.commit();
+                }
+                catch (InterruptedException e) {
+                    fail("Thread interrupted");
+                }
+
+                latchTxEnd.countDown();
+            }
+        }, txCnt);
+
+        latchTxStart.await();
+
+        List<List<?>> res = cache.query(
+            new SqlFieldsQuery("SELECT XID, START_NODE_ID, START_TIME, TIMEOUT, TIMEOUT_MILLIS, IS_TIMED_OUT, " +
+                "START_THREAD_ID, ISOLATION, CONCURRENCY, IMPLICIT, IS_INVALIDATE, STATE, SIZE, " +
+                "STORE_ENABLED, STORE_WRITE_THROUGH, IO_POLICY, IMPLICIT_SINGLE, IS_EMPTY, OTHER_NODE_ID, " +
+                "EVENT_NODE_ID, ORIGINATING_NODE_ID, IS_NEAR, IS_DHT, IS_COLOCATED, IS_LOCAL, IS_SYSTEM, " +
+                "IS_USER, SUBJECT_ID, IS_DONE, IS_INTERNAL, IS_ONE_PHASE_COMMIT " +
+                "FROM IGNITE.LOCAL_TRANSACTIONS"
+            )
+        ).getAll();
+
+        assertColumnTypes(res.get(0), String.class, UUID.class, Timestamp.class, Time.class, Long.class, Boolean.class,
+            Long.class, String.class, String.class, Boolean.class, Boolean.class, String.class, Integer.class,
+            Boolean.class, Boolean.class, Byte.class, Boolean.class, Boolean.class, UUID.class,
+            UUID.class, UUID.class, Boolean.class, Boolean.class, Boolean.class, Boolean.class, Boolean.class,
+            Boolean.class, UUID.class, Boolean.class, Boolean.class, Boolean.class
+        );
+
+        // Assert values.
+        assertEquals(ignite.cluster().localNode().id(), res.get(0).get(1));
+
+        assertTrue(U.currentTimeMillis() > ((Timestamp)res.get(0).get(2)).getTime());
+
+        assertEquals("00:16:40" /* 1_000_000 ms */, res.get(0).get(3).toString());
+
+        assertEquals(1_000_000L, res.get(0).get(4));
+
+        assertEquals(false, res.get(0).get(5));
+
+        // Assert row count.
+        assertEquals(txCnt, res.size());
+
+        latchTxBody.countDown();
+
+        latchTxEnd.await();
+
+        assertEquals(0, cache.query(
+            new SqlFieldsQuery("SELECT XID FROM LOCAL_TRANSACTIONS").setSchema("IGNITE")
+        ).getAll().size());
+    }
+
+    /**
      * @param rowData Row data.
      * @param colTypes Column types.
      */
@@ -165,7 +249,7 @@ public class SqlMetaViewsSelfTest extends GridCommonAbstractTest {
     }
 
     /**
-     * Test nodes meta view.
+     * Test nodes and node attributes meta views.
      *
      * @throws Exception If failed.
      */
@@ -242,5 +326,32 @@ public class SqlMetaViewsSelfTest extends GridCommonAbstractTest {
         assertEquals(ignite1.cluster().localNode().id(), execSql("SELECT N1.ID FROM IGNITE.NODES N1 " +
             "WHERE NOT EXISTS (SELECT 1 FROM IGNITE.NODES N2 WHERE N2.ID = N1.ID AND N2.IS_LOCAL = false)")
             .get(0).get(0));
+
+        // Check node attributes view
+        UUID cliNodeId = ignite2.cluster().localNode().id();
+
+        String cliAttrName = IgniteNodeAttributes.ATTR_CLIENT_MODE;
+
+        assertColumnTypes(execSql("SELECT NODE_ID, NAME, VALUE FROM IGNITE.NODE_ATTRIBUTES").get(0),
+            UUID.class, String.class, String.class);
+
+        assertEquals(1,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NAME = ? AND VALUE = 'true'",
+                cliAttrName).size());
+
+        assertEquals(3,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NAME = ?", cliAttrName).size());
+
+        assertEquals(1,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NODE_ID = ? AND NAME = ? AND VALUE = 'true'",
+                cliNodeId, cliAttrName).size());
+
+        assertEquals(0,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NODE_ID = '-' AND NAME = ?",
+                cliAttrName).size());
+
+        assertEquals(0,
+            execSql("SELECT NODE_ID FROM IGNITE.NODE_ATTRIBUTES WHERE NODE_ID = ? AND NAME = '-'",
+                cliNodeId).size());
     }
 }

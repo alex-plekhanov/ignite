@@ -57,7 +57,10 @@ public class SqlMetaViewProcessor {
 
             Collection<SqlMetaView> viewsToRegister = new ArrayList<>();
 
+            viewsToRegister.add(new SqlMetaViewLocalTransactions(ctx));
+            viewsToRegister.add(new SqlMetaViewClusterTransactions(ctx));
             viewsToRegister.add(new SqlMetaViewNodes(ctx));
+            viewsToRegister.add(new SqlMetaViewNodeAttributes(ctx));
 
             for (SqlMetaView view : viewsToRegister) {
                 SqlMetaTableEngine.registerView(c, view);

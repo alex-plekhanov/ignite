@@ -17,8 +17,11 @@
 
 package org.apache.ignite.internal.processors.query.h2.views;
 
+import java.util.Iterator;
 import java.util.UUID;
 import org.apache.ignite.internal.GridKernalContext;
+import org.apache.ignite.lang.IgniteBiClosure;
+import org.apache.ignite.lang.IgniteClosure;
 import org.h2.engine.Session;
 import org.h2.result.Row;
 import org.h2.result.SearchRow;
@@ -26,6 +29,9 @@ import org.h2.table.Column;
 import org.h2.value.Value;
 import org.h2.value.ValueNull;
 import org.h2.value.ValueString;
+import org.h2.value.ValueTime;
+import org.h2.value.ValueTimestamp;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Local meta view base class (which uses only local node data).
@@ -45,6 +51,41 @@ public abstract class SqlAbstractLocalMetaView extends SqlAbstractMetaView {
         assert cols != null;
         assert indexes != null;
 
+    }
+
+    /**
+     * @param tblName Table name.
+     * @param desc Description.
+     * @param ctx Context.
+     * @param cols Columns.
+     */
+    public SqlAbstractLocalMetaView(String tblName, String desc, GridKernalContext ctx, Column... cols) {
+        this(tblName, desc, ctx, new String[] {}, cols);
+    }
+
+    /**
+     * Converts millis to ValueTime
+     *
+     * @param millis Millis.
+     */
+    protected static Value valueTimeFromMillis(long millis) {
+        if (millis == -1L || millis == Long.MAX_VALUE)
+            return ValueNull.INSTANCE;
+        else
+            // Note: ValueTime.fromMillis(long) method trying to convert time using timezone and return wrong result.
+            return ValueTime.fromNanos(millis * 1_000_000L);
+    }
+
+    /**
+     * Converts millis to ValueTimestamp
+     *
+     * @param millis Millis.
+     */
+    protected static Value valueTimestampFromMillis(long millis) {
+        if (millis <= 0L || millis == Long.MAX_VALUE)
+            return ValueNull.INSTANCE;
+        else
+            return ValueTimestamp.fromMillis(millis);
     }
 
     /**
@@ -199,6 +240,169 @@ public abstract class SqlAbstractLocalMetaView extends SqlAbstractMetaView {
                 return val1;
 
             return null;
+        }
+    }
+
+    /**
+     * Parent-child Row iterable.
+     *
+     * @param <P> Parent class.
+     * @param <C> Child class
+     */
+    protected class ParentChildRowIterable<P, C> implements Iterable<Row> {
+        /** Session. */
+        private final Session ses;
+
+        /** Parent iterable. */
+        private final Iterable<P> parents;
+
+        /** Child iterator closure. */
+        private final IgniteClosure<P, Iterator<C>> cloChildIter;
+
+        /** Result from parent and child closure. */
+        private final IgniteBiClosure<P, C, Object[]> cloRowFromParentChild;
+
+        /**
+         * @param ses Session.
+         * @param parents Parents.
+         * @param cloChildIter Child iterator closure.
+         * @param cloRowFromParentChild Row columns from parent and child closure.
+         */
+        public ParentChildRowIterable(Session ses, Iterable<P> parents,
+            IgniteClosure<P, Iterator<C>> cloChildIter,
+            IgniteBiClosure<P, C, Object[]> cloRowFromParentChild) {
+            this.ses = ses;
+            this.parents = parents;
+            this.cloChildIter = cloChildIter;
+            this.cloRowFromParentChild = cloRowFromParentChild;
+        }
+
+        /** {@inheritDoc} */
+        @NotNull @Override public Iterator<Row> iterator() {
+            return new ParentChildRowIterator(ses, parents.iterator(), cloChildIter, cloRowFromParentChild);
+        }
+    }
+
+    /**
+     * Parent-child Row iterator.
+     *
+     * @param <P> Parent class.
+     * @param <C> Child class
+     */
+    protected class ParentChildRowIterator<P, C> extends ParentChildIterator<P, C, Row> {
+        /**
+         * @param ses
+         * @param parentIter Parent iterator.
+         * @param cloChildIter
+         * @param cloResFromParentChild
+         */
+        public ParentChildRowIterator(final Session ses, Iterator<P> parentIter,
+            IgniteClosure<P, Iterator<C>> cloChildIter,
+            final IgniteBiClosure<P, C, Object[]> cloResFromParentChild) {
+            super(parentIter, cloChildIter, new IgniteBiClosure<P, C, Row>() {
+                /** Row count. */
+                private int rowCnt = 0;
+
+                @Override public Row apply(P p, C c) {
+                    return SqlAbstractLocalMetaView.this.createRow(ses, ++rowCnt, cloResFromParentChild.apply(p, c));
+                }
+            });
+        }
+    }
+
+    /**
+     * Parent-child iterator.
+     * Lazy 2 levels iterator, which iterates over child items for each parent item.
+     *
+     * @param <P> Parent class.
+     * @param <C> Child class.
+     * @param <R> Result item class.
+     */
+    protected class ParentChildIterator<P, C, R> implements Iterator<R> {
+        /** Parent iterator. */
+        private final Iterator<P> parentIter;
+
+        /** Child iterator closure. This closure helps to get child iterator for each parent item. */
+        private final IgniteClosure<P, Iterator<C>> cloChildIter;
+
+        /**
+         * Result from parent and child closure. This closure helps to produce resulting item from parent and child
+         * items.
+         */
+        private final IgniteBiClosure<P, C, R> cloResFromParentChild;
+
+        /** Child iterator. */
+        private Iterator<C> childIter;
+
+        /** Next parent. */
+        private P nextParent;
+
+        /** Next child. */
+        private C nextChild;
+
+        /**
+         * @param parentIter Parent iterator.
+         */
+        public ParentChildIterator(Iterator<P> parentIter,
+            IgniteClosure<P, Iterator<C>> cloChildIter,
+            IgniteBiClosure<P, C, R> cloResFromParentChild) {
+
+            this.parentIter = parentIter;
+            this.cloChildIter = cloChildIter;
+            this.cloResFromParentChild = cloResFromParentChild;
+
+            moveChild();
+        }
+
+        /**
+         * Move to next parent.
+         */
+        protected void moveParent() {
+            nextParent = parentIter.next();
+
+            childIter = cloChildIter.apply(nextParent);
+        }
+
+        /**
+         * Move to next child.
+         */
+        protected void moveChild() {
+            // First iteration.
+            if (nextParent == null && parentIter.hasNext())
+                moveParent();
+
+            // Empty parent at first iteration.
+            if (childIter == null)
+                return;
+
+            while (childIter.hasNext() || parentIter.hasNext()) {
+                if (childIter.hasNext()) {
+                    nextChild = childIter.next();
+
+                    return;
+                }
+                else
+                    moveParent();
+            }
+
+            nextChild = null;
+        }
+
+        /** {@inheritDoc} */
+        @Override public boolean hasNext() {
+            return nextChild != null;
+        }
+
+        /** {@inheritDoc} */
+        @Override public R next() {
+            if (nextChild == null)
+                return null;
+
+            R res = cloResFromParentChild.apply(nextParent, nextChild);
+
+            moveChild();
+
+            return res;
         }
     }
 }
