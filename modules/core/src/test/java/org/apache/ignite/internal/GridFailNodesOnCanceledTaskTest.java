@@ -17,28 +17,36 @@
 
 package org.apache.ignite.internal;
 
-import org.apache.ignite.*;
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.file.OpenOption;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
+import org.apache.ignite.Ignite;
+import org.apache.ignite.IgniteCountDownLatch;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
-import org.apache.ignite.configuration.*;
+import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.configuration.DataRegionConfiguration;
+import org.apache.ignite.configuration.DataStorageConfiguration;
+import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.failure.FailureContext;
+import org.apache.ignite.failure.FailureHandler;
 import org.apache.ignite.failure.StopNodeFailureHandler;
 import org.apache.ignite.internal.processors.cache.persistence.file.FileIO;
 import org.apache.ignite.internal.processors.cache.persistence.file.FileIODecorator;
 import org.apache.ignite.internal.processors.cache.persistence.file.FileIOFactory;
 import org.apache.ignite.internal.processors.cache.persistence.file.RandomAccessFileIOFactory;
-import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.internal.util.lang.GridAbsPredicate;
 import org.apache.ignite.lang.IgniteCallable;
 import org.apache.ignite.lang.IgniteFuture;
+import org.apache.ignite.lang.IgniteRunnable;
 import org.apache.ignite.resources.IgniteInstanceResource;
-import org.apache.ignite.resources.LoggerResource;
+import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.file.OpenOption;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.LockSupport;
 
 import static java.nio.file.StandardOpenOption.CREATE;
 import static java.nio.file.StandardOpenOption.READ;
@@ -51,11 +59,20 @@ public class GridFailNodesOnCanceledTaskTest extends GridCommonAbstractTest {
     /** Slow file io enabled. */
     private static final AtomicBoolean slowFileIoEnabled = new AtomicBoolean(false);
 
+    /** Failure. */
+    private static final AtomicBoolean failure = new AtomicBoolean(false);
+
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String gridName) throws Exception {
         IgniteConfiguration cfg = super.getConfiguration(gridName);
 
-        cfg.setFailureHandler(new StopNodeFailureHandler());
+        cfg.setFailureHandler(new FailureHandler() {
+            @Override public boolean onFailure(Ignite ignite, FailureContext failureCtx) {
+                failure.set(true);
+
+                return true;
+            }
+        });
 
         DataStorageConfiguration dbCfg = new DataStorageConfiguration();
 
@@ -104,19 +121,17 @@ public class GridFailNodesOnCanceledTaskTest extends GridCommonAbstractTest {
             for (int i = 0; i < NUM_TASKS; i++) {
                 int cnt = i;
 
-                cancelFutures.add(ig0.compute().affinityCallAsync(Collections.singleton("cache-0"), cnt,
-                    new IgniteCallable<Object>() {
+                cancelFutures.add(ig0.compute().affinityRunAsync("cache-0", cnt,
+                    new IgniteRunnable() {
                         @IgniteInstanceResource
                         Ignite ig;
 
-                        @Override public Object call() throws Exception {
+                        @Override public void run() {
                             latch.countDown();
 
                             latch.await();
 
                             ig.cache("cache-0").put(cnt, new byte[1024]);
-
-                            return null;
                         }
                     }));
             }
@@ -128,15 +143,27 @@ public class GridFailNodesOnCanceledTaskTest extends GridCommonAbstractTest {
             for (IgniteFuture future: cancelFutures)
                 future.cancel();
 
-            int numOfRetries = 50;
+            slowFileIoEnabled.set(false);
 
-            while(ig0.cluster().nodes().size() == 4 && numOfRetries > 0){
-                Thread.sleep(1000);
+            for (int i = 0; i < NUM_TASKS; i++) {
+                int cnt = i;
 
-                numOfRetries--;
+                ig0.compute().affinityRun("cache-0", cnt,
+                    new IgniteRunnable() {
+                        @IgniteInstanceResource
+                        Ignite ig;
+
+                        @Override public void run() {
+                            ig.cache("cache-0").put(cnt, new byte[1024]);
+                        }
+                    });
             }
 
-            assertTrue("Nodes have left", ig0.cluster().nodes().size() == 4);
+            assertFalse(GridTestUtils.waitForCondition(new GridAbsPredicate() {
+                @Override public boolean apply() {
+                    return failure.get();
+                }
+            }, 5_000L));
         }
         finally {
             stopAllGrids();
@@ -214,10 +241,8 @@ public class GridFailNodesOnCanceledTaskTest extends GridCommonAbstractTest {
                 }
 
                 private void parkForAWhile() {
-                    if(slowFileIoEnabled.get() && slow) {
-                        for (int i = 0; i < 100; i++)
-                            LockSupport.parkNanos(50_000_000);
-                    }
+                    if(slowFileIoEnabled.get() && slow)
+                        LockSupport.parkNanos(5_000_000_000L);
                 }
             };
         }
