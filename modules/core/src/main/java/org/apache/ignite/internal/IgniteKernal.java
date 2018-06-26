@@ -1152,6 +1152,8 @@ public class IgniteKernal implements IgniteEx, IgniteMXBean, Externalizable {
                 throw e;
             else if (e instanceof IgniteCheckedException)
                 throw (IgniteCheckedException)e;
+            else if (e instanceof InterruptedException)
+                throw new IgniteInterruptedCheckedException((InterruptedException)e);
             else
                 throw new IgniteCheckedException(e);
         }
