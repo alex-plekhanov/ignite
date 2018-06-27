@@ -64,6 +64,17 @@ public abstract class SqlAbstractLocalMetaView extends SqlAbstractMetaView {
     }
 
     /**
+     * @param tblName Table name.
+     * @param desc Description.
+     * @param ctx Context.
+     * @param indexedCols Indexed column.
+     * @param cols Columns.
+     */
+    public SqlAbstractLocalMetaView(String tblName, String desc, GridKernalContext ctx, String indexedCols, Column... cols) {
+        this(tblName, desc, ctx, new String[] {indexedCols}, cols);
+    }
+
+    /**
      * Converts millis to ValueTime
      *
      * @param millis Millis.

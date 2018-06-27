@@ -61,6 +61,22 @@ public class SqlMetaViewProcessor {
             viewsToRegister.add(new SqlMetaViewClusterTransactions(ctx));
             viewsToRegister.add(new SqlMetaViewNodes(ctx));
             viewsToRegister.add(new SqlMetaViewNodeAttributes(ctx));
+            viewsToRegister.add(new SqlMetaViewViews(ctx, this));
+            viewsToRegister.add(new SqlMetaViewInstance(ctx));
+            viewsToRegister.add(new SqlMetaViewJvmThreads(ctx));
+            viewsToRegister.add(new SqlMetaViewJvmRuntime(ctx));
+            viewsToRegister.add(new SqlMetaViewJvmOS(ctx));
+            viewsToRegister.add(new SqlMetaViewCaches(ctx));
+            viewsToRegister.add(new SqlMetaViewCacheMetrics(ctx, true));
+            viewsToRegister.add(new SqlMetaViewCacheMetrics(ctx, false));
+            viewsToRegister.add(new SqlMetaViewCacheGroups(ctx));
+            viewsToRegister.add(new SqlMetaViewNodeHosts(ctx));
+            viewsToRegister.add(new SqlMetaViewNodeAddresses(ctx));
+            viewsToRegister.add(new SqlMetaViewNodeMetrics(ctx));
+            viewsToRegister.add(new SqlMetaViewTransactionEntries(ctx));
+            viewsToRegister.add(new SqlMetaViewTasks(ctx));
+            viewsToRegister.add(new SqlMetaViewPartAssignment(ctx));
+            viewsToRegister.add(new SqlMetaViewPartAllocation(ctx));
 
             for (SqlMetaView view : viewsToRegister) {
                 SqlMetaTableEngine.registerView(c, view);
