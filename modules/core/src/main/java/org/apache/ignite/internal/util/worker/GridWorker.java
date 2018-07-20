@@ -21,17 +21,25 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import org.apache.ignite.IgniteInterruptedException;
 import org.apache.ignite.IgniteLogger;
+import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.lang.IgniteInClosure;
 import org.jetbrains.annotations.Nullable;
+
+import static org.apache.ignite.IgniteSystemProperties.CRITICAL_WORKER_HEARTBEAT_TIMEOUT;
 
 /**
  * Extension to standard {@link Runnable} interface. Adds proper details to be used
  * with {@link Executor} implementations. Only for internal use.
  */
 public abstract class GridWorker implements Runnable {
+    /** Heartbeat timeout in milliseconds, when exceeded, worker is considered as blocked. */
+    public static final long HEARTBEAT_TIMEOUT =
+        IgniteSystemProperties.getLong(CRITICAL_WORKER_HEARTBEAT_TIMEOUT, 30_000);
+
     /** Ignite logger. */
     protected final IgniteLogger log;
 
@@ -45,6 +53,9 @@ public abstract class GridWorker implements Runnable {
     private final GridWorkerListener lsnr;
 
     /** */
+    private final IgniteInClosure<GridWorker> idleHnd;
+
+    /** */
     private volatile boolean finished;
 
     /** Whether or not this runnable is cancelled. */
@@ -52,6 +63,9 @@ public abstract class GridWorker implements Runnable {
 
     /** Actual thread runner. */
     private volatile Thread runner;
+
+    /** Timestamp to be updated by this worker periodically to indicate it's up and running. */
+    private volatile long heartbeatTimeMillis;
 
     /** */
     private final Object mux = new Object();
@@ -65,15 +79,42 @@ public abstract class GridWorker implements Runnable {
      *      for logging and debugging purposes we separate the two.
      * @param log Grid logger to be used.
      * @param lsnr Listener for life-cycle events.
+     * @param idleHnd Idleness handler.
      */
-    protected GridWorker(String igniteInstanceName, String name, IgniteLogger log, @Nullable GridWorkerListener lsnr) {
+    protected GridWorker(
+        String igniteInstanceName,
+        String name,
+        IgniteLogger log,
+        @Nullable GridWorkerListener lsnr,
+        @Nullable IgniteInClosure<GridWorker> idleHnd
+    ) {
         assert name != null;
         assert log != null;
 
         this.igniteInstanceName = igniteInstanceName;
         this.name = name;
-        this.lsnr = lsnr;
         this.log = log;
+        this.lsnr = lsnr;
+        this.idleHnd = idleHnd;
+    }
+
+    /**
+     * Creates new grid worker with given parameters.
+     *
+     * @param igniteInstanceName Name of the Ignite instance this runnable is used in.
+     * @param name Worker name. Note that in general thread name and worker (runnable) name are two
+     *      different things. The same worker can be executed by multiple threads and therefore
+     *      for logging and debugging purposes we separate the two.
+     * @param log Grid logger to be used.
+     * @param lsnr Listener for life-cycle events.
+     */
+    protected GridWorker(
+        String igniteInstanceName,
+        String name,
+        IgniteLogger log,
+        @Nullable GridWorkerListener lsnr
+    ) {
+        this(igniteInstanceName, name, log, lsnr, null);
     }
 
     /**
@@ -86,7 +127,7 @@ public abstract class GridWorker implements Runnable {
      * @param log Grid logger to be used.
      */
     protected GridWorker(@Nullable String igniteInstanceName, String name, IgniteLogger log) {
-        this(igniteInstanceName, name, log, null);
+        this(igniteInstanceName, name, log, null, null);
     }
 
     /** {@inheritDoc} */
@@ -94,6 +135,8 @@ public abstract class GridWorker implements Runnable {
         // Runner thread must be recorded first as other operations
         // may depend on it being present.
         runner = Thread.currentThread();
+
+        updateHeartbeat();
 
         if (log.isDebugEnabled())
             log.debug("Grid runnable started: " + name);
@@ -263,5 +306,30 @@ public abstract class GridWorker implements Runnable {
             "hashCode", hashCode(),
             "interrupted", (runner != null ? runner.isInterrupted() : "unknown"),
             "runner", (runner == null ? "null" : runner.getName()));
+    }
+
+    /**
+     * Sets heartbeat timestamp to absolute value.
+     *
+     * @param ts Timestamp in terms of {@code U.currentTimeMillis()}.
+     */
+    public void setHeartbeat(long ts) {
+        heartbeatTimeMillis = ts;
+    }
+
+    /** */
+    public void updateHeartbeat() {
+        heartbeatTimeMillis = U.currentTimeMillis();
+    }
+
+    /** */
+    public long heartbeatTimeMillis() {
+        return heartbeatTimeMillis;
+    }
+
+    /** */
+    public void onIdle() {
+        if (idleHnd != null)
+            idleHnd.apply(this);
     }
 }

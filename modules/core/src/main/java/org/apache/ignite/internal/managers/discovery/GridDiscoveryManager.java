@@ -2657,11 +2657,15 @@ public class GridDiscoveryManager extends GridManagerAdapter<DiscoverySpi> {
         /** Node segmented event fired flag. */
         private boolean nodeSegFired;
 
+        /** */
+        private long lastOnIdleTs = U.currentTimeMillis();
+
         /**
          *
          */
         private DiscoveryWorker() {
-            super(ctx.igniteInstanceName(), "disco-event-worker", GridDiscoveryManager.this.log, ctx.workersRegistry());
+            super(ctx.igniteInstanceName(), "disco-event-worker", GridDiscoveryManager.this.log,
+                ctx.workersRegistry(), ctx.workersRegistry());
         }
 
         /**
@@ -2764,7 +2768,22 @@ public class GridDiscoveryManager extends GridManagerAdapter<DiscoverySpi> {
         @SuppressWarnings("DuplicateCondition")
         private void body0() throws InterruptedException {
             GridTuple6<Integer, AffinityTopologyVersion, ClusterNode, DiscoCache, Collection<ClusterNode>,
-                DiscoveryCustomMessage> evt = evts.take();
+                DiscoveryCustomMessage> evt;
+
+            setHeartbeat(Long.MAX_VALUE);
+
+            try {
+                evt = evts.take();
+            }
+            finally {
+                updateHeartbeat();
+            }
+
+            if (U.currentTimeMillis() - lastOnIdleTs > HEARTBEAT_TIMEOUT / 2) {
+                onIdle();
+
+                lastOnIdleTs = U.currentTimeMillis();
+            }
 
             int type = evt.get1();
 

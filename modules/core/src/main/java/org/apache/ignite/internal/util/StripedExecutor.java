@@ -68,6 +68,7 @@ public class StripedExecutor implements ExecutorService {
      * @param log Logger.
      * @param errHnd Critical failure handler.
      * @param gridWorkerLsnr listener to link with every stripe worker.
+     * @param idleHnd Idleness handler.
      */
     public StripedExecutor(
         int cnt,
@@ -75,9 +76,10 @@ public class StripedExecutor implements ExecutorService {
         String poolName,
         final IgniteLogger log,
         IgniteInClosure<Throwable> errHnd,
-        GridWorkerListener gridWorkerLsnr
+        GridWorkerListener gridWorkerLsnr,
+        IgniteInClosure<GridWorker> idleHnd
     ) {
-        this(cnt, igniteInstanceName, poolName, log, errHnd, false, gridWorkerLsnr);
+        this(cnt, igniteInstanceName, poolName, log, errHnd, false, gridWorkerLsnr, idleHnd);
     }
 
     /**
@@ -88,6 +90,7 @@ public class StripedExecutor implements ExecutorService {
      * @param errHnd Critical failure handler.
      * @param stealTasks {@code True} to steal tasks.
      * @param gridWorkerLsnr listener to link with every stripe worker.
+     * @param idleHnd Idleness handler.
      */
     public StripedExecutor(
         int cnt,
@@ -96,7 +99,8 @@ public class StripedExecutor implements ExecutorService {
         final IgniteLogger log,
         IgniteInClosure<Throwable> errHnd,
         boolean stealTasks,
-        GridWorkerListener gridWorkerLsnr
+        GridWorkerListener gridWorkerLsnr,
+        IgniteInClosure<GridWorker> idleHnd
     ) {
         A.ensure(cnt > 0, "cnt > 0");
 
@@ -113,8 +117,8 @@ public class StripedExecutor implements ExecutorService {
         try {
             for (int i = 0; i < cnt; i++) {
                 stripes[i] = stealTasks
-                    ? new StripeConcurrentQueue(igniteInstanceName, poolName, i, log, stripes, errHnd, gridWorkerLsnr)
-                    : new StripeConcurrentQueue(igniteInstanceName, poolName, i, log, errHnd, gridWorkerLsnr);
+                    ? new StripeConcurrentQueue(igniteInstanceName, poolName, i, log, stripes, errHnd, gridWorkerLsnr, idleHnd)
+                    : new StripeConcurrentQueue(igniteInstanceName, poolName, i, log, errHnd, gridWorkerLsnr, idleHnd);
             }
 
             for (int i = 0; i < cnt; i++)
@@ -442,6 +446,9 @@ public class StripedExecutor implements ExecutorService {
         /** Critical failure handler. */
         private IgniteInClosure<Throwable> errHnd;
 
+        /** */
+        private long lastOnIdleTs = U.currentTimeMillis();
+
         /**
          * @param igniteInstanceName Ignite instance name.
          * @param poolName Pool name.
@@ -449,6 +456,7 @@ public class StripedExecutor implements ExecutorService {
          * @param log Logger.
          * @param errHnd Exception handler.
          * @param gridWorkerLsnr listener to link with stripe worker.
+         * @param idleHnd Idleness handler.
          */
         public Stripe(
             String igniteInstanceName,
@@ -456,9 +464,10 @@ public class StripedExecutor implements ExecutorService {
             int idx,
             IgniteLogger log,
             IgniteInClosure<Throwable> errHnd,
-            GridWorkerListener gridWorkerLsnr
+            GridWorkerListener gridWorkerLsnr,
+            IgniteInClosure<GridWorker> idleHnd
         ) {
-            super(igniteInstanceName, poolName + "-stripe-" + idx, log, gridWorkerLsnr);
+            super(igniteInstanceName, poolName + "-stripe-" + idx, log, gridWorkerLsnr, idleHnd);
 
             this.igniteInstanceName = igniteInstanceName;
             this.idx = idx;
@@ -487,10 +496,25 @@ public class StripedExecutor implements ExecutorService {
                 Runnable cmd;
 
                 try {
-                    cmd = take();
+                    setHeartbeat(Long.MAX_VALUE);
+
+                    try {
+                        cmd = take();
+                    }
+                    finally {
+                        updateHeartbeat();
+                    }
+
+                    if (U.currentTimeMillis() - lastOnIdleTs > HEARTBEAT_TIMEOUT / 2) {
+                        onIdle();
+
+                        lastOnIdleTs = U.currentTimeMillis();
+                    }
 
                     if (cmd != null) {
                         active = true;
+
+                        updateHeartbeat();
 
                         try {
                             cmd.run();
@@ -575,6 +599,7 @@ public class StripedExecutor implements ExecutorService {
          * @param log Logger.
          * @param errHnd Critical failure handler.
          * @param gridWorkerLsnr listener to link with stripe worker.
+         * @param idleHnd Idleness handler.
          */
         StripeConcurrentQueue(
             String igniteInstanceName,
@@ -582,9 +607,10 @@ public class StripedExecutor implements ExecutorService {
             int idx,
             IgniteLogger log,
             IgniteInClosure<Throwable> errHnd,
-            GridWorkerListener gridWorkerLsnr
+            GridWorkerListener gridWorkerLsnr,
+            IgniteInClosure<GridWorker> idleHnd
         ) {
-            this(igniteInstanceName, poolName, idx, log, null, errHnd, gridWorkerLsnr);
+            this(igniteInstanceName, poolName, idx, log, null, errHnd, gridWorkerLsnr, idleHnd);
         }
 
         /**
@@ -594,6 +620,7 @@ public class StripedExecutor implements ExecutorService {
          * @param log Logger.
          * @param errHnd Critical failure handler.
          * @param gridWorkerLsnr listener to link with stripe worker.
+         * @param idleHnd Idleness handler.
          */
         StripeConcurrentQueue(
             String igniteInstanceName,
@@ -602,7 +629,8 @@ public class StripedExecutor implements ExecutorService {
             IgniteLogger log,
             Stripe[] others,
             IgniteInClosure<Throwable> errHnd,
-            GridWorkerListener gridWorkerLsnr
+            GridWorkerListener gridWorkerLsnr,
+            IgniteInClosure<GridWorker> idleHnd
         ) {
             super(
                 igniteInstanceName,
@@ -610,7 +638,8 @@ public class StripedExecutor implements ExecutorService {
                 idx,
                 log,
                 errHnd,
-                gridWorkerLsnr);
+                gridWorkerLsnr,
+                idleHnd);
 
             this.others = others;
 
@@ -711,6 +740,7 @@ public class StripedExecutor implements ExecutorService {
          * @param log Logger.
          * @param errHnd Critical failure handler.
          * @param gridWorkerLsnr listener to link with stripe worker.
+         * @param idleHnd Idleness handler.
          */
         public StripeConcurrentQueueNoPark(
             String igniteInstanceName,
@@ -718,14 +748,16 @@ public class StripedExecutor implements ExecutorService {
             int idx,
             IgniteLogger log,
             IgniteInClosure<Throwable> errHnd,
-            GridWorkerListener gridWorkerLsnr
+            GridWorkerListener gridWorkerLsnr,
+            IgniteInClosure<GridWorker> idleHnd
         ) {
             super(igniteInstanceName,
                 poolName,
                 idx,
                 log,
                 errHnd,
-                gridWorkerLsnr);
+                gridWorkerLsnr,
+                idleHnd);
         }
 
         /** {@inheritDoc} */
@@ -773,6 +805,7 @@ public class StripedExecutor implements ExecutorService {
          * @param log Logger.
          * @param errHnd Critical failure handler.
          * @param gridWorkerLsnr listener to link with stripe worker.
+         * @param idleHnd Idleness handler.
          */
         public StripeConcurrentBlockingQueue(
             String igniteInstanceName,
@@ -780,14 +813,16 @@ public class StripedExecutor implements ExecutorService {
             int idx,
             IgniteLogger log,
             IgniteInClosure<Throwable> errHnd,
-            GridWorkerListener gridWorkerLsnr
+            GridWorkerListener gridWorkerLsnr,
+            IgniteInClosure<GridWorker> idleHnd
         ) {
             super(igniteInstanceName,
                 poolName,
                 idx,
                 log,
                 errHnd,
-                gridWorkerLsnr);
+                gridWorkerLsnr,
+                idleHnd);
         }
 
         /** {@inheritDoc} */

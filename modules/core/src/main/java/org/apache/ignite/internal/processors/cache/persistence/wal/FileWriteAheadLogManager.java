@@ -1562,7 +1562,7 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
          */
         private FileArchiver(long lastAbsArchivedIdx, IgniteLogger log) {
             super(cctx.igniteInstanceName(), "wal-file-archiver%" + cctx.igniteInstanceName(), log,
-                cctx.kernalContext().workersRegistry());
+                cctx.kernalContext().workersRegistry(), cctx.kernalContext().workersRegistry());
 
             this.lastAbsArchivedIdx = lastAbsArchivedIdx;
         }
@@ -1623,13 +1623,23 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
 
             try {
                 synchronized (this) {
-                    while (curAbsWalIdx == -1 && !stopped)
-                        wait();
+                    while (curAbsWalIdx == -1 && !stopped) {
+                        setHeartbeat(Long.MAX_VALUE);
+
+                        try {
+                            wait();
+                        }
+                        finally {
+                            updateHeartbeat();
+                        }
+                    }
 
                     // If the archive directory is empty, we can be sure that there were no WAL segments archived.
                     // This is ensured by the check in truncate() which will leave at least one file there
                     // once it was archived.
                 }
+
+                long lastOnIdleTs = U.currentTimeMillis();
 
                 while (!Thread.currentThread().isInterrupted() && !stopped) {
                     long toArchive;
@@ -1638,10 +1648,24 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
                         assert lastAbsArchivedIdx <= curAbsWalIdx : "lastArchived=" + lastAbsArchivedIdx +
                             ", current=" + curAbsWalIdx;
 
-                        while (lastAbsArchivedIdx >= curAbsWalIdx - 1 && !stopped)
-                            wait();
+                        while (lastAbsArchivedIdx >= curAbsWalIdx - 1 && !stopped) {
+                            setHeartbeat(Long.MAX_VALUE);
+
+                            try {
+                                wait();
+                            }
+                            finally {
+                                updateHeartbeat();
+                            }
+                        }
 
                         toArchive = lastAbsArchivedIdx + 1;
+                    }
+
+                    if (U.currentTimeMillis() - lastOnIdleTs > HEARTBEAT_TIMEOUT / 2) {
+                        onIdle();
+
+                        lastOnIdleTs = U.currentTimeMillis();
                     }
 
                     if (stopped)
@@ -1650,8 +1674,16 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
                     final SegmentArchiveResult res = archiveSegment(toArchive);
 
                     synchronized (this) {
-                        while (locked.containsKey(toArchive) && !stopped)
-                            wait();
+                        while (locked.containsKey(toArchive) && !stopped) {
+                            setHeartbeat(Long.MAX_VALUE);
+
+                            try {
+                                wait();
+                            }
+                            finally {
+                                updateHeartbeat();
+                            }
+                        }
 
                         // Then increase counter to allow rollover on clean working file
                         changeLastArchivedIndexAndNotifyWaiters(toArchive);
@@ -1873,6 +1905,8 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
                 },
                 new CI1<Integer>() {
                     @Override public void apply(Integer idx) {
+                        updateHeartbeat();
+
                         synchronized (FileArchiver.this) {
                             formatted = idx;
 
@@ -3255,23 +3289,39 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
          */
         WALWriter(IgniteLogger log) {
             super(cctx.igniteInstanceName(), "wal-write-worker%" + cctx.igniteInstanceName(), log,
-                cctx.kernalContext().workersRegistry());
+                cctx.kernalContext().workersRegistry(), cctx.kernalContext().workersRegistry());
         }
 
         /** {@inheritDoc} */
         @Override protected void body() {
             Throwable err = null;
 
+            long lastOnIdleTs = U.currentTimeMillis();
+
             try {
                 while (!isCancelled()) {
                     while (waiters.isEmpty()) {
-                        if (!isCancelled())
-                            LockSupport.park();
+                        if (!isCancelled()) {
+                            setHeartbeat(Long.MAX_VALUE);
+
+                            try {
+                                LockSupport.park();
+                            }
+                            finally {
+                                updateHeartbeat();
+                            }
+                        }
                         else {
                             unparkWaiters(Long.MAX_VALUE);
 
                             return;
                         }
+                    }
+
+                    if (U.currentTimeMillis() - lastOnIdleTs > HEARTBEAT_TIMEOUT / 2) {
+                        onIdle();
+
+                        lastOnIdleTs = U.currentTimeMillis();
                     }
 
                     Long pos = null;
@@ -3314,6 +3364,8 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
                     }
 
                     for (int i = 0; i < segs.size(); i++) {
+                        updateHeartbeat();
+
                         SegmentedRingByteBuffer.ReadSegment seg = segs.get(i);
 
                         try {
@@ -3422,7 +3474,8 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
 
             waiters.put(t, expPos);
 
-            LockSupport.unpark(walWriter.runner());
+            if (walWriter != null)
+                LockSupport.unpark(walWriter.runner());
 
             while (true) {
                 Long val = waiters.get(t);

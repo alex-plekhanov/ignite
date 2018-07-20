@@ -30,6 +30,7 @@ import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.internal.client.GridClient;
 import org.apache.ignite.internal.marshaller.optimized.OptimizedMarshaller;
 import org.apache.ignite.internal.util.GridLogThrottle;
+import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.stream.StreamTransformer;
 import org.jetbrains.annotations.Nullable;
 
@@ -922,6 +923,13 @@ public final class IgniteSystemProperties {
      * Default is {@code true}.
      */
     public static final String IGNITE_DUMP_THREADS_ON_FAILURE = "IGNITE_DUMP_THREADS_ON_FAILURE";
+
+    /**
+     * Heartbeat timeout in milliseconds, when exceeded, {@link GridWorker} is considered as blocked.
+     *
+     * Default is {@code 30_000}.
+     */
+    public static final String CRITICAL_WORKER_HEARTBEAT_TIMEOUT = "CRITICAL_WORKER_HEARTBEAT_TIMEOUT";
 
     /**
      * Throttling timeout in millis which avoid excessive PendingTree access on unwind if there is nothing to clean yet.

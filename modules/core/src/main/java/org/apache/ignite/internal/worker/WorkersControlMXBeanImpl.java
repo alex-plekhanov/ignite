@@ -67,6 +67,16 @@ public class WorkersControlMXBeanImpl implements WorkersControlMXBean {
     }
 
     /** {@inheritDoc} */
+    @Override public boolean getHealthMonitoringEnabled() {
+        return workerRegistry.getHealthMonitoringEnabled();
+    }
+
+    /** {@inheritDoc} */
+    @Override public void setHealthMonitoringEnabled(boolean val) {
+        workerRegistry.setHealthMonitoringEnabled(val);
+    }
+
+    /** {@inheritDoc} */
     @Override public boolean stopThreadByUniqueName(String name) {
         Thread[] threads = Thread.getAllStackTraces().keySet().stream()
             .filter(t -> Objects.equals(t.getName(), name))

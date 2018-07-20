@@ -92,8 +92,11 @@ import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.A;
 import org.apache.ignite.internal.util.typedef.internal.CU;
+import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.internal.worker.WorkersRegistry;
+import org.apache.ignite.lang.IgniteBiInClosure;
 import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.lang.IgniteInClosure;
 import org.apache.ignite.logger.LoggerNodeIdAware;
@@ -1817,7 +1820,16 @@ public class IgnitionEx {
 
             validateThreadPoolSize(cfg.getStripedPoolSize(), "stripedPool");
 
-            WorkersRegistry workerRegistry = new WorkersRegistry();
+            WorkersRegistry workerRegistry = new WorkersRegistry(
+                new IgniteBiInClosure<GridWorker, FailureType>() {
+                    @Override public void apply(GridWorker deadWorker, FailureType failureType) {
+                        if (grid != null)
+                            grid.context().failure().process(new FailureContext(
+                                failureType,
+                                new IgniteException(S.toString(GridWorker.class, deadWorker))));
+                    }
+                }
+            );
 
             stripedExecSvc = new StripedExecutor(
                 cfg.getStripedPoolSize(),
@@ -1830,6 +1842,7 @@ public class IgnitionEx {
                             grid.context().failure().process(new FailureContext(SYSTEM_WORKER_TERMINATION, t));
                     }
                 },
+                workerRegistry,
                 workerRegistry);
 
             // Note that since we use 'LinkedBlockingQueue', number of
@@ -1879,6 +1892,7 @@ public class IgnitionEx {
                     }
                 },
                 true,
+                workerRegistry,
                 workerRegistry);
 
             // Note that we do not pre-start threads here as igfs pool may not be needed.
