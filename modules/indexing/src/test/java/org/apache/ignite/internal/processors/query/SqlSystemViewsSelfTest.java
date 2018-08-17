@@ -31,6 +31,7 @@ import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteNodeAttributes;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
+import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
@@ -284,8 +285,11 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
     public void testBaselineViews() throws Exception {
         cleanPersistenceDir();
 
-        Ignite ignite = startGrid(getTestIgniteInstanceName(), getPdsConfiguration("node0"));
-        startGrid(getTestIgniteInstanceName(1), getPdsConfiguration("node1"));
+        Ignite ignite = startGrid(getTestIgniteInstanceName(), getPdsConfiguration("node0")
+            .setUserAttributes(F.asMap("ATTR1", "NODE0VAL1", "ATTR_NULL", null)));
+
+        startGrid(getTestIgniteInstanceName(1), getPdsConfiguration("node1")
+            .setUserAttributes(F.asMap("ATTR1", "NODE1VAL1", "ATTR2", "NODE1VAL2")));
 
         ignite.cluster().active(true);
 
@@ -309,9 +313,9 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
 
         assertEquals("node1", res.get(0).get(0));
 
-        startGrid(getTestIgniteInstanceName(2), getPdsConfiguration("node2"));
+        Ignite ignite2 = startGrid(getTestIgniteInstanceName(2), getPdsConfiguration("node2"));
 
-        assertEquals(2, execSql("SELECT CONSISTENT_ID FROM IGNITE.BLT_NODES").size());
+        assertEquals(2, execSql(ignite2, "SELECT CONSISTENT_ID FROM IGNITE.BLT_NODES").size());
 
         res = execSql("SELECT CONSISTENT_ID FROM IGNITE.NODES N WHERE NOT EXISTS (SELECT 1 FROM IGNITE.BLT_NODES B " +
             " WHERE B.CONSISTENT_ID = N.CONSISTENT_ID)");
@@ -319,26 +323,44 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
         assertEquals(1, res.size());
 
         assertEquals("node2", res.get(0).get(0));
-    }
 
-    /**
-     * Test baseline topology system view.
-     */
-    public void testBaselineViews1() throws Exception {
-        cleanPersistenceDir();
+        res = execSql("SELECT CONSISTENT_ID, NAME, VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES");
 
-        Ignite ignite = startGrid(getTestIgniteInstanceName(), getPdsConfiguration("node0"));
-        startGrid(getTestIgniteInstanceName(1), getPdsConfiguration("node1"));
+        assertColumnTypes(res.get(0), String.class, String.class, String.class);
 
-        ignite.cluster().active(true);
+        assertEquals(2, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE NAME = 'ATTR1'").size());
 
-        stopAllGrids();
+        assertEquals(1, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE NAME = 'ATTR2'").size());
 
-        ignite = startGrid(getTestIgniteInstanceName(), getPdsConfiguration("node0"));
+        assertEquals("NODE1VAL2", execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE NAME = 'ATTR2' " +
+            "AND CONSISTENT_ID = 'node1'").get(0).get(0));
 
-        ignite.cluster().active(true);
+        assertEquals(0, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE NAME = 'NO_SUCH_ATTR'").size());
 
-        execSql("SELECT CONSISTENT_ID FROM IGNITE.BLT_NODES WHERE ONLINE = false");
+        assertEquals(0, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE NAME = ''").size());
+
+        assertEquals(0, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE NAME is null").size());
+
+        assertEquals(0, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE CONSISTENT_ID = 'NO_SUCH_ID'").size());
+
+        assertEquals(0, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE CONSISTENT_ID = ''").size());
+
+        assertEquals(0, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE CONSISTENT_ID IS NULL").size());
+
+        assertEquals("ATTR_NULL", execSql("SELECT NAME FROM IGNITE.BLT_NODE_ATTRIBUTES WHERE VALUE IS NULL " +
+            "AND NAME LIKE 'ATTR%'").get(0).get(0));
+
+        assertEquals(0, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES " +
+            "WHERE NAME = 'ATTR1' AND CONSISTENT_ID = 'NO_SUCH_ID'").size());
+
+        assertEquals(0, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES " +
+            "WHERE NAME = 'NO_SUCH_ATTR' AND CONSISTENT_ID = 'node1'").size());
+
+        assertEquals(2, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES NA JOIN IGNITE.BLT_NODES N ON " +
+            " N.CONSISTENT_ID = NA.CONSISTENT_ID WHERE NA.NAME = 'ATTR1'").size());
+
+        assertEquals(1, execSql("SELECT VALUE FROM IGNITE.BLT_NODE_ATTRIBUTES NA JOIN IGNITE.BLT_NODES N ON " +
+            " N.CONSISTENT_ID = NA.CONSISTENT_ID WHERE N.ONLINE = false AND NA.NAME = 'ATTR1'").size());
     }
 
     /**
