@@ -24,8 +24,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
+import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.QueryEntity;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.configuration.CacheConfiguration;
@@ -395,7 +397,15 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
 
         final Ignite ignite = startGrid();
 
-        IgniteCache cache = ignite.getOrCreateCache("cache");
+        IgniteCache cache = ignite.getOrCreateCache(new CacheConfiguration<>()
+            .setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL)
+            .setName("cache")
+        );
+
+        IgniteCache cache2 = ignite.getOrCreateCache(new CacheConfiguration<>()
+            .setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL)
+            .setName("cache2")
+        );
 
         final CountDownLatch latchTxStart = new CountDownLatch(txCnt);
 
@@ -403,10 +413,21 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
 
         final CountDownLatch latchTxEnd = new CountDownLatch(txCnt);
 
+        final AtomicLong atomicKey = new AtomicLong();
+
         multithreadedAsync(new Runnable() {
             @Override public void run() {
                 try(Transaction tx = ignite.transactions().txStart()) {
                     tx.timeout(1_000_000L);
+
+                    for (int i = 0; i < 10; i ++) {
+                        long key = atomicKey.incrementAndGet();
+
+                        cache.put(key, "value " + key);
+
+                        if ((i & 1) == 1)
+                            cache2.put(key, "value " + key);
+                    }
 
                     latchTxStart.countDown();
 
@@ -454,6 +475,8 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
 
         // Assert row count.
         assertEquals(txCnt, res.size());
+
+        doSleep(1_000_000L);
 
         latchTxBody.countDown();
 
