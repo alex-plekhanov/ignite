@@ -49,6 +49,18 @@ public abstract class SqlAbstractLocalSystemView extends SqlAbstractSystemView {
         assert indexes != null;
     }
 
+
+    /**
+     * @param tblName Table name.
+     * @param desc Description.
+     * @param ctx Context.
+     * @param indexedCols Indexed column.
+     * @param cols Columns.
+     */
+    public SqlAbstractLocalSystemView(String tblName, String desc, GridKernalContext ctx, String indexedCols, Column... cols) {
+        this(tblName, desc, ctx, new String[] {indexedCols}, cols);
+    }
+
     /**
      * @param tblName Table name.
      * @param desc Description.
