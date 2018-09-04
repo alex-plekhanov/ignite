@@ -38,12 +38,12 @@ import org.h2.value.Value;
 /**
  * Meta view: transaction entries.
  */
-public class SqlSystemViewTransactionEntries extends SqlAbstractLocalSystemView {
+public class SqlSystemViewLocalTransactionEntries extends SqlAbstractLocalSystemView {
     /**
      * @param ctx Grid context.
      */
-    public SqlSystemViewTransactionEntries(GridKernalContext ctx) {
-        super("TRANSACTION_ENTRIES", "Cache entries used by transaction", ctx, "XID",
+    public SqlSystemViewLocalTransactionEntries(GridKernalContext ctx) {
+        super("LOCAL_TRANSACTION_ENTRIES", "Cache entries used by transaction", ctx, "XID",
             newColumn("XID"),
             newColumn("CACHE_NAME"),
             newColumn("OPERATION"),

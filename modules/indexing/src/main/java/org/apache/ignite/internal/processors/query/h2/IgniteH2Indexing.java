@@ -132,7 +132,8 @@ import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewPart
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewPartAssignment;
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewQueries;
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewTasks;
-import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewTransactionEntries;
+import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewLocalTransactionEntries;
+import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewLocalTransactionNodes;
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewViews;
 import org.apache.ignite.internal.processors.query.h2.twostep.GridMapQueryExecutor;
 import org.apache.ignite.internal.processors.query.h2.twostep.GridReduceQueryExecutor;
@@ -2723,7 +2724,8 @@ public class IgniteH2Indexing implements GridQueryIndexing {
         views.add(new SqlSystemViewCacheMetrics(ctx, false));
         views.add(new SqlSystemViewCacheGroups(ctx));
         views.add(new SqlSystemViewNodeHosts(ctx));
-        views.add(new SqlSystemViewTransactionEntries(ctx));
+        views.add(new SqlSystemViewLocalTransactionEntries(ctx));
+        views.add(new SqlSystemViewLocalTransactionNodes(ctx));
         views.add(new SqlSystemViewTasks(ctx));
         views.add(new SqlSystemViewPartAssignment(ctx));
         views.add(new SqlSystemViewPartAllocation(ctx));
