@@ -135,6 +135,7 @@ import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewCach
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewNodeAttributes;
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewNodeMetrics;
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewNodes;
+import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewQueries;
 import org.apache.ignite.internal.processors.query.h2.twostep.GridMapQueryExecutor;
 import org.apache.ignite.internal.processors.query.h2.twostep.GridReduceQueryExecutor;
 import org.apache.ignite.internal.processors.query.h2.twostep.msg.GridH2QueryRequest;
@@ -3304,6 +3305,7 @@ public class IgniteH2Indexing implements GridQueryIndexing {
         views.add(new SqlSystemViewBaselineNodes(ctx));
         views.add(new SqlSystemViewNodeMetrics(ctx));
         views.add(new SqlSystemViewCaches(ctx));
+        views.add(new SqlSystemViewQueries(ctx));
 
         return views;
     }

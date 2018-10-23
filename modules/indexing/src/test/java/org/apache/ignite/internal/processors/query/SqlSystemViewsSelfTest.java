@@ -37,6 +37,7 @@ import org.apache.ignite.cache.eviction.EvictableEntry;
 import org.apache.ignite.cache.eviction.EvictionFilter;
 import org.apache.ignite.cache.eviction.EvictionPolicy;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
+import org.apache.ignite.cache.query.annotations.QuerySqlFunction;
 import org.apache.ignite.cluster.ClusterMetrics;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.CacheConfiguration;
@@ -516,6 +517,32 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
     }
 
     /**
+     *
+     */
+    public void testQueriesViews() throws Exception {
+        Ignite ignite = startGrid(getConfiguration());
+        Ignite ignite1 = startGrid(getConfiguration().setClientMode(true).setIgniteInstanceName("client"));
+
+        IgniteCache cache = ignite.getOrCreateCache(new CacheConfiguration<>()
+            .setName("cache")
+            .setQueryEntities(Collections.singletonList(new QueryEntity(Integer.class, Integer.class)))
+            .setSqlFunctionClasses(TestSQLFunctions.class)
+        );
+
+        cache.put(0, 0);
+
+        GridTestUtils.runAsync(() -> execSql(ignite1, "SELECT \"cache\".sleep(300000) FROM \"cache\".Integer"));
+
+        List<List<?>> resAll = execSql("SELECT * FROM IGNITE.QUERIES");
+
+        doSleep(500);
+
+        //assertEquals(1, resAll.size());
+
+        doSleep(300_000L);
+    }
+
+    /**
      * Test caches system views.
      */
     public void testCachesViews() throws Exception {
@@ -758,4 +785,29 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
             return "TestTopologyValidator";
         }
     }
+
+    /**
+     * Utility class with custom SQL functions.
+     */
+    public static class TestSQLFunctions {
+        /**
+         * Sleep function to simulate long running queries.
+         *
+         * @param x Time to sleep.
+         * @return Return specified argument.
+         */
+        @QuerySqlFunction
+        public static long sleep(long x) {
+            if (x >= 0)
+                try {
+                    Thread.sleep(x);
+                }
+                catch (InterruptedException ignored) {
+                    // No-op.
+                }
+
+            return x;
+        }
+    }
+
 }
