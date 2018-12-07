@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteEx;
@@ -66,7 +67,6 @@ import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.plugin.IgnitePlugin;
 import org.apache.ignite.plugin.PluginContext;
 import org.apache.ignite.spi.encryption.EncryptionSpi;
-import org.mockito.Mockito;
 
 /**
  * Page memory tracker.
@@ -204,8 +204,87 @@ public class PageMemoryTracker implements IgnitePlugin {
 
         EncryptionSpi encSpi = ctx.igniteConfiguration().getEncryptionSpi();
 
-        pageMemoryMock = Mockito.mock(PageMemory.class);
+        //pageMemoryMock = Mockito.mock(PageMemory.class);
 
+        pageMemoryMock = new PageMemory() {
+            @Override public void start() throws IgniteException {
+
+            }
+
+            @Override public void stop(boolean deallocate) throws IgniteException {
+
+            }
+
+            @Override public int pageSize() {
+                return pageSize;
+            }
+
+            @Override public int realPageSize(int grpId) {
+                return pageSize;
+            }
+
+            @Override public int systemPageSize() {
+                return 0;
+            }
+
+            @Override public ByteBuffer pageBuffer(long pageAddr) {
+                return null;
+            }
+
+            @Override public long loadedPages() {
+                return 0;
+            }
+
+            @Override public int checkpointBufferPagesCount() {
+                return 0;
+            }
+
+            @Override public long allocatePage(int grpId, int partId, byte flags) throws IgniteCheckedException {
+                return 0;
+            }
+
+            @Override public boolean freePage(int cacheId, long pageId) throws IgniteCheckedException {
+                return false;
+            }
+
+            @Override public long acquirePage(int grpId, long pageId) throws IgniteCheckedException {
+                return 0;
+            }
+
+            @Override public void releasePage(int grpId, long pageId, long page) {
+
+            }
+
+            @Override public long readLock(int grpId, long pageId, long page) {
+                return 0;
+            }
+
+            @Override public long readLockForce(int grpId, long pageId, long page) {
+                return 0;
+            }
+
+            @Override public void readUnlock(int grpId, long pageId, long page) {
+
+            }
+
+            @Override public long writeLock(int grpId, long pageId, long page) {
+                return 0;
+            }
+
+            @Override public long tryWriteLock(int grpId, long pageId, long page) {
+                return 0;
+            }
+
+            @Override public void writeUnlock(int grpId, long pageId, long page, Boolean walPlc, boolean dirtyFlag) {
+
+            }
+
+            @Override public boolean isDirty(int grpId, long pageId, long page) {
+                return false;
+            }
+        };
+
+/*
         Mockito.doReturn(pageSize).when(pageMemoryMock).pageSize();
         Mockito.when(pageMemoryMock.realPageSize(Mockito.anyInt())).then(mock -> {
             int grpId = (Integer) mock.getArguments()[0];
@@ -215,8 +294,11 @@ public class PageMemoryTracker implements IgnitePlugin {
 
             return pageSize
                 - (encSpi.encryptedSizeNoPadding(pageSize) - pageSize)
-                - encSpi.blockSize() /* For CRC. */;
+                - encSpi.blockSize() */
+/* For CRC. *//*
+;
         });
+*/
 
         GridCacheSharedContext sharedCtx = gridCtx.cache().context();
 
