@@ -24,6 +24,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.processors.cache.CacheGroupContext;
 import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.GridDhtPartitionMap;
@@ -44,9 +45,9 @@ public class SqlSystemViewPartitionStates extends SqlAbstractLocalSystemView {
      */
     public SqlSystemViewPartitionStates(GridKernalContext ctx) {
         super("PARTITION_STATES", "Partition states (allocation map)", ctx, "CACHE_GROUP_ID,NODE_ID,PARTITION",
-            newColumn("CACHE_GROUP_ID"),
+            newColumn("CACHE_GROUP_ID", Value.INT),
             newColumn("NODE_ID", Value.UUID),
-            newColumn("PARTITION"),
+            newColumn("PARTITION", Value.INT),
             newColumn("STATE")
         );
     }
@@ -60,6 +61,9 @@ public class SqlSystemViewPartitionStates extends SqlAbstractLocalSystemView {
         Integer grpIdFilter = grpIdCond.isEquality() ? grpIdCond.valueForEquality().getInt() : null;
         Integer partFilter = partCond.isEquality() ? partCond.valueForEquality().getInt() : null;
         UUID nodeFilter = nodeCond.isEquality() ? uuidFromValue(nodeCond.valueForEquality()) : null;
+
+        if (nodeCond.isEquality() && nodeFilter == null)
+            return Collections.emptyIterator();
 
         AtomicLong rowKey = new AtomicLong();
 
@@ -77,6 +81,13 @@ public class SqlSystemViewPartitionStates extends SqlAbstractLocalSystemView {
             true)));
     }
 
+    /** {@inheritDoc} */
+    @Override public long getRowCount() {
+        // Approximate row count.
+        return ctx.cache().cacheGroups().size() * ctx.discovery().aliveServerNodes().size() *
+            RendezvousAffinityFunction.DFLT_PARTITION_COUNT;
+    }
+
     /**
      * Filtered set of partition states.
      *
@@ -84,7 +95,7 @@ public class SqlSystemViewPartitionStates extends SqlAbstractLocalSystemView {
      * @param partFilter Partition number or {@code null} if filter don't needed.
      */
     private Set<Map.Entry<Integer, GridDhtPartitionState>> partStates(GridDhtPartitionMap partMap, Integer partFilter) {
-        if (partFilter == null)
+        if (partFilter == null || partFilter < 0)
             return partMap.entrySet();
 
         GridDhtPartitionState state = partMap.get(partFilter);
