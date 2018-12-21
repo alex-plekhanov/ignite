@@ -42,6 +42,7 @@ import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewCach
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewNodeAttributes;
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewNodeMetrics;
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewNodes;
+import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewPartitionAssignment;
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewPartitionStates;
 import org.apache.ignite.internal.processors.query.schema.SchemaIndexCacheVisitor;
 import org.apache.ignite.internal.util.typedef.F;
@@ -168,6 +169,7 @@ public class SchemaManager {
         views.add(new SqlSystemViewCaches(ctx));
         views.add(new SqlSystemViewCacheGroups(ctx));
         views.add(new SqlSystemViewPartitionStates(ctx));
+        views.add(new SqlSystemViewPartitionAssignment(ctx));
 
         return views;
     }

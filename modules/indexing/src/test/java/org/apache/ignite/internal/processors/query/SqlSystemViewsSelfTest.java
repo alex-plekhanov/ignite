@@ -778,6 +778,11 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
 
         assertColumnTypes(resAll.get(0), Integer.class, UUID.class, Integer.class, String.class);
 
+        resAll = execSql("SELECT CACHE_GROUP_ID, TOPOLoGY_VERSION, PARTITION, NODE_ID, IS_PRIMARY FROM " +
+            "IGNITE.PARTITION_ASSIGNMENT");
+
+        assertColumnTypes(resAll.get(0), Integer.class, String.class, Integer.class, UUID.class, Boolean.class);
+
         String partStateSql = "SELECT STATE FROM IGNITE.PARTITION_STATES WHERE CACHE_GROUP_ID = ? AND NODE_ID = ? " +
             "AND PARTITION = ?";
 
@@ -836,6 +841,8 @@ public class SqlSystemViewsSelfTest extends GridCommonAbstractTest {
             assertEquals(10L, execSql(ignite, cntByStateSql, cacheGrpId1, cacheGrpId2, owningState).get(0).get(0));
             assertEquals(0L, execSql(ignite, cntByStateSql, cacheGrpId1, cacheGrpId2, movingState).get(0).get(0));
         }
+
+        stopGrid(2);
     }
 
     /**

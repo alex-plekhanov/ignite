@@ -67,8 +67,8 @@ public class SqlSystemViewPartitionStates extends SqlAbstractLocalSystemView {
 
         AtomicLong rowKey = new AtomicLong();
 
-        return F.concat(F.concat(F.iterator(grpPartTop(grpIdFilter).entrySet(),
-            grpTop -> F.iterator(nodeParts(grpTop.getValue(), nodeFilter).entrySet(),
+        return F.concat(F.iterator(grpPartTop(grpIdFilter).entrySet(),
+            grpTop -> F.concat(F.iterator(nodeParts(grpTop.getValue(), nodeFilter).entrySet(),
                 nodeToParts -> F.iterator(partStates(nodeToParts.getValue(), partFilter),
                     partToStates -> createRow(ses,
                         rowKey.incrementAndGet(),
@@ -77,8 +77,8 @@ public class SqlSystemViewPartitionStates extends SqlAbstractLocalSystemView {
                         partToStates.getKey(),
                         partToStates.getValue()),
                     true),
-                true),
-            true)));
+                true)),
+            true));
     }
 
     /** {@inheritDoc} */
@@ -95,10 +95,10 @@ public class SqlSystemViewPartitionStates extends SqlAbstractLocalSystemView {
      * @param partFilter Partition number or {@code null} if filter don't needed.
      */
     private Set<Map.Entry<Integer, GridDhtPartitionState>> partStates(GridDhtPartitionMap partMap, Integer partFilter) {
-        if (partFilter == null || partFilter < 0)
+        if (partFilter == null)
             return partMap.entrySet();
 
-        GridDhtPartitionState state = partMap.get(partFilter);
+        GridDhtPartitionState state = partFilter >= 0 ? partMap.get(partFilter) : null;
 
         return state == null ? Collections.emptySet() : F.asMap(partFilter, state).entrySet();
     }
