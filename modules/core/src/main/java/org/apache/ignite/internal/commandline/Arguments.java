@@ -19,6 +19,7 @@ package org.apache.ignite.internal.commandline;
 
 import org.apache.ignite.internal.client.GridClientConfiguration;
 import org.apache.ignite.internal.commandline.cache.CacheArguments;
+import org.apache.ignite.internal.visor.misc.VisorWalTaskArg;
 import org.apache.ignite.internal.visor.tx.VisorTxTaskArg;
 
 /**
@@ -62,14 +63,9 @@ public class Arguments {
     private CacheArguments cacheArgs;
 
     /**
-     * Action for WAL command.
-     */
-    private String walAct;
-
-    /**
      * Arguments for WAL command.
      */
-    private String walArgs;
+    private VisorWalTaskArg walArgs;
 
     /** Ping timeout for grid client. See {@link GridClientConfiguration#getPingTimeout()}. */
     private long pingTimeout;
@@ -114,7 +110,6 @@ public class Arguments {
      * @param baselineArgs Baseline args.
      * @param txArg TX arg.
      * @param cacheArgs --cache subcommand arguments.
-     * @param walAct WAL action.
      * @param walArgs WAL args.
      * @param pingTimeout Ping timeout. See {@link GridClientConfiguration#getPingTimeout()}.
      * @param pingInterval Ping interval. See {@link GridClientConfiguration#getPingInterval()}.
@@ -130,7 +125,7 @@ public class Arguments {
      * @param sslTrustStoreType Truststore Type.
      */
     public Arguments(Command cmd, String host, String port, String user, String pwd, String baselineAct,
-        String baselineArgs, VisorTxTaskArg txArg, CacheArguments cacheArgs, String walAct, String walArgs,
+        String baselineArgs, VisorTxTaskArg txArg, CacheArguments cacheArgs, VisorWalTaskArg walArgs,
         Long pingTimeout, Long pingInterval, boolean autoConfirmation,
         String sslProtocol, String sslCipherSuites, String sslKeyAlgorithm,
         String sslKeyStorePath, char[] sslKeyStorePassword, String sslKeyStoreType,
@@ -148,7 +143,6 @@ public class Arguments {
         this.txArg = txArg;
         this.cacheArgs = cacheArgs;
 
-        this.walAct = walAct;
         this.walArgs = walArgs;
 
         this.pingTimeout = pingTimeout;
@@ -247,16 +241,9 @@ public class Arguments {
     }
 
     /**
-     * @return WAL action.
-     */
-    public String walAction() {
-        return walAct;
-    }
-
-    /**
      * @return WAL arguments.
      */
-    public String walArguments() {
+    public VisorWalTaskArg walArguments() {
         return walArgs;
     }
 

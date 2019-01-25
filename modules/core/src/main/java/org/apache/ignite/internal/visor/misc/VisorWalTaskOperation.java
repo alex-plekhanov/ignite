@@ -27,7 +27,10 @@ public enum VisorWalTaskOperation {
     PRINT_UNUSED_WAL_SEGMENTS,
 
     /** Delete unused wal segments. */
-    DELETE_UNUSED_WAL_SEGMENTS;
+    DELETE_UNUSED_WAL_SEGMENTS,
+
+    /** Analyze WAL segments. */
+    ANALYZE_WAL_SEGMENTS;
 
     /** Enumerated values. */
     private static final VisorWalTaskOperation[] VALS = values();

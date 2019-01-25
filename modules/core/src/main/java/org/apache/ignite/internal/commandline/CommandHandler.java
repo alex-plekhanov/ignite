@@ -68,6 +68,9 @@ import org.apache.ignite.internal.commandline.cache.distribution.CacheDistributi
 import org.apache.ignite.internal.commandline.cache.reset_lost_partitions.CacheResetLostPartitionsTask;
 import org.apache.ignite.internal.commandline.cache.reset_lost_partitions.CacheResetLostPartitionsTaskArg;
 import org.apache.ignite.internal.commandline.cache.reset_lost_partitions.CacheResetLostPartitionsTaskResult;
+import org.apache.ignite.internal.pagemem.wal.WALIterator;
+import org.apache.ignite.internal.processors.cache.persistence.wal.FileWALPointer;
+import org.apache.ignite.internal.processors.cache.persistence.wal.reader.IgniteWalIteratorFactory;
 import org.apache.ignite.internal.processors.cache.verify.CacheInfo;
 import org.apache.ignite.internal.processors.cache.verify.ContentionInfo;
 import org.apache.ignite.internal.processors.cache.verify.IdleVerifyResultV2;
@@ -297,6 +300,24 @@ public class CommandHandler {
 
     /** */
     static final String WAL_DELETE = "delete";
+
+    /** */
+    static final String WAL_ANALYZE = "analyze";
+
+    /** */
+    private static final String WAL_STANDALONE = "--standalone";
+
+    /** */
+    private static final String WAL_DIR = "--dir";
+
+    /** */
+    private static final String WAL_NODES = "--nodes";
+
+    /** */
+    private static final String WAL_FROM_SEGMENT = "--from-segment";
+
+    /** */
+    private static final String WAL_TO_SEGMENT = "--to-segment";
 
     /** */
     static final String DELIM = "--------------------------------------------------------------------------------";
@@ -566,7 +587,7 @@ public class CommandHandler {
                 break;
 
             case WAL:
-                if (WAL_DELETE.equals(args.walAction()))
+                if (args.walArguments().getOperation() == VisorWalTaskOperation.DELETE_UNUSED_WAL_SEGMENTS)
                     str = "Warning: the command will delete unused WAL segments.";
 
                 break;
@@ -1477,18 +1498,22 @@ public class CommandHandler {
      * Execute WAL command.
      *
      * @param client Client.
-     * @param walAct WAL action to execute.
      * @param walArgs WAL args.
      * @throws Throwable If failed to execute wal action.
      */
-    private void wal(GridClient client, String walAct, String walArgs) throws Throwable {
-        switch (walAct) {
-            case WAL_DELETE:
+    private void wal(GridClient client, VisorWalTaskArg walArgs) throws Throwable {
+        switch (walArgs.getOperation()) {
+            case ANALYZE_WAL_SEGMENTS:
+                analyzeWalSegments(client, walArgs);
+
+                break;
+
+            case DELETE_UNUSED_WAL_SEGMENTS:
                 deleteUnusedWalSegments(client, walArgs);
 
                 break;
 
-            case WAL_PRINT:
+            case PRINT_UNUSED_WAL_SEGMENTS:
             default:
                 printUnusedWalSegments(client, walArgs);
 
@@ -1502,9 +1527,9 @@ public class CommandHandler {
      * @param client Client.
      * @param walArgs WAL args.
      */
-    private void deleteUnusedWalSegments(GridClient client, String walArgs) throws Throwable {
-        VisorWalTaskResult res = executeTask(client, VisorWalTask.class,
-            walArg(VisorWalTaskOperation.DELETE_UNUSED_WAL_SEGMENTS, walArgs));
+    private void deleteUnusedWalSegments(GridClient client, VisorWalTaskArg walArgs) throws Throwable {
+        VisorWalTaskResult res = executeTask(client, VisorWalTask.class, walArgs);
+
         printDeleteWalSegments0(res);
     }
 
@@ -1512,49 +1537,85 @@ public class CommandHandler {
      * Execute print unused WAL segments task.
      *
      * @param client Client.
-     * @param walArgs Wal args.
+     * @param walArgs WAL args.
      */
-    private void printUnusedWalSegments(GridClient client, String walArgs) throws Throwable {
-        VisorWalTaskResult res = executeTask(client, VisorWalTask.class,
-            walArg(VisorWalTaskOperation.PRINT_UNUSED_WAL_SEGMENTS, walArgs));
+    private void printUnusedWalSegments(GridClient client, VisorWalTaskArg walArgs) throws Throwable {
+        VisorWalTaskResult res = executeTask(client, VisorWalTask.class, walArgs);
+
         printUnusedWalSegments0(res);
     }
 
     /**
-     * Prepare WAL task argument.
+     * Execute analyze WAL segments task.
      *
-     * @param op Operation.
-     * @param s Argument from command line.
-     * @return Task argument.
+     * @param client Client.
+     * @param walArgs WAL args.
      */
-    private VisorWalTaskArg walArg(VisorWalTaskOperation op, String s) {
-        List<String> consistentIds = null;
+    private void analyzeWalSegments(GridClient client, VisorWalTaskArg walArgs) throws Throwable {
+        if (walArgs.isStandaloneMode()) {
+            IgniteWalIteratorFactory.IteratorParametersBuilder parametersBuilder = new IgniteWalIteratorFactory.IteratorParametersBuilder()
+                .keepBinary(true)
+                .filesOrDirs(walArgs.getDir());
 
-        if (!F.isEmpty(s)) {
-            consistentIds = new ArrayList<>();
+            if (walArgs.getFromSegment() >= 0)
+                parametersBuilder.from(new FileWALPointer(walArgs.getFromSegment(), 0, 0));
 
-            for (String consistentId : s.split(","))
-                consistentIds.add(consistentId.trim());
+            if (walArgs.getToSegment() >= 0)
+                parametersBuilder.to(new FileWALPointer(walArgs.getToSegment(), Integer.MAX_VALUE, 0));
+
+            try (WALIterator walIter = new IgniteWalIteratorFactory().iterator(parametersBuilder)) {
+
+                Collection<String> res = VisorWalTask.analyzeWalSegments(walIter);
+
+                log("Statistics for " + walArgs.getDir());
+
+                for (String info : res)
+                    log(i(info));
+
+                nl();
+            }
         }
+        else {
+            VisorWalTaskResult res = executeTask(client, VisorWalTask.class, walArgs);
 
-        switch (op) {
-            case DELETE_UNUSED_WAL_SEGMENTS:
-            case PRINT_UNUSED_WAL_SEGMENTS:
-                return new VisorWalTaskArg(op, consistentIds);
-
-            default:
-                return new VisorWalTaskArg(VisorWalTaskOperation.PRINT_UNUSED_WAL_SEGMENTS, consistentIds);
+            printWalStatistics(res);
         }
-
     }
 
     /**
      * Print list of unused wal segments.
      *
-     * @param taskRes Task result with baseline topology.
+     * @param taskRes Task result.
      */
     private void printUnusedWalSegments0(VisorWalTaskResult taskRes) {
-        log("Unused wal segments per node:");
+        printWalTaskResult("Unused wal segments per node:", taskRes, false);
+    }
+
+    /**
+     * Print list of unused wal segments.
+     *
+     * @param taskRes Task result.
+     */
+    private void printDeleteWalSegments0(VisorWalTaskResult taskRes) {
+        printWalTaskResult("WAL segments deleted for nodes:", taskRes, true);
+    }
+
+    /**
+     * Print WAL statistics.
+     *
+     * @param taskRes Task result with WAL statistics.
+     */
+    private void printWalStatistics(VisorWalTaskResult taskRes) {
+        printWalTaskResult("WAL statistics per node:", taskRes, false);
+    }
+
+    /**
+     * Print WAL task result.
+     *
+     * @param taskRes Task result.
+     */
+    private void printWalTaskResult(String title, VisorWalTaskResult taskRes, boolean quiet) {
+        log(title);
         nl();
 
         Map<String, Collection<String>> res = taskRes.results();
@@ -1567,44 +1628,15 @@ public class CommandHandler {
             log("Node=" + node.getConsistentId());
             log(i("addresses " + U.addressesAsString(node.getAddresses(), node.getHostNames()), 2));
 
-            for (String fileName : entry.getValue())
-                log(i(fileName));
+            if (!quiet) {
+                for (String str : entry.getValue())
+                    log(i(str));
+            }
 
             nl();
         }
 
         for (Map.Entry<String, Exception> entry : failRes.entrySet()) {
-            VisorClusterNode node = nodesInfo.get(entry.getKey());
-
-            log("Node=" + node.getConsistentId());
-            log(i("addresses " + U.addressesAsString(node.getAddresses(), node.getHostNames())), 2);
-            log(i("failed with error: " + entry.getValue().getMessage()));
-            nl();
-        }
-    }
-
-    /**
-     * Print list of unused wal segments.
-     *
-     * @param taskRes Task result with baseline topology.
-     */
-    private void printDeleteWalSegments0(VisorWalTaskResult taskRes) {
-        log("WAL segments deleted for nodes:");
-        nl();
-
-        Map<String, Collection<String>> res = taskRes.results();
-        Map<String, Exception> errors = taskRes.exceptions();
-        Map<String, VisorClusterNode> nodesInfo = taskRes.getNodesInfo();
-
-        for (Map.Entry<String, Collection<String>> entry : res.entrySet()) {
-            VisorClusterNode node = nodesInfo.get(entry.getKey());
-
-            log("Node=" + node.getConsistentId());
-            log(i("addresses " + U.addressesAsString(node.getAddresses(), node.getHostNames())), 2);
-            nl();
-        }
-
-        for (Map.Entry<String, Exception> entry : errors.entrySet()) {
             VisorClusterNode node = nodesInfo.get(entry.getKey());
 
             log("Node=" + node.getConsistentId());
@@ -1900,9 +1932,7 @@ public class CommandHandler {
 
         Long pingTimeout = DFLT_PING_TIMEOUT;
 
-        String walAct = "";
-
-        String walArgs = "";
+        VisorWalTaskArg walArgs = null;
 
         boolean autoConfirmation = false;
 
@@ -1986,18 +2016,10 @@ public class CommandHandler {
 
                         commands.add(WAL);
 
-                        str = nextArg("Expected arguments for " + WAL.text());
-
-                        walAct = str.toLowerCase();
-
-                        if (WAL_PRINT.equals(walAct) || WAL_DELETE.equals(walAct))
-                            walArgs = (str = peekNextArg()) != null && !isCommandOrOption(str)
-                                ? nextArg("Unexpected argument for " + WAL.text() + ": " + walAct)
-                                : "";
-                        else
-                            throw new IllegalArgumentException("Unexpected action " + walAct + " for " + WAL.text());
+                        walArgs = parseWalArguments();
 
                         break;
+
                     default:
                         throw new IllegalArgumentException("Unexpected command: " + str);
                 }
@@ -2112,8 +2134,7 @@ public class CommandHandler {
 
         return new Arguments(cmd, host, port, user, pwd,
             baselineAct, baselineArgs,
-            txArgs, cacheArgs,
-            walAct, walArgs,
+            txArgs, cacheArgs, walArgs,
             pingTimeout, pingInterval, autoConfirmation,
             sslProtocol, sslCipherSuites,
             sslKeyAlgorithm, sslKeyStorePath, sslKeyStorePassword, sslKeyStoreType,
@@ -2530,6 +2551,80 @@ public class CommandHandler {
     }
 
     /**
+     * @return WAL task arguments.
+     */
+    private VisorWalTaskArg parseWalArguments() {
+        String str = nextArg("Expected arguments for " + WAL.text());
+
+        String walAct = str.toLowerCase();
+
+        VisorWalTaskOperation op =
+            WAL_PRINT.equals(walAct) ? VisorWalTaskOperation.PRINT_UNUSED_WAL_SEGMENTS :
+            WAL_DELETE.equals(walAct) ? VisorWalTaskOperation.DELETE_UNUSED_WAL_SEGMENTS :
+            WAL_ANALYZE.equals(walAct) ? VisorWalTaskOperation.ANALYZE_WAL_SEGMENTS :
+            null;
+
+        if (op == null)
+            throw new IllegalArgumentException("Unexpected action " + walAct + " for " + WAL.text());
+
+        List<String> consistentIds = null;
+
+        boolean standalone = false;
+
+        String walDir = null;
+
+        long fromSegment = -1;
+
+        long toSegment = -1;
+
+        if (op == VisorWalTaskOperation.PRINT_UNUSED_WAL_SEGMENTS || op == VisorWalTaskOperation.DELETE_UNUSED_WAL_SEGMENTS) {
+            if ((str = peekNextArg()) != null && !isCommandOrOption(str)) {
+                nextArg("Unexpected argument for " + WAL.text() + ": " + walAct);
+
+                consistentIds = getConsistentIds(str);
+            }
+        }
+        else if (op == VisorWalTaskOperation.ANALYZE_WAL_SEGMENTS) {
+            while ((str = peekNextArg()) != null) {
+                nextArg("");
+
+                if (WAL_STANDALONE.equals(str))
+                    standalone = true;
+                else if (WAL_NODES.equals(str))
+                    consistentIds = getConsistentIds(nextArg("Unexpected argument for " + WAL_NODES));
+                else if (WAL_DIR.equals(str))
+                    walDir = nextArg(WAL_DIR);
+                else if (WAL_FROM_SEGMENT.equals(str))
+                    fromSegment = nextLongArg(WAL_FROM_SEGMENT);
+                else if (WAL_TO_SEGMENT.equals(str))
+                    toSegment = nextLongArg(WAL_TO_SEGMENT);
+                else
+                    throw new IllegalArgumentException("Unexpected argument " + str + " for " + WAL.text());
+            }
+
+            if (standalone) {
+                if (consistentIds != null)
+                    throw new IllegalArgumentException(WAL_NODES + " can't be specified for standalone mode");
+
+                if (walDir == null)
+                    throw new IllegalArgumentException(WAL_DIR + " must be specified for standalone mode");
+            }
+            else {
+                if (walDir != null)
+                    throw new IllegalArgumentException(WAL_DIR + " can be specified only for standalone mode");
+
+                if (fromSegment >= 0)
+                    throw new IllegalArgumentException(WAL_FROM_SEGMENT + " can be specified only for standalone mode");
+
+                if (toSegment >= 0)
+                    throw new IllegalArgumentException(WAL_TO_SEGMENT + " can be specified only for standalone mode");
+            }
+        }
+
+        return new VisorWalTaskArg(op, consistentIds, standalone, walDir, fromSegment, toSegment);
+    }
+
+    /**
      * @return Numeric value.
      */
     private long nextLongArg(String lb) {
@@ -2918,7 +3013,7 @@ public class CommandHandler {
                             break;
 
                         case WAL:
-                            wal(client, args.walAction(), args.walArguments());
+                            wal(client, args.walArguments());
 
                             break;
                     }

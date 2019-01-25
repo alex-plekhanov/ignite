@@ -24,7 +24,10 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.IntSummaryStatistics;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,16 +41,23 @@ import org.apache.ignite.compute.ComputeJobResult;
 import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.GridKernalContext;
+import org.apache.ignite.internal.pagemem.wal.WALIterator;
 import org.apache.ignite.internal.pagemem.wal.WALPointer;
+import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
+import org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordPurpose;
+import org.apache.ignite.internal.pagemem.wal.record.WALRecord.RecordType;
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
 import org.apache.ignite.internal.processors.cache.persistence.filename.PdsFolderSettings;
 import org.apache.ignite.internal.processors.cache.persistence.wal.FileWALPointer;
 import org.apache.ignite.internal.processors.cache.persistence.wal.FileWriteAheadLogManager;
+import org.apache.ignite.internal.processors.cache.persistence.wal.reader.IgniteWalIteratorFactory;
+import org.apache.ignite.internal.processors.cache.persistence.wal.reader.IgniteWalIteratorFactory.IteratorParametersBuilder;
 import org.apache.ignite.internal.processors.task.GridInternal;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.visor.VisorJob;
 import org.apache.ignite.internal.visor.VisorMultiNodeTask;
 import org.apache.ignite.internal.visor.VisorTaskArgument;
+import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.resources.LoggerResource;
 import org.jetbrains.annotations.Nullable;
 
@@ -129,6 +139,63 @@ public class VisorWalTask extends VisorMultiNodeTask<VisorWalTaskArg, VisorWalTa
     }
 
     /**
+     * @param walIter WAL iterator.
+     */
+    public static Collection<String> analyzeWalSegments(WALIterator walIter) throws IgniteCheckedException {
+        Collection<String> res = new LinkedList<>();
+
+        Map<RecordType, IntSummaryStatistics> typesStat = new EnumMap<>(RecordType.class);
+        Map<RecordPurpose, IntSummaryStatistics> purposesStat = new EnumMap<>(RecordPurpose.class);
+
+        while (walIter.hasNextX()) {
+            IgniteBiTuple<WALPointer, WALRecord> tup = walIter.nextX();
+
+            WALRecord walRecord = tup.get2();
+
+            IntSummaryStatistics typeStat = typesStat.computeIfAbsent(walRecord.type(),
+                key -> new IntSummaryStatistics());
+
+            typeStat.accept(walRecord.size());
+
+            IntSummaryStatistics purposeStat = purposesStat.computeIfAbsent(walRecord.type().purpose(),
+                key -> new IntSummaryStatistics());
+
+            purposeStat.accept(walRecord.size());
+
+            // TODO phisical records statistics, per checkpoint statistic
+
+/*
+            if (walRecord instanceof PageSnapshot) {
+                PageSnapshot pageSnapshot = (PageSnapshot)walRecord;
+
+                pageSnapshot.fullPageId();
+            }
+            else if (walRecord instanceof PageDeltaRecord) {
+                PageDeltaRecord deltaRecord = (PageDeltaRecord)walRecord;
+
+                deltaRecord.
+            }
+*/
+        }
+
+        res.add("WAL statistics grouped by RecordPurpose:");
+
+        for (Map.Entry<RecordPurpose, IntSummaryStatistics> entry : purposesStat.entrySet()) {
+            res.add("  purpose=" + entry.getKey().name() +
+                ", cnt=" + entry.getValue().getCount() + ", size=" + entry.getValue().getSum());
+        }
+
+        res.add("WAL statistics grouped by RecordType:");
+
+        for (Map.Entry<RecordType, IntSummaryStatistics> entry : typesStat.entrySet()) {
+            res.add("  type=" + entry.getKey().name() + ", purpose=" + entry.getKey().purpose().name() +
+                ", cnt=" + entry.getValue().getCount() + ", size=" + entry.getValue().getSum());
+        }
+
+        return res;
+    }
+
+    /**
      * Performs WAL cleanup per node.
      */
     private static class VisorWalJob extends VisorJob<VisorWalTaskArg, Collection<String>> {
@@ -159,6 +226,16 @@ public class VisorWalTask extends VisorMultiNodeTask<VisorWalTaskArg, VisorWalTa
                     return null;
 
                 switch (arg.getOperation()) {
+                    case ANALYZE_WAL_SEGMENTS:
+                        IteratorParametersBuilder parametersBuilder = new IteratorParametersBuilder()
+                            .keepBinary(true)
+                            .sharedContext(cctx.cache().context())
+                            .filesOrDirs(getWalArchiveDir());
+
+                        try (WALIterator walIter = new IgniteWalIteratorFactory(log).iterator(parametersBuilder)) {
+                            return analyzeWalSegments(walIter);
+                        }
+
                     case DELETE_UNUSED_WAL_SEGMENTS:
                         return deleteUnusedWalSegments(dbMgr, wal);
 

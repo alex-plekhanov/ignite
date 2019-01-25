@@ -38,6 +38,18 @@ public class VisorWalTaskArg extends VisorDataTransferObject{
     /** List of nodes' consistent ids. */
     private List<String> consistentIds;
 
+    /** Standalone mode. */
+    private boolean standaloneMode;
+
+    /** WAL directory (only for standalone mode). */
+    private String dir;
+
+    /** From WAL segment index (only for standalone mode). */
+    private long fromSegment;
+
+    /** To WAL segment index (only for standalone mode). */
+    private long toSegment;
+
     /**
      * Default constructor.
      */
@@ -55,10 +67,19 @@ public class VisorWalTaskArg extends VisorDataTransferObject{
     /**
      * @param op WAL task operation.
      * @param consistentIds Nodes consistent ids.
+     * @param standaloneMode Standalone mode.
+     * @param dir WAL directory.
+     * @param fromSegment From WAL segment index.
+     * @param toSegment To WAL segment index.
      */
-    public VisorWalTaskArg(VisorWalTaskOperation op, List<String> consistentIds) {
+    public VisorWalTaskArg(VisorWalTaskOperation op, List<String> consistentIds, boolean standaloneMode,
+        String dir, long fromSegment, long toSegment) {
         this.op = op;
         this.consistentIds = consistentIds;
+        this.standaloneMode = standaloneMode;
+        this.dir = dir;
+        this.fromSegment = fromSegment;
+        this.toSegment = toSegment;
     }
 
     /**
@@ -79,16 +100,60 @@ public class VisorWalTaskArg extends VisorDataTransferObject{
         return consistentIds;
     }
 
+    /**
+     * Is standalone mode.
+     */
+    public boolean isStandaloneMode() {
+        return standaloneMode;
+    }
+
+    /**
+     * WAL directory.
+     */
+    public String getDir() {
+        return dir;
+    }
+
+    /**
+     * WAL from segment index.
+     */
+    public long getFromSegment() {
+        return fromSegment;
+    }
+
+    /**
+     * WAL to segment index.
+     */
+    public long getToSegment() {
+        return toSegment;
+    }
+
     /** {@inheritDoc} */
     @Override protected void writeExternalData(ObjectOutput out) throws IOException {
         U.writeEnum(out, op);
         U.writeCollection(out, consistentIds);
+        out.writeBoolean(standaloneMode);
+        U.writeString(out, dir);
+        out.writeLong(fromSegment);
+        out.writeLong(toSegment);
     }
 
     /** {@inheritDoc} */
     @Override protected void readExternalData(byte protoVer, ObjectInput in) throws IOException, ClassNotFoundException {
         op = VisorWalTaskOperation.fromOrdinal(in.readByte());
         consistentIds = U.readList(in);
+
+        if (protoVer >= V2) {
+            standaloneMode = in.readBoolean();
+            dir = U.readString(in);
+            fromSegment = in.readLong();
+            toSegment = in.readLong();
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override public byte getProtocolVersion() {
+        return V2;
     }
 
     /** {@inheritDoc} */
