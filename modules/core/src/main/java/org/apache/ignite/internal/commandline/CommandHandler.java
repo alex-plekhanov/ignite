@@ -2011,12 +2011,13 @@ public class CommandHandler {
                         break;
 
                     case WAL:
-                        if (!enableExperimental)
-                            throw new IllegalArgumentException("Experimental command is disabled.");
-
                         commands.add(WAL);
 
                         walArgs = parseWalArguments();
+
+                        if (!enableExperimental && (walArgs.getOperation() == VisorWalTaskOperation.DELETE_UNUSED_WAL_SEGMENTS ||
+                            walArgs.getOperation() == VisorWalTaskOperation.PRINT_UNUSED_WAL_SEGMENTS))
+                            throw new IllegalArgumentException("Experimental command is disabled.");
 
                         break;
 
@@ -2907,6 +2908,12 @@ public class CommandHandler {
 
             if (!args.autoConfirmation() && !confirm(args)) {
                 log("Operation cancelled.");
+
+                return EXIT_CODE_OK;
+            }
+
+            if (args.command() == WAL && args.walArguments().isStandaloneMode()) {
+                wal(null, args.walArguments());
 
                 return EXIT_CODE_OK;
             }

@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.UUID;
 import org.apache.ignite.internal.commandline.cache.CacheArguments;
+import org.apache.ignite.internal.visor.misc.VisorWalTaskOperation;
 import org.apache.ignite.internal.visor.tx.VisorTxOperation;
 import org.apache.ignite.internal.visor.tx.VisorTxProjection;
 import org.apache.ignite.internal.visor.tx.VisorTxSortOrder;
@@ -260,13 +261,13 @@ public class CommandHandlerParsingTest {
 
         assertEquals(WAL, args.command());
 
-        assertEquals(WAL_PRINT, args.walAction());
+        assertEquals(VisorWalTaskOperation.PRINT_UNUSED_WAL_SEGMENTS, args.walArguments().getOperation());
 
         String nodes = UUID.randomUUID().toString() + "," + UUID.randomUUID().toString();
 
         args = hnd.parseAndValidate(Arrays.asList(WAL.text(), WAL_DELETE, nodes));
 
-        assertEquals(WAL_DELETE, args.walAction());
+        assertEquals(VisorWalTaskOperation.DELETE_UNUSED_WAL_SEGMENTS, args.walArguments().getOperation());
 
         assertEquals(nodes, args.walArguments());
 

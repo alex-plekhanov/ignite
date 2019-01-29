@@ -162,7 +162,7 @@ public class VisorWalTask extends VisorMultiNodeTask<VisorWalTaskArg, VisorWalTa
 
             purposeStat.accept(walRecord.size());
 
-            // TODO phisical records statistics, per checkpoint statistic
+            // TODO physical records statistics, per checkpoint statistic
 
 /*
             if (walRecord instanceof PageSnapshot) {
