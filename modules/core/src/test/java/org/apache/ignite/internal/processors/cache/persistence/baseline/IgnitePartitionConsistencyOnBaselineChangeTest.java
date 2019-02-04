@@ -16,7 +16,6 @@
  */
 package org.apache.ignite.internal.processors.cache.persistence.baseline;
 
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
@@ -24,10 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.IgniteDataStreamer;
 import org.apache.ignite.cache.CacheMode;
-import org.apache.ignite.cache.QueryEntity;
-import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.DataRegionConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
@@ -41,46 +37,32 @@ import org.apache.ignite.internal.visor.verify.VisorIdleVerifyTaskArg;
 import org.apache.ignite.internal.visor.verify.VisorIdleVerifyTaskV2;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
+import org.apache.ignite.testframework.junits.multijvm.IgniteProcessProxy;
 import org.apache.ignite.transactions.Transaction;
 import org.apache.ignite.transactions.TransactionConcurrency;
-import org.apache.ignite.transactions.TransactionIsolation;
 import org.junit.Test;
 
-import static org.apache.ignite.cache.CacheAtomicityMode.ATOMIC;
 import static org.apache.ignite.cache.CacheAtomicityMode.TRANSACTIONAL;
 import static org.apache.ignite.cache.CacheWriteSynchronizationMode.FULL_SYNC;
 import static org.apache.ignite.transactions.TransactionConcurrency.OPTIMISTIC;
 import static org.apache.ignite.transactions.TransactionConcurrency.PESSIMISTIC;
 import static org.apache.ignite.transactions.TransactionIsolation.REPEATABLE_READ;
-import static org.apache.ignite.transactions.TransactionIsolation.SERIALIZABLE;
 
 /**
  *
  */
 public class IgnitePartitionConsistencyOnBaselineChangeTest extends GridCommonAbstractTest {
     /** Initial grids count. */
-    private static int GRIDS_COUNT = 6;
+    private static int GRIDS_CNT = 6;
 
     /** Transactional cache name. */
     protected static final String TX_CACHE_NAME = "txCache";
-
-    /** Atomic cache name. */
-    protected static final String ATOMIC_CACHE_NAME = "atomicCache";
 
     /** Keys count. */
     protected static final int KEYS_CNT = 50;
 
     /** Stop tx load flag. */
-    protected static final AtomicBoolean txStop = new AtomicBoolean();
-
-    /** Stop atomic load flag. */
-    protected static final AtomicBoolean atomicStop = new AtomicBoolean();
-
-    /** Account value bound. */
-    protected static final long ACCOUNT_VAL_BOUND = 1000;
-
-    /** Account value origin. */
-    protected static final long ACCOUNT_VAL_ORIGIN = 100;
+    private static final AtomicBoolean txStop = new AtomicBoolean();
 
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
@@ -102,16 +84,9 @@ public class IgnitePartitionConsistencyOnBaselineChangeTest extends GridCommonAb
             .setCacheMode(CacheMode.REPLICATED)
             //.setAffinity(new RendezvousAffinityFunction(false, 32))
             .setWriteSynchronizationMode(FULL_SYNC);
-            //.setQueryEntities(Collections.singletonList(new QueryEntity(Integer.class, Long.class)));
+        //.setQueryEntities(Collections.singletonList(new QueryEntity(Integer.class, Long.class)));
 
-        CacheConfiguration<Integer, Long> atomicCacheCfg = new CacheConfiguration<Integer, Long>(ATOMIC_CACHE_NAME)
-            .setBackups(3)
-            .setAtomicityMode(ATOMIC)
-            .setAffinity(new RendezvousAffinityFunction(false, 32))
-            .setWriteSynchronizationMode(FULL_SYNC)
-            .setQueryEntities(Collections.singletonList(new QueryEntity(Integer.class, Long.class)));
-
-        cfg.setCacheConfiguration(txCacheCfg, atomicCacheCfg);
+        cfg.setCacheConfiguration(txCacheCfg);
 
         return cfg;
     }
@@ -146,9 +121,7 @@ public class IgnitePartitionConsistencyOnBaselineChangeTest extends GridCommonAb
 
                     TransactionConcurrency concurrency = rnd.nextBoolean() ? PESSIMISTIC : OPTIMISTIC;
 
-                    TransactionIsolation isolation = REPEATABLE_READ;
-
-                    try (Transaction tx0 = tx = ignite.transactions().txStart(concurrency, isolation, 0, 100)) {
+                    try (Transaction tx0 = tx = ignite.transactions().txStart(concurrency, REPEATABLE_READ, 0, 100)) {
                         int acc0 = rnd.nextInt(KEYS_CNT);
 
                         int acc1;
@@ -192,38 +165,6 @@ public class IgnitePartitionConsistencyOnBaselineChangeTest extends GridCommonAb
     }
 
     /**
-     * Starts load for transactional cache.
-     *
-     * @param threads Threads.
-     * @param ignite Load source instance.
-     */
-    @SuppressWarnings("SameParameterValue")
-    protected IgniteInternalFuture startAtomicLoad(int threads, Ignite ignite) {
-        atomicStop.set(false);
-
-        return GridTestUtils.runMultiThreadedAsync(() -> {
-                ThreadLocalRandom rnd = ThreadLocalRandom.current();
-
-                while (!atomicStop.get()) {
-                    IgniteCache<Integer, Long> cache = ignite.cache(ATOMIC_CACHE_NAME);
-
-                    int cnt = rnd.nextInt(KEYS_CNT / 10);
-
-                    for (int i = 0; i < cnt; i++) {
-                        try {
-                            cache.put(rnd.nextInt(KEYS_CNT), rnd.nextLong(ACCOUNT_VAL_ORIGIN, ACCOUNT_VAL_BOUND + 1));
-                        }
-                        catch (Throwable e) {
-                            //log.error("Unexpected error", e);
-                        }
-                    }
-                }
-            },
-            threads, "atomic-load-thread"
-        );
-    }
-
-    /**
      * @param fut Future for completion awaiting.
      */
     protected void stopTxLoad(IgniteInternalFuture fut) throws IgniteCheckedException {
@@ -233,69 +174,31 @@ public class IgnitePartitionConsistencyOnBaselineChangeTest extends GridCommonAb
     }
 
     /**
-     * @param fut Future for completion awaiting.
-     */
-    protected void stopAtomicLoad(IgniteInternalFuture fut) throws IgniteCheckedException {
-        atomicStop.set(true);
-
-        fut.get();
-    }
-
-    /**
-     * @param ignite Ignite.
-     * @param cacheName Cache name.
-     * @return Sum of all cache values.
-     */
-    protected long populateData(Ignite ignite, String cacheName) {
-        ThreadLocalRandom rnd = ThreadLocalRandom.current();
-
-        long total = 0;
-
-        try (IgniteDataStreamer<Integer, Long> dataStreamer = ignite.dataStreamer(cacheName)) {
-            dataStreamer.allowOverwrite(false);
-
-            for (int i = 0; i < KEYS_CNT; i++) {
-                long val = rnd.nextLong(ACCOUNT_VAL_ORIGIN, ACCOUNT_VAL_BOUND + 1);
-
-                dataStreamer.addData(i, val);
-
-                total += val;
-            }
-
-            dataStreamer.flush();
-        }
-
-        log.info("Total sum for cache '" + cacheName + "': " + total);
-
-        return total;
-    }
-
-    /**
      * Restart node in BLT, add new node to BLT.
      */
     @Test
     public void testRestartNodeAddNewNodeToBaseline() throws Exception {
-        startGrids(GRIDS_COUNT);
+        int restartNodeIdx = 2;
+
+        startGrids(restartNodeIdx);
+
+        startRemoteGrid(getTestIgniteInstanceName(restartNodeIdx), null, null);
+
+        for (int gridIdx = restartNodeIdx + 1; gridIdx < GRIDS_CNT; gridIdx++)
+            startGrid(gridIdx);
 
         Ignite client = startGrid(getConfiguration("client").setClientMode(true));
 
         grid(0).cluster().active(true);
 
-        populateData(client, ATOMIC_CACHE_NAME);
-
-        populateData(client, TX_CACHE_NAME);
-
         IgniteInternalFuture futTx = startTxLoad(5, client);
-
-        IgniteInternalFuture futAtomic = startAtomicLoad(5, client);
 
         doSleep(10_000L);
 
-        int restartNodeIdx = 2;
+        String restartNodeConsistentId = getTestIgniteInstanceName(restartNodeIdx);
 
-        String restartNodeConsistentId = grid(restartNodeIdx).cluster().localNode().consistentId().toString();
-
-        stopGrid(restartNodeIdx);
+        IgniteProcessProxy.kill(getTestIgniteInstanceName(restartNodeIdx));
+        //stopGrid(restartNodeIdx);
 
         doSleep(10_000L);
 
@@ -305,13 +208,11 @@ public class IgnitePartitionConsistencyOnBaselineChangeTest extends GridCommonAb
 
         doSleep(10_000L);
 
-        startGrid(GRIDS_COUNT);
+        startGrid(GRIDS_CNT);
 
         grid(0).cluster().setBaselineTopology(grid(0).cluster().topologyVersion());
 
         stopTxLoad(futTx);
-
-        stopAtomicLoad(futAtomic);
 
         assertTrue(idleVerify(grid(0)));
     }
