@@ -64,6 +64,11 @@ public class CompressionProcessorImpl extends CompressionProcessor {
     }
 
     /** {@inheritDoc} */
+    @Override public void checkPageCompressionSupported() throws IgniteCheckedException {
+        // No-op.
+    }
+
+    /** {@inheritDoc} */
     @Override public void checkPageCompressionSupported(Path storagePath, int pageSize) throws IgniteCheckedException {
         if (!U.isLinux())
             throw new IgniteCheckedException("Currently page compression is supported only for Linux.");
@@ -98,16 +103,7 @@ public class CompressionProcessorImpl extends CompressionProcessor {
         assert U.isPow2(blockSize): blockSize;
         assert page.position() == 0 && page.limit() == pageSize;
 
-        PageIO io = PageIO.getPageIO(page);
-
-        if (!(io instanceof CompactablePageIO))
-            return page;
-
-        ByteBuffer compactPage = compactBuf.get();
-
-        // Drop the garbage from the page.
-        ((CompactablePageIO)io).compactPage(page, compactPage, pageSize);
-        page.clear();
+        ByteBuffer compactPage = doCompactPage(page, pageSize);
 
         int compactSize = compactPage.limit();
 
@@ -133,6 +129,26 @@ public class CompressionProcessorImpl extends CompressionProcessor {
         }
 
         return setCompressionInfo(compressedPage, compression, compressedSize, compactSize);
+    }
+
+    /**
+     * @param page Page buffer.
+     * @param pageSize Page size.
+     * @return Compacted page buffer.
+     */
+    private ByteBuffer doCompactPage(ByteBuffer page, int pageSize) throws IgniteCheckedException {
+        PageIO io = PageIO.getPageIO(page);
+
+        if (!(io instanceof CompactablePageIO))
+            return page;
+
+        ByteBuffer compactPage = compactBuf.get();
+
+        // Drop the garbage from the page.
+        ((CompactablePageIO)io).compactPage(page, compactPage, pageSize);
+        page.clear();
+
+        return compactPage;
     }
 
     /**
@@ -339,9 +355,14 @@ public class CompressionProcessorImpl extends CompressionProcessor {
             assert page.limit() == compactSize;
         }
 
-        CompactablePageIO io = PageIO.getPageIO(page);
+        PageIO io = PageIO.getPageIO(page);
 
-        io.restorePage(page, pageSize);
+        if (io instanceof CompactablePageIO)
+            ((CompactablePageIO)io).restorePage(page, pageSize);
+        else {
+            assert compactSize == pageSize
+                : "Wrong compacted page size [compactSize=" + compactSize + ", pageSize=" + pageSize + ']';
+        }
 
         setCompressionInfo(page, null, 0, 0);
     }

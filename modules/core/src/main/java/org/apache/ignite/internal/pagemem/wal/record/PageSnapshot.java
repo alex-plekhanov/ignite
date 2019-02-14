@@ -38,7 +38,7 @@ public class PageSnapshot extends WALRecord implements WalRecordCacheGroupAware{
     private FullPageId fullPageId;
 
     /**
-     * PageSIze without encryption overhead.
+     * PageSize without encryption overhead.
      */
     private int realPageSize;
 
@@ -85,6 +85,13 @@ public class PageSnapshot extends WALRecord implements WalRecordCacheGroupAware{
      */
     public FullPageId fullPageId() {
         return fullPageId;
+    }
+
+    /**
+     * @return Page size without encryption overhead.
+     */
+    public int realPageSize() {
+        return realPageSize;
     }
 
     /** {@inheritDoc} */

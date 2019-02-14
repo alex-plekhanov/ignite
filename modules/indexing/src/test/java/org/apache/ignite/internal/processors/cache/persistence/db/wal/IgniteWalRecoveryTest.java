@@ -1367,7 +1367,23 @@ public class IgniteWalRecoveryTest extends GridCommonAbstractTest {
                 if (rec instanceof PageSnapshot) {
                     PageSnapshot page = (PageSnapshot)rec;
 
-                    rolledPages.put(page.fullPageId(), page.pageData());
+                    byte[] pageData = page.pageData();
+
+                    if (pageData.length < pageSize) {
+                        buf.clear();
+                        buf.put(pageData);
+                        buf.flip();
+
+                        sharedCtx.kernalContext().compress().decompressPage(buf, pageSize);
+
+                        pageData = new byte[pageSize];
+
+                        buf.position(0);
+
+                        buf.get(pageData);
+                    }
+
+                    rolledPages.put(page.fullPageId(), pageData);
                 }
                 else if (rec instanceof PageDeltaRecord) {
                     PageDeltaRecord delta = (PageDeltaRecord)rec;

@@ -2166,6 +2166,8 @@ public class GridCacheDatabaseSharedManager extends IgniteCacheDatabaseSharedMan
                         if (restoreBinaryState.needApplyBinaryUpdate()) {
                             PageSnapshot pageSnapshot = (PageSnapshot)rec;
 
+                            // TODO decompress
+
                             // Here we do not require tag check because we may be applying memory changes after
                             // several repetitive restarts and the same pages may have changed several times.
                             int groupId = pageSnapshot.fullPageId().groupId();
@@ -2418,6 +2420,9 @@ public class GridCacheDatabaseSharedManager extends IgniteCacheDatabaseSharedMan
 
             try {
                 PageUtils.putBytes(pageAddr, 0, pageSnapshotRecord.pageData());
+
+                if (pageSnapshotRecord.pageData().length < pageSize())
+                    cctx.kernalContext().compress().decompressPage(pageMem.pageBuffer(pageAddr), pageSize());
             }
             finally {
                 pageMem.writeUnlock(grpId, pageId, page, null, true, true);
