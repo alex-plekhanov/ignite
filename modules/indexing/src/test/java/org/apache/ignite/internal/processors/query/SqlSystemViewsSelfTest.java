@@ -27,6 +27,7 @@ import java.util.Random;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.cache.Cache;
 import javax.cache.configuration.Factory;
@@ -48,11 +49,14 @@ import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.configuration.TopologyValidator;
 import org.apache.ignite.internal.ClusterMetricsSnapshot;
+import org.apache.ignite.internal.GridKernalContextImpl;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteNodeAttributes;
 import org.apache.ignite.internal.processors.cache.GridCacheProcessor;
 import org.apache.ignite.internal.processors.cache.index.AbstractIndexingCommonTest;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
+import org.apache.ignite.internal.processors.jobmetrics.GridJobMetrics;
+import org.apache.ignite.internal.processors.jobmetrics.GridJobMetricsProcessor;
 import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemViewTables;
 import org.apache.ignite.internal.util.lang.GridNodePredicate;
 import org.apache.ignite.internal.util.typedef.F;
@@ -1112,4 +1116,59 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
             return "TestTopologyValidator";
         }
     }
+
+    @Test
+    public void testDurationMetricsCanBeLonger24Hours() throws Exception {
+        long LONG_DURATION_MS = TimeUnit.DAYS.toMillis(365);
+
+        IgniteEx ignite = startGrid(getConfiguration().setMetricsUpdateFrequency(500L));
+
+        GridJobMetricsProcessor jobMetricsProc = new GridJobMetricsProcessor(ignite.context()) {
+            @Override public GridJobMetrics getJobMetrics() {
+                return new GridJobMetrics() {
+                    @Override public long getTotalJobsExecutionTime() {
+                        return LONG_DURATION_MS;
+                    }
+                };
+            }
+        };
+
+        ((GridKernalContextImpl)ignite.context()).add(jobMetricsProc);
+
+        List<?> durationMetrics = execSql(ignite, "SELECT TOTAL_JOBS_EXECUTE_TIME FROM IGNITE.NODE_METRICS").get(0);
+
+        assertEquals(LONG_DURATION_MS, durationMetrics.get(0));
+    }
+/*
+    private static class DummySysView extends SqlAbstractLocalSystemView {
+        @Override public Iterator<Row> getRows(Session ses, SearchRow first, SearchRow last) {
+            return null;
+        }
+    }
+*/
+/*
+    @Test
+    public void testDurationMetricsCanBeLonger24Hours() throws Exception {
+        Instant.now(Clock.offset(Clock.systemDefaultZone(), Duration.ofDays(-365)));
+
+        long offsetTime = System.currentTimeMillis();
+
+        try {
+            IgniteEx ignite = startGrid(getConfiguration().setMetricsUpdateFrequency(500L));
+
+            Instant.now(Clock.systemDefaultZone());
+
+            long restoredTime = System.currentTimeMillis();
+
+            assertTrue(GridTestUtils.waitForCondition(() -> ignite.localNode().metrics().getLastUpdateTime() >= restoredTime, 5000L));
+
+            List<?> durationMetrics = execSql(ignite, "SELECT UPTIME FROM IGNITE.NODE_METRICS").get(0);
+
+            assertTrue((Long)durationMetrics.get(0) >= TimeUnit.DAYS.toMillis(365));
+        }
+        finally {
+            Instant.now(Clock.systemDefaultZone());
+        }
+    }
+*/
 }
