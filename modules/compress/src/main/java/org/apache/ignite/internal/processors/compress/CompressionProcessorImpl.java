@@ -28,8 +28,10 @@ import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.configuration.DiskPageCompression;
 import org.apache.ignite.internal.GridKernalContext;
+import org.apache.ignite.internal.pagemem.PageUtils;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.CompactablePageIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
+import org.apache.ignite.internal.util.GridUnsafe;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.xerial.snappy.Snappy;
 
@@ -139,13 +141,22 @@ public class CompressionProcessorImpl extends CompressionProcessor {
     private ByteBuffer doCompactPage(ByteBuffer page, int pageSize) throws IgniteCheckedException {
         PageIO io = PageIO.getPageIO(page);
 
-        if (!(io instanceof CompactablePageIO))
-            return page;
-
         ByteBuffer compactPage = compactBuf.get();
 
-        // Drop the garbage from the page.
-        ((CompactablePageIO)io).compactPage(page, compactPage, pageSize);
+        if (io instanceof CompactablePageIO) {
+            // Drop the garbage from the page.
+            ((CompactablePageIO)io).compactPage(page, compactPage, pageSize);
+        }
+        else {
+            // Direct buffer is required as output of this method.
+            if (page.isDirect())
+                return page;
+
+            PageUtils.putBytes(GridUnsafe.bufferAddress(compactPage), 0, page.array());
+
+            compactPage.limit(page.limit());
+        }
+
         page.clear();
 
         return compactPage;

@@ -797,7 +797,7 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
 
             int pageSize = pageSnapshot.pageData().length;
 
-            ByteBuffer pageData = ByteBuffer.wrap(pageSnapshot.pageData());
+            ByteBuffer pageData = ByteBuffer.wrap(pageSnapshot.pageData()).order(ByteOrder.nativeOrder());
 
             ByteBuffer compressedPage = cctx.kernalContext().compress().compressPage(pageData, pageSize, 1,
                 pageCompression, pageCompressionLevel);

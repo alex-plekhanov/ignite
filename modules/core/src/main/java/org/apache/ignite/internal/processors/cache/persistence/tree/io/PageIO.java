@@ -840,6 +840,7 @@ public abstract class PageIO {
         assert pageSize <= out.remaining();
         assert pageSize == page.remaining();
 
+        // TODO fix me, use PageHandler.copyMemory()
         page.mark();
         out.put(page).flip();
         page.reset();
