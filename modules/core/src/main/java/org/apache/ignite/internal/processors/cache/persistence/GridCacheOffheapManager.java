@@ -214,7 +214,9 @@ public class GridCacheOffheapManager extends IgniteCacheOffheapManagerImpl imple
             }
         }
 
-        syncMetadata(ctx, ctx.executor(), needSnapshot);
+        boolean collectInfo = ctx.collectContextInfo() && ctx.needToSnapshot(grp.cacheOrGroupName());
+
+        syncMetadata(ctx, ctx.executor(), needSnapshot || collectInfo);
     }
 
     /**

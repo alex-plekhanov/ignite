@@ -33,6 +33,7 @@ import org.apache.ignite.internal.util.nio.GridNioFuture;
 import org.apache.ignite.internal.util.nio.GridNioFutureImpl;
 import org.apache.ignite.internal.util.nio.GridNioSession;
 import org.apache.ignite.internal.util.nio.GridNioSessionMetaKey;
+import org.apache.ignite.internal.util.nio.channel.IgniteSocketChannel;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteInClosure;
 
@@ -368,6 +369,13 @@ public class GridNioSslFilter extends GridNioFilterAdapter {
         finally {
             hnd.unlock();
         }
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onChannelClose(IgniteSocketChannel channel) throws IgniteCheckedException {
+        // TODO handel ssl connection
+
+        proceedChannelClose(channel);
     }
 
     /**

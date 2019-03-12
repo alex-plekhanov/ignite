@@ -38,6 +38,7 @@ import org.apache.ignite.failure.FailureType;
 import org.apache.ignite.internal.IgniteClientDisconnectedCheckedException;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
+import org.apache.ignite.internal.managers.communication.GridConfigureMessageListener;
 import org.apache.ignite.internal.managers.communication.GridIoPolicy;
 import org.apache.ignite.internal.managers.communication.GridMessageListener;
 import org.apache.ignite.internal.managers.deployment.GridDeploymentInfo;
@@ -91,6 +92,7 @@ import org.apache.ignite.internal.processors.cache.transactions.IgniteTxState;
 import org.apache.ignite.internal.processors.cache.transactions.IgniteTxStateAware;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
 import org.apache.ignite.internal.util.StripedCompositeReadWriteLock;
+import org.apache.ignite.internal.util.nio.channel.IgniteSocketChannel;
 import org.apache.ignite.internal.util.typedef.CI1;
 import org.apache.ignite.internal.util.typedef.X;
 import org.apache.ignite.internal.util.typedef.internal.CU;
@@ -165,7 +167,7 @@ public class GridCacheIoManager extends GridCacheSharedManagerAdapter {
     }
 
     /** Message listener. */
-    private GridMessageListener lsnr = new GridMessageListener() {
+    private GridConfigureMessageListener lsnr = new GridConfigureMessageListener() {
         @Override public void onMessage(final UUID nodeId, final Object msg, final byte plc) {
             if (log.isDebugEnabled())
                 log.debug("Received unordered cache communication message [nodeId=" + nodeId +
@@ -306,6 +308,15 @@ public class GridCacheIoManager extends GridCacheSharedManagerAdapter {
             }
 
             handleMessage(nodeId, cacheMsg, plc);
+        }
+
+        @Override public void onChannelConfigure(IgniteSocketChannel ch, @Nullable Object msg) {
+            // TODO remove as no needs to handle creation channel event to particular cache group.
+            if (msg instanceof GridCacheGroupIdMessage) {
+                GridCacheGroupIdMessage msg0 = (GridCacheGroupIdMessage)msg;
+
+                ch.groupId(msg0.groupId());
+            }
         }
     };
 
@@ -1210,6 +1221,23 @@ public class GridCacheIoManager extends GridCacheSharedManagerAdapter {
     public boolean checkNodeLeft(UUID nodeId, IgniteCheckedException sndErr, boolean ping)
         throws IgniteClientDisconnectedCheckedException {
         return cctx.gridIO().checkNodeLeft(nodeId, sndErr, ping);
+    }
+
+    /**
+     * @param nodeId Destination node.
+     * @param topic Topic to send the message to.
+     * @param msg {@link GridCacheGroupIdMessage} to configure channel with.
+     * @param plc Thread policy to execute on.
+     * @return Established {@link IgniteSocketChannel} to use.
+     * @throws IgniteCheckedException If fails.
+     */
+    public IgniteSocketChannel channelToCustomTopic(
+        UUID nodeId,
+        Object topic,
+        GridCacheGroupIdMessage msg,
+        byte plc
+    ) throws IgniteCheckedException {
+        return cctx.gridIO().channelToCustomTopic(nodeId, topic, msg, plc);
     }
 
     /**

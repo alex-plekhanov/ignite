@@ -20,6 +20,7 @@ package org.apache.ignite.spi.communication;
 import java.io.Serializable;
 import java.util.Collection;
 import org.apache.ignite.cluster.ClusterNode;
+import org.apache.ignite.internal.util.nio.channel.IgniteSocketChannel;
 import org.apache.ignite.spi.IgniteSpi;
 import org.apache.ignite.spi.IgniteSpiException;
 import org.jetbrains.annotations.Nullable;
@@ -109,4 +110,20 @@ public interface CommunicationSpi<T extends Serializable> extends IgniteSpi {
      * @param lsnr Listener to set or {@code null} to unset the listener.
      */
     public void setListener(@Nullable CommunicationListener<T> lsnr);
+
+    /**
+     * @return {@code True} if new type of direct connections supported.
+     */
+    public default boolean channelConnectionSupported() {
+        return false;
+    }
+
+    /**
+     * @param remote Destination cluster node to communicate with.
+     * @param msg Configuration channel message.
+     * @throws IgniteSpiException If fails.
+     */
+    public default IgniteSocketChannel channel(ClusterNode remote, T msg) throws IgniteSpiException {
+        throw new UnsupportedOperationException();
+    }
 }

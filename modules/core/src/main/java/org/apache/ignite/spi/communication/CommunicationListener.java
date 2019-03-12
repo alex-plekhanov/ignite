@@ -20,7 +20,9 @@ package org.apache.ignite.spi.communication;
 import java.io.Serializable;
 import java.util.EventListener;
 import java.util.UUID;
+import org.apache.ignite.internal.util.nio.channel.IgniteSocketChannel;
 import org.apache.ignite.lang.IgniteRunnable;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Listener SPI notifies IO manager with.
@@ -45,4 +47,24 @@ public interface CommunicationListener<T extends Serializable> extends EventList
      * @param nodeId Node ID.
      */
     public void onDisconnected(UUID nodeId);
+
+    /**
+     * Process channel configuration requests.
+     *
+     * @param ch Channel to configure.
+     * @param msg Configuration message.
+     */
+    public default void onChannelConfigure(IgniteSocketChannel ch, @Nullable T msg) {
+        // No-op.
+    }
+
+    /**
+     * Listen to {@link IgniteSocketChannel} creation event from remote connection.
+     *
+     * @param nodeId Remote node id.
+     * @param ch Local created channel endpoint.
+     */
+    public default void onChannelCreated(UUID nodeId, IgniteSocketChannel ch) {
+        // No-op.
+    }
 }

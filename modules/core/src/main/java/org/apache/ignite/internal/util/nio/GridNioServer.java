@@ -44,7 +44,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteCheckedException;
@@ -58,6 +60,8 @@ import org.apache.ignite.internal.managers.communication.GridIoMessage;
 import org.apache.ignite.internal.util.GridConcurrentHashSet;
 import org.apache.ignite.internal.util.GridUnsafe;
 import org.apache.ignite.internal.util.future.GridCompoundFuture;
+import org.apache.ignite.internal.util.nio.channel.IgniteSocketChannel;
+import org.apache.ignite.internal.util.nio.channel.IgniteSocketChannelImpl;
 import org.apache.ignite.internal.util.nio.ssl.GridNioSslFilter;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.typedef.F;
@@ -75,6 +79,7 @@ import org.apache.ignite.lang.IgniteRunnable;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.plugin.extensions.communication.MessageReader;
 import org.apache.ignite.plugin.extensions.communication.MessageWriter;
+import org.apache.ignite.spi.communication.tcp.internal.ConnectionKey;
 import org.apache.ignite.thread.IgniteThread;
 import org.jetbrains.annotations.Nullable;
 
@@ -218,6 +223,9 @@ public class GridNioServer<T> {
 
     /** Sessions. */
     private final GridConcurrentHashSet<GridSelectorNioSessionImpl> sessions = new GridConcurrentHashSet<>();
+
+    /** Java NIO channels. */
+    private final ConcurrentMap<ConnectionKey, IgniteSocketChannel> channels = new ConcurrentHashMap<>();
 
     /** */
     private GridNioSslFilter sslFilter;
@@ -427,6 +435,11 @@ public class GridNioServer<T> {
         return locAddr != null ? locAddr.getPort() : -1;
     }
 
+    /** */
+    public IgniteSocketChannel getNioSocketChannel(ConnectionKey key) {
+        return channels.get(key);
+    }
+
     /**
      * Creates and returns a builder for a new instance of this class.
      *
@@ -503,6 +516,18 @@ public class GridNioServer<T> {
         impl.offerStateChange(fut);
 
         return fut;
+    }
+
+    /**
+     * @param channel IgniteSocketChannel to close.
+     */
+    public void close(IgniteSocketChannel channel) {
+        assert channel != null;
+
+        IgniteSocketChannel channel0 = channels.remove(channel.id());
+
+        if (channel0 != null)
+            U.closeQuiet(channel.channel());
     }
 
     /**
@@ -906,6 +931,35 @@ public class GridNioServer<T> {
         else
             return new GridNioFinishedFuture<>(
                 new IgniteCheckedException("Failed to cancel connection, server is stopped."));
+    }
+
+    /**
+     * Create a {@link IgniteSocketChannel} using provided session.
+     * // TODO manage#store chennels on TcpCommunicationSpi level?
+     */
+    public IgniteSocketChannel createNioChannel(
+        GridSelectorNioSession ses,
+        ConnectionKey connKey
+    ) throws IgniteCheckedException {
+        if (closed)
+            throw new IgniteCheckedException("Server is stopped");
+
+        if (channels.get(connKey) != null)
+            throw new IgniteCheckedException("Channel connection already exists: " + connKey);
+
+        SelectionKey key = ses.key();
+
+        IgniteSocketChannel nioSocketCh =
+            new IgniteSocketChannelImpl(connKey, (SocketChannel)key.channel(), filterChain);
+
+        IgniteSocketChannel ch0 = channels.putIfAbsent(connKey, nioSocketCh);
+
+        assert ch0 == null;
+
+        if (log.isInfoEnabled())
+            log.info("Channel successfully created: " + nioSocketCh);
+
+        return nioSocketCh;
     }
 
     /**
@@ -2686,14 +2740,24 @@ public class GridNioServer<T> {
             }
         }
 
+        /** */
+        protected boolean close(final GridSelectorNioSessionImpl ses, @Nullable final IgniteCheckedException e) {
+            return close(ses, e, ses.closeSocketOnSessionClose());
+        }
+
         /**
          * Closes the session and all associated resources, then notifies the listener.
          *
          * @param ses Session to be closed.
          * @param e Exception to be passed to the listener, if any.
+         * @param closeSock If {@code True} the channel will be closed.
          * @return {@code True} if this call closed the ses.
          */
-        protected boolean close(final GridSelectorNioSessionImpl ses, @Nullable final IgniteCheckedException e) {
+        protected boolean close(
+            final GridSelectorNioSessionImpl ses,
+            @Nullable final IgniteCheckedException e,
+            boolean closeSock
+        ) {
             if (e != null) {
                 // Print stack trace only if has runtime exception in it's cause.
                 if (e.hasCause(IOException.class))
@@ -2717,7 +2781,10 @@ public class GridNioServer<T> {
                         GridUnsafe.cleanDirectBuffer(ses.readBuffer());
                 }
 
-                closeKey(ses.key());
+                if (closeSock)
+                    closeKey(ses.key());
+                else
+                    ses.key().cancel(); // Unbind socket to the current SelectionKey.
 
                 if (e != null)
                     filterChain.onExceptionCaught(ses, e);
@@ -3597,6 +3664,11 @@ public class GridNioServer<T> {
         /** {@inheritDoc} */
         @Override public GridNioFuture<?> onResumeReads(GridNioSession ses) throws IgniteCheckedException {
             return pauseResumeReads(ses, NioOperation.RESUME_READ);
+        }
+
+        /** {@inheritDoc} */
+        @Override public void onChannelClose(IgniteSocketChannel channel) {
+            close(channel);
         }
     }
 
