@@ -57,6 +57,7 @@ import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabase
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStoreManager;
 import org.apache.ignite.internal.processors.cache.persistence.metastorage.MetaStorage;
 import org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl;
+import org.apache.ignite.internal.processors.cache.persistence.tree.io.CompactablePageIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
 import org.apache.ignite.internal.processors.cache.persistence.wal.FileWriteAheadLogManager;
 import org.apache.ignite.internal.processors.cache.tree.AbstractDataLeafIO;
@@ -71,6 +72,8 @@ import org.mockito.Mockito;
 
 import static org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO.T_CACHE_ID_DATA_REF_MVCC_LEAF;
 import static org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO.T_DATA_REF_MVCC_LEAF;
+import static org.apache.ignite.internal.util.GridUnsafe.pageSize;
+import static org.apache.ignite.internal.util.GridUnsafe.wrapPointer;
 
 /**
  * Page memory tracker.
@@ -135,6 +138,12 @@ public class PageMemoryTracker implements IgnitePlugin {
 
     /** Checkpoint listener. */
     private DbCheckpointListener checkpointLsnr;
+
+    /** Temporary byte buffer, used to compact local pages. */
+    private volatile ByteBuffer tmpBuf1;
+
+    /** Temporary byte buffer, used to compact remote pages. */
+    private volatile ByteBuffer tmpBuf2;
 
     /**
      * @param ctx Plugin context.
@@ -223,6 +232,12 @@ public class PageMemoryTracker implements IgnitePlugin {
                 - encSpi.blockSize() /* For CRC. */;
         });
 
+        Mockito.when(pageMemoryMock.pageBuffer(Mockito.anyLong())).then(mock -> {
+            long pageAddr = (Long)mock.getArguments()[0];
+
+            return wrapPointer(pageAddr, pageSize());
+        });
+
         GridCacheSharedContext sharedCtx = gridCtx.cache().context();
 
         // Initialize one memory region for all data regions of target ignite node.
@@ -246,6 +261,9 @@ public class PageMemoryTracker implements IgnitePlugin {
         pageSlots = new DirectMemoryPageSlot[maxPages];
 
         freeSlotsCnt = maxPages;
+
+        tmpBuf1 = ByteBuffer.allocateDirect(pageSize);
+        tmpBuf2 = ByteBuffer.allocateDirect(pageSize);
 
         if (cfg.isCheckPagesOnCheckpoint()) {
             checkpointLsnr = new DbCheckpointListener() {
@@ -600,6 +618,14 @@ public class PageMemoryTracker implements IgnitePlugin {
         ByteBuffer rmtBuf = GridUnsafe.wrapPointer(actualPageAddr, pageSize);
 
         PageIO pageIo = PageIO.getPageIO(actualPageAddr);
+
+        if (pageIo instanceof CompactablePageIO) {
+            ((CompactablePageIO)pageIo).compactPage(locBuf, tmpBuf1, pageSize);
+            ((CompactablePageIO)pageIo).compactPage(rmtBuf, tmpBuf2, pageSize);
+
+            locBuf = tmpBuf1;
+            rmtBuf = tmpBuf2;
+        }
 
         if (pageIo.getType() == T_DATA_REF_MVCC_LEAF || pageIo.getType() == T_CACHE_ID_DATA_REF_MVCC_LEAF) {
             assert cacheProc.cacheGroup(fullPageId.groupId()).mvccEnabled();
