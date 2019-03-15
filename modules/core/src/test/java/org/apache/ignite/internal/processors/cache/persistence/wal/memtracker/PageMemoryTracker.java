@@ -43,9 +43,12 @@ import org.apache.ignite.internal.pagemem.PageUtils;
 import org.apache.ignite.internal.pagemem.store.IgnitePageStoreManager;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
 import org.apache.ignite.internal.pagemem.wal.WALPointer;
+import org.apache.ignite.internal.pagemem.wal.record.MemoryRecoveryRecord;
 import org.apache.ignite.internal.pagemem.wal.record.PageSnapshot;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
+import org.apache.ignite.internal.pagemem.wal.record.delta.InitNewPageRecord;
 import org.apache.ignite.internal.pagemem.wal.record.delta.PageDeltaRecord;
+import org.apache.ignite.internal.pagemem.wal.record.delta.RecycleRecord;
 import org.apache.ignite.internal.processors.cache.CacheGroupContext;
 import org.apache.ignite.internal.processors.cache.GridCacheProcessor;
 import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
@@ -173,7 +176,8 @@ public class PageMemoryTracker implements IgnitePlugin {
                 @Override public void resumeLogging(WALPointer lastPtr) throws IgniteCheckedException {
                     super.resumeLogging(lastPtr);
 
-                    emptyPds = (lastPtr == null);
+                    if (!emptyPds && lastPtr == null)
+                        emptyPds = true;
                 }
             };
         }
@@ -412,12 +416,13 @@ public class PageMemoryTracker implements IgnitePlugin {
      * Gets or allocates page for given FullPageId.
      *
      * @param fullPageId Full page id.
+     * @param allocate Allocate new page if page not exists.
      * @return Page.
      */
-    private DirectMemoryPage page(FullPageId fullPageId) throws IgniteCheckedException {
+    private DirectMemoryPage page(FullPageId fullPageId, boolean allocate) throws IgniteCheckedException {
         DirectMemoryPage page = pages.get(fullPageId);
 
-        if (page == null)
+        if (page == null && allocate)
             page = allocatePage(fullPageId);
 
         return page;
@@ -430,7 +435,14 @@ public class PageMemoryTracker implements IgnitePlugin {
         if (!started)
             return;
 
-        if (record instanceof PageSnapshot) {
+        if (record instanceof MemoryRecoveryRecord) {
+            pages.clear();
+
+            freeSlotsCnt = maxPages;
+
+            freeSlots.clear();
+        }
+        else if (record instanceof PageSnapshot) {
             PageSnapshot snapshot = (PageSnapshot)record;
 
             int grpId = snapshot.fullPageId().groupId();
@@ -438,7 +450,7 @@ public class PageMemoryTracker implements IgnitePlugin {
 
             FullPageId fullPageId = new FullPageId(pageId, grpId);
 
-            DirectMemoryPage page = page(fullPageId);
+            DirectMemoryPage page = page(fullPageId, true);
 
             page.lock();
 
@@ -461,7 +473,16 @@ public class PageMemoryTracker implements IgnitePlugin {
 
             FullPageId fullPageId = new FullPageId(pageId, grpId);
 
-            DirectMemoryPage page = page(fullPageId);
+            boolean allocatePage = record instanceof InitNewPageRecord || record instanceof RecycleRecord;
+
+            DirectMemoryPage page = page(fullPageId, allocatePage);
+
+            if (page == null) {
+                log.warning("Got page delta record for not existsing page [pageId=" + fullPageId +
+                    ", deltaRecord=" + deltaRecord + ']');
+
+                return;
+            }
 
             page.lock();
 
@@ -620,6 +641,9 @@ public class PageMemoryTracker implements IgnitePlugin {
         PageIO pageIo = PageIO.getPageIO(actualPageAddr);
 
         if (pageIo instanceof CompactablePageIO) {
+            tmpBuf1.clear();
+            tmpBuf2.clear();
+
             ((CompactablePageIO)pageIo).compactPage(locBuf, tmpBuf1, pageSize);
             ((CompactablePageIO)pageIo).compactPage(rmtBuf, tmpBuf2, pageSize);
 
