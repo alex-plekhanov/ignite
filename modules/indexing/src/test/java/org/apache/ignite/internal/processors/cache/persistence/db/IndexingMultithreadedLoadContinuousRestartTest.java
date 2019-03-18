@@ -32,6 +32,7 @@ import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteInternalFuture;
+import org.apache.ignite.internal.processors.cache.persistence.wal.memtracker.PageMemoryTrackerPluginProvider;
 import org.apache.ignite.internal.visor.verify.ValidateIndexesClosure;
 import org.apache.ignite.internal.visor.verify.VisorValidateIndexesJobResult;
 import org.apache.ignite.testframework.GridTestUtils;
@@ -147,50 +148,57 @@ public class IndexingMultithreadedLoadContinuousRestartTest extends GridCommonAb
      */
     @Test
     public void test() throws Exception {
-        for (int i = 0; i < RESTARTS; i++) {
-            IgniteEx ignite = startGrid(0);
+        System.setProperty(PageMemoryTrackerPluginProvider.IGNITE_ENABLE_PAGE_MEMORY_TRACKER, "true");
 
-            ignite.cluster().active(true);
+        try {
+            for (int i = 0; i < RESTARTS; i++) {
+                IgniteEx ignite = startGrid(0);
 
-            // Ensure that checkpoint isn't running - otherwise validate indexes task may fail.
-            forceCheckpoint();
+                ignite.cluster().active(true);
 
-            // Validate indexes on start.
-            ValidateIndexesClosure clo = new ValidateIndexesClosure(Collections.singleton(CACHE_NAME), 0, 0);
-            ignite.context().resource().injectGeneric(clo);
-            VisorValidateIndexesJobResult res = clo.call();
+                // Ensure that checkpoint isn't running - otherwise validate indexes task may fail.
+                forceCheckpoint();
 
-            assertFalse(res.hasIssues());
+                // Validate indexes on start.
+                ValidateIndexesClosure clo = new ValidateIndexesClosure(Collections.singleton(CACHE_NAME), 0, 0);
+                ignite.context().resource().injectGeneric(clo);
+                VisorValidateIndexesJobResult res = clo.call();
 
-            IgniteInternalFuture<Long> fut = GridTestUtils.runMultiThreadedAsync(new Runnable() {
-                @Override public void run() {
-                    IgniteCache<UserKey, UserValue> cache = ignite.cache(CACHE_NAME);
+                assertFalse(res.hasIssues());
 
-                    int i = 0;
-                    try {
-                        for (; i < LOAD_LOOP; i++) {
-                            ThreadLocalRandom r = ThreadLocalRandom.current();
+                IgniteInternalFuture<Long> fut = GridTestUtils.runMultiThreadedAsync(new Runnable() {
+                    @Override public void run() {
+                        IgniteCache<UserKey, UserValue> cache = ignite.cache(CACHE_NAME);
 
-                            Integer keySeed = r.nextInt(KEY_BOUND);
-                            UserKey key = new UserKey(keySeed);
+                        int i = 0;
+                        try {
+                            for (; i < LOAD_LOOP; i++) {
+                                ThreadLocalRandom r = ThreadLocalRandom.current();
 
-                            if (r.nextBoolean())
-                                cache.put(key, new UserValue(r.nextLong()));
-                            else
-                                cache.remove(key);
+                                Integer keySeed = r.nextInt(KEY_BOUND);
+                                UserKey key = new UserKey(keySeed);
+
+                                if (r.nextBoolean())
+                                    cache.put(key, new UserValue(r.nextLong()));
+                                else
+                                    cache.remove(key);
+                            }
+
+                            ignite.close(); // Intentionally stop grid while another loaders are still in progress.
                         }
-
-                        ignite.close(); // Intentionally stop grid while another loaders are still in progress.
+                        catch (Exception e) {
+                            log.warning("Failed to update cache after " + i + " loop cycles", e);
+                        }
                     }
-                    catch (Exception e) {
-                        log.warning("Failed to update cache after " + i + " loop cycles", e);
-                    }
-                }
-            }, THREADS, "loader");
+                }, THREADS, "loader");
 
-            fut.get();
+                fut.get();
 
-            ignite.close();
+                ignite.close();
+            }
+        }
+        finally {
+            System.clearProperty(PageMemoryTrackerPluginProvider.IGNITE_ENABLE_PAGE_MEMORY_TRACKER);
         }
     }
 

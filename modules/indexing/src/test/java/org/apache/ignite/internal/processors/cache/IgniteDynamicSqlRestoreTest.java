@@ -18,50 +18,22 @@
 package org.apache.ignite.internal.processors.cache;
 
 import java.io.Serializable;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.sql.Timestamp;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import org.apache.ignite.Ignite;
-import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.IgniteDataStreamer;
-import org.apache.ignite.Ignition;
-import org.apache.ignite.binary.BinaryObject;
-import org.apache.ignite.cache.QueryEntity;
-import org.apache.ignite.cache.query.SqlFieldsQuery;
-import org.apache.ignite.configuration.CacheConfiguration;
-import org.apache.ignite.configuration.DataRegionConfiguration;
-import org.apache.ignite.configuration.DataStorageConfiguration;
-import org.apache.ignite.configuration.IgniteConfiguration;
-import org.apache.ignite.configuration.WALMode;
-import org.apache.ignite.internal.IgniteEx;
-import org.apache.ignite.internal.util.typedef.PA;
-import org.apache.ignite.internal.util.typedef.X;
-import org.apache.ignite.spi.IgniteSpiException;
-import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
-import org.jetbrains.annotations.NotNull;
-import org.junit.Test;
-
-import static org.hamcrest.CoreMatchers.containsString;
-import static org.hamcrest.MatcherAssert.assertThat;
 
 /**
  *
  */
 @SuppressWarnings("Duplicates")
 public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implements Serializable {
+/*
 
     public static final String TEST_CACHE_NAME = "test";
     public static final String TEST_INDEX_OBJECT = "TestIndexObject";
 
-    /** {@inheritDoc} */
+    */
+/** {@inheritDoc} *//*
+
     @Override protected IgniteConfiguration getConfiguration(String gridName) throws Exception {
         IgniteConfiguration cfg = super.getConfiguration(gridName);
 
@@ -79,23 +51,29 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         return cfg;
     }
 
-    /** {@inheritDoc} */
+    */
+/** {@inheritDoc} *//*
+
     @Override protected void beforeTest() throws Exception {
         stopAllGrids();
 
         cleanPersistenceDir();
     }
 
-    /** {@inheritDoc} */
+    */
+/** {@inheritDoc} *//*
+
     @Override protected void afterTest() throws Exception {
         stopAllGrids();
 
         cleanPersistenceDir();
     }
 
-    /**
+    */
+/**
      * @throws Exception if failed.
-     */
+     *//*
+
     @Test
     public void testMergeChangedConfigOnCoordinator() throws Exception {
         {
@@ -165,9 +143,11 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         }
     }
 
-    /**
+    */
+/**
      * @throws Exception If failed.
-     */
+     *//*
+
     @SuppressWarnings("AssertWithSideEffects")
     @Test
     public void testIndexCreationWhenNodeStopped() throws Exception {
@@ -273,22 +253,26 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         }
     }
 
-    /**
+    */
+/**
      * Execute a statement through JDBC connection.
      *
      * @param conn Connection.
      * @param sql Statement.
      * @throws Exception If failed.
-     */
+     *//*
+
     private static void executeJdbc(Connection conn, String sql) throws Exception {
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
         }
     }
 
-    /**
+    */
+/**
      * @throws Exception if failed.
-     */
+     *//*
+
     @Test
     public void testTakeConfigFromJoiningNodeOnInactiveGrid() throws Exception {
         {
@@ -326,9 +310,11 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         }
     }
 
-    /**
+    */
+/**
      * @throws Exception if failed.
-     */
+     *//*
+
     @Test
     public void testResaveConfigAfterMerge() throws Exception {
         {
@@ -374,9 +360,11 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         }
     }
 
-    /**
+    */
+/**
      * @throws Exception if failed.
-     */
+     *//*
+
     @SuppressWarnings("ArraysAsListWithZeroOrOneArgument")
     @Test
     public void testMergeChangedConfigOnInactiveGrid() throws Exception {
@@ -444,14 +432,16 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         }
     }
 
-    /**
+    */
+/**
      * Make sure that index is used for the given statement.
      *
      * @param cache Cache.
      * @param sql Statement.
      * @param idx Index.
      * @throws IgniteCheckedException If failed.
-     */
+     *//*
+
     private void assertIndexUsed(IgniteCache<Object, Object> cache, String sql, String idx)
         throws IgniteCheckedException {
         assert GridTestUtils.waitForCondition(new PA() {
@@ -463,9 +453,11 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         }, 10_000);
     }
 
-    /**
+    */
+/**
      * @throws Exception if failed.
-     */
+     *//*
+
     @Test
     public void testTakeChangedConfigOnActiveGrid() throws Exception {
         {
@@ -518,9 +510,11 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         }
     }
 
-    /**
+    */
+/**
      * @throws Exception if failed.
-     */
+     *//*
+
     @SuppressWarnings("ConstantConditions")
     @Test
     public void testFailJoiningNodeBecauseDifferentSql() throws Exception {
@@ -564,9 +558,11 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
 
     }
 
-    /**
+    */
+/**
      * @throws Exception if failed.
-     */
+     *//*
+
     @SuppressWarnings("ConstantConditions")
     @Test
     public void testFailJoiningNodeBecauseFieldInlineSizeIsDifferent() throws Exception {
@@ -606,9 +602,11 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
 
     }
 
-    /**
+    */
+/**
      * @throws Exception if failed.
-     */
+     *//*
+
     @SuppressWarnings("ConstantConditions")
     @Test
     public void testFailJoiningNodeBecauseNeedConfigUpdateOnActiveGrid() throws Exception {
@@ -649,16 +647,20 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         }
     }
 
-    /**
+    */
+/**
      * @return result of explain plan
-     */
+     *//*
+
     @NotNull private String doExplainPlan(IgniteCache<Object, Object> cache, String sql) {
         return cache.query(new SqlFieldsQuery(sql)).getAll().get(0).get(0).toString().toLowerCase();
     }
 
-    /**
+    */
+/**
      * fill data by default
-     */
+     *//*
+
     private void fillTestData(Ignite ig) {
         try (IgniteDataStreamer<Object, Object> s = ig.dataStreamer(TEST_CACHE_NAME)) {
             for (int i = 0; i < 500; i++) {
@@ -672,9 +674,11 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         }
     }
 
-    /**
+    */
+/**
      * @return cache configuration with test table
-     */
+     *//*
+
     @NotNull private CacheConfiguration<Object, Object> getTestTableConfiguration() {
         LinkedHashMap<String, String> fields = new LinkedHashMap<>();
         fields.put("a", "java.lang.Integer");
@@ -690,4 +694,5 @@ public class IgniteDynamicSqlRestoreTest extends GridCommonAbstractTest implemen
         ));
         return ccfg;
     }
+*/
 }
