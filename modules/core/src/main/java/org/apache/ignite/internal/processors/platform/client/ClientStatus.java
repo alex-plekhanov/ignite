@@ -52,6 +52,12 @@ public final class ClientStatus {
     /** Authorization failure. */
     public static final int SECURITY_VIOLATION = 1012;
 
+    /** Transaction is already started. */
+    public static final int TX_ALREADY_STARTED = 1020;
+
+    /** Transaction is already completed. */
+    public static final int TX_ALREADY_COMPLETED = 1021;
+
     /** Authentication failed. */
     public static final int AUTH_FAILED = 2000;
 }

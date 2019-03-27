@@ -61,6 +61,9 @@ final class ReliableChannel implements AutoCloseable {
     /** Ignite config. */
     private final ClientConfiguration clientCfg;
 
+    /** Prohibit failover. */
+    private boolean prohibitFailover;
+
     /**
      * Constructor.
      */
@@ -103,7 +106,8 @@ final class ReliableChannel implements AutoCloseable {
     public <T> T service(
         ClientOperation op,
         Consumer<BinaryOutputStream> payloadWriter,
-        Function<BinaryInputStream, T> payloadReader
+        Function<BinaryInputStream, T> payloadReader,
+        FailoverPolicy failoverPlc
     ) throws ClientException {
         ClientConnectionException failure = null;
 
@@ -115,9 +119,6 @@ final class ReliableChannel implements AutoCloseable {
         try {
             for (int i = 0; i < totalSrvs; i++) {
                 try {
-                    if (failure != null)
-                        changeServer();
-
                     if (ch == null)
                         ch = chFactory.apply(new ClientChannelConfiguration(clientCfg).setAddress(primary)).get();
 
@@ -127,6 +128,9 @@ final class ReliableChannel implements AutoCloseable {
 
                     failure = null;
 
+                    if (failoverPlc == FailoverPolicy.PROHIBIT)
+                        prohibitFailover = true;
+
                     break;
                 }
                 catch (ClientConnectionException e) {
@@ -134,6 +138,22 @@ final class ReliableChannel implements AutoCloseable {
                         failure = e;
                     else
                         failure.addSuppressed(e);
+
+                    if (prohibitFailover) {
+                        //prohibitFailover = false; // TODO discuss on dev-list.
+
+                        throw e;
+                    }
+
+                    changeServer();
+                }
+                finally {
+                    if (failoverPlc == FailoverPolicy.ALLOW) {
+                        prohibitFailover = false;
+
+                        if (failure != null)
+                            changeServer();
+                    }
                 }
             }
         }
@@ -145,6 +165,17 @@ final class ReliableChannel implements AutoCloseable {
             throw failure;
 
         return res;
+    }
+
+    /**
+     * Send request and handle response. The method is synchronous and single-threaded.
+     */
+    public <T> T service(
+        ClientOperation op,
+        Consumer<BinaryOutputStream> payloadWriter,
+        Function<BinaryInputStream, T> payloadReader
+    ) throws ClientException {
+        return service(op, payloadWriter, payloadReader, FailoverPolicy.DONT_CHANGE);
     }
 
     /**
@@ -203,14 +234,29 @@ final class ReliableChannel implements AutoCloseable {
             backups.addLast(primary);
 
             primary = backups.removeFirst();
-
-            try {
-                ch.close();
-            }
-            catch (Exception ignored) {
-            }
-
-            ch = null;
         }
+
+        try {
+            ch.close();
+        }
+        catch (Exception ignored) {
+        }
+
+        ch = null;
+
+    }
+
+    /**
+     * Failover policy for request.
+     */
+    enum FailoverPolicy {
+        /** Prohibit failover for all subsequent requests. */
+        PROHIBIT,
+
+        /** Allow failover for all subsequent requests. */
+        ALLOW,
+
+        /** Don't change failover policy. */
+        DONT_CHANGE
     }
 }

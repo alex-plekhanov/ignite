@@ -15,35 +15,30 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.processors.platform.client.cache;
+package org.apache.ignite.client;
 
-import org.apache.ignite.internal.binary.BinaryRawReaderEx;
-import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
+import org.apache.ignite.internal.client.thin.ClientServerError;
 
 /**
- * Cache request involving key.
+ * Thin client transaction.
  */
-public abstract class ClientCacheKeyRequest extends ClientCacheRequest implements ClientTxAwareRequest {
-    /** Key. */
-    private final Object key;
+public interface ClientTransaction extends AutoCloseable {
+    /**
+     * Commits this transaction.
+     *
+     * @throws ClientServerError If commit failed.
+     */
+    public void commit() throws ClientServerError, ClientException;
 
     /**
-     * Ctor.
+     * Rolls back this transaction.
      *
-     * @param reader Reader.
+     * @throws ClientServerError If rollback failed.
      */
-    ClientCacheKeyRequest(BinaryRawReaderEx reader) {
-        super(reader);
-
-        key = reader.readObjectDetached();
-    }
+    public void rollback() throws ClientServerError, ClientException;
 
     /**
-     * Gets the key.
-     *
-     * @return Key.
+     * Ends the transaction. Transaction will be rolled back if it has not been committed.
      */
-    public Object key() {
-        return key;
-    }
+    @Override public void close();
 }

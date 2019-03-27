@@ -21,11 +21,12 @@ import org.apache.ignite.internal.binary.BinaryRawReaderEx;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
 
 /**
  * Key set request.
  */
-public class ClientCacheKeysRequest extends ClientCacheRequest {
+public class ClientCacheKeysRequest extends ClientCacheRequest implements ClientTxAwareRequest {
     /** Keys. */
     private final Set<Object> keys;
 

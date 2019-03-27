@@ -21,11 +21,12 @@ import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
+import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
 
 /**
  * Query cursor next page request.
  */
-public class ClientCacheQueryNextPageRequest extends ClientRequest {
+public class ClientCacheQueryNextPageRequest extends ClientRequest implements ClientTxAwareRequest {
     /** Cursor id. */
     private final long cursorId;
 

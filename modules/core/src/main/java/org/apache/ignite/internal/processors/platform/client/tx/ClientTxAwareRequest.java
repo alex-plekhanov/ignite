@@ -15,35 +15,10 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.processors.platform.client.cache;
-
-import org.apache.ignite.internal.binary.BinaryRawReaderEx;
-import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
+package org.apache.ignite.internal.processors.platform.client.tx;
 
 /**
- * Cache request involving key.
+ * Marker interface for transaction aware requests.
  */
-public abstract class ClientCacheKeyRequest extends ClientCacheRequest implements ClientTxAwareRequest {
-    /** Key. */
-    private final Object key;
-
-    /**
-     * Ctor.
-     *
-     * @param reader Reader.
-     */
-    ClientCacheKeyRequest(BinaryRawReaderEx reader) {
-        super(reader);
-
-        key = reader.readObjectDetached();
-    }
-
-    /**
-     * Gets the key.
-     *
-     * @return Key.
-     */
-    public Object key() {
-        return key;
-    }
+public interface ClientTxAwareRequest {
 }
