@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.client.thin;
 
+import java.io.DataInput;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -63,30 +64,31 @@ import org.apache.ignite.internal.binary.streams.BinaryHeapOutputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOffheapOutputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
+import org.apache.ignite.internal.processors.platform.client.ClientFlag;
 import org.apache.ignite.internal.processors.platform.client.ClientStatus;
+import org.apache.ignite.internal.util.io.GridUnsafeDataInput;
+
+import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_0_0;
+import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_1_0;
+import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_2_0;
+import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_4_0;
+import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_5_0;
 
 /**
  * Implements {@link ClientChannel} over TCP.
  */
 class TcpClientChannel implements ClientChannel {
-    /** Protocol version: 1.2.0. */
-    private static final ProtocolVersion V1_2_0 = new ProtocolVersion((short)1, (short)2, (short)0);
-    
-    /** Protocol version: 1.1.0. */
-    private static final ProtocolVersion V1_1_0 = new ProtocolVersion((short)1, (short)1, (short)0);
-
-    /** Protocol version 1 0 0. */
-    private static final ProtocolVersion V1_0_0 = new ProtocolVersion((short)1, (short)0, (short)0);
-
     /** Supported protocol versions. */
     private static final Collection<ProtocolVersion> supportedVers = Arrays.asList(
-        V1_2_0, 
+        V1_5_0,
+        V1_4_0,
+        V1_2_0,
         V1_1_0, 
         V1_0_0
     );
 
     /** Protocol version agreed with the server. */
-    private ProtocolVersion ver = V1_2_0;
+    private ProtocolVersion ver = V1_5_0;
 
     /** Channel. */
     private final Socket sock;
@@ -96,6 +98,12 @@ class TcpClientChannel implements ClientChannel {
 
     /** Input stream. */
     private final InputStream in;
+
+    /** Data input. */
+    private final DataInput dataInput;
+
+    /** Total bytes read by channel. */
+    private long totalBytesRead;
 
     /** Request id. */
     private final AtomicLong reqId = new AtomicLong(1);
@@ -109,6 +117,10 @@ class TcpClientChannel implements ClientChannel {
 
             out = sock.getOutputStream();
             in = sock.getInputStream();
+
+            GridUnsafeDataInput dis = new GridUnsafeDataInput();
+            dis.inputStream(in);
+            dataInput = dis;
         }
         catch (IOException e) {
             throw new ClientConnectionException(e);
@@ -149,9 +161,7 @@ class TcpClientChannel implements ClientChannel {
     @Override public <T> T receive(ClientOperation op, long reqId, Function<BinaryInputStream, T> payloadReader)
         throws ClientConnectionException, ClientAuthorizationException {
 
-        final int MIN_RES_SIZE = 8 + 4; // minimal response size: long (8 bytes) ID + int (4 bytes) status
-
-        int resSize = new BinaryHeapInputStream(read(4)).readInt();
+        int resSize = readInt();
 
         if (resSize < 0)
             throw new ClientProtocolError(String.format("Invalid response size: %s", resSize));
@@ -159,17 +169,35 @@ class TcpClientChannel implements ClientChannel {
         if (resSize == 0)
             return null;
 
-        BinaryInputStream resIn = new BinaryHeapInputStream(read(MIN_RES_SIZE));
+        long bytesReadOnStartReq = totalBytesRead;
 
-        long resId = resIn.readLong();
+        long resId = readLong();
 
         if (resId != reqId)
             throw new ClientProtocolError(String.format("Unexpected response ID [%s], [%s] was expected", resId, reqId));
 
-        int status = resIn.readInt();
+        int status = 0;
+
+        BinaryInputStream resIn;
+
+        if (ver.compareTo(V1_4_0) >= 0) {
+            short flags = readShort();
+
+            if ((flags & ClientFlag.AFFINITY_TOPOLOGY_CHANGED) != 0) {
+                readLong(); // topVer.
+                readInt(); // minorTopVer.
+            }
+
+            if ((flags & ClientFlag.ERROR) != 0)
+                status = readInt();
+        }
+        else
+            status = readInt();
+
+        int hdrSize = (int)(totalBytesRead - bytesReadOnStartReq);
 
         if (status != 0) {
-            resIn = new BinaryHeapInputStream(read(resSize - MIN_RES_SIZE));
+            resIn = new BinaryHeapInputStream(read(resSize - hdrSize));
 
             String err = new BinaryReaderExImpl(null, resIn, null, true).readString();
 
@@ -181,10 +209,10 @@ class TcpClientChannel implements ClientChannel {
             }
         }
 
-        if (resSize <= MIN_RES_SIZE || payloadReader == null)
+        if (resSize <= hdrSize || payloadReader == null)
             return null;
 
-        BinaryInputStream payload = new BinaryHeapInputStream(read(resSize - MIN_RES_SIZE));
+        BinaryInputStream payload = new BinaryHeapInputStream(read(resSize - hdrSize));
 
         return payloadReader.apply(payload);
     }
@@ -278,10 +306,14 @@ class TcpClientChannel implements ClientChannel {
 
         BinaryInputStream res = new BinaryHeapInputStream(read(resSize));
 
-        if (!res.readBoolean()) { // success flag
-            ProtocolVersion srvVer = new ProtocolVersion(res.readShort(), res.readShort(), res.readShort());
+        try (BinaryReaderExImpl r = new BinaryReaderExImpl(null, res, null, true)) {
+            if (res.readBoolean()) { // Success flag.
+                if (ver.compareTo(V1_4_0) >= 0)
+                    r.readUuid(); // Server node UUID.
+            }
+            else {
+                ProtocolVersion srvVer = new ProtocolVersion(res.readShort(), res.readShort(), res.readShort());
 
-            try (BinaryReaderExImpl r = new BinaryReaderExImpl(null, res, null, true)) {
                 String err = r.readString();
 
                 int errCode = ClientStatus.FAILED;
@@ -309,9 +341,9 @@ class TcpClientChannel implements ClientChannel {
                     handshake(user, pwd);
                 }
             }
-            catch (IOException e) {
-                throw new ClientConnectionException(e);
-            }
+        }
+        catch (IOException e) {
+            throw new ClientConnectionException(e);
         }
     }
 
@@ -335,7 +367,57 @@ class TcpClientChannel implements ClientChannel {
             readBytesNum += bytesNum;
         }
 
+        totalBytesRead += readBytesNum;
+
         return bytes;
+    }
+
+    /**
+     * Read long value from input stream.
+     */
+    private long readLong() {
+        try {
+            long val = dataInput.readLong();
+
+            totalBytesRead += Long.SIZE >> 3;
+
+            return val;
+        }
+        catch (IOException e) {
+            throw new ClientConnectionException(e);
+        }
+    }
+
+    /**
+     * Read int value from input stream.
+     */
+    private int readInt() {
+        try {
+            int val = dataInput.readInt();
+
+            totalBytesRead += Integer.SIZE >> 3;
+
+            return val;
+        }
+        catch (IOException e) {
+            throw new ClientConnectionException(e);
+        }
+    }
+
+    /**
+     * Read short value from input stream.
+     */
+    private short readShort() {
+        try {
+            short val = dataInput.readShort();
+
+            totalBytesRead += Short.SIZE >> 3;
+
+            return val;
+        }
+        catch (IOException e) {
+            throw new ClientConnectionException(e);
+        }
     }
 
     /** Write bytes to the output stream. */

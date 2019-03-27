@@ -42,6 +42,9 @@ public class ClientConnectorConfiguration {
     /** Default max number of open cursors per connection. */
     public static final int DFLT_MAX_OPEN_CURSORS_PER_CONN = 128;
 
+    /** Default max number of active transactions per connection. */
+    public static final int DFLT_MAX_ACTIVE_TXS_PER_CONN = 128;
+
     /** Default size of thread pool. */
     public static final int DFLT_THREAD_POOL_SIZE = IgniteConfiguration.DFLT_PUBLIC_THREAD_CNT;
 
@@ -71,6 +74,9 @@ public class ClientConnectorConfiguration {
 
     /** Max number of opened cursors per connection. */
     private int maxOpenCursorsPerConn = DFLT_MAX_OPEN_CURSORS_PER_CONN;
+
+    /** Max number of active transactions per connection. */
+    private int maxActiveTxsPerConn = DFLT_MAX_ACTIVE_TXS_PER_CONN;
 
     /** Thread pool size. */
     private int threadPoolSize = DFLT_THREAD_POOL_SIZE;
@@ -278,6 +284,29 @@ public class ClientConnectorConfiguration {
      */
     public ClientConnectorConfiguration setMaxOpenCursorsPerConnection(int maxOpenCursorsPerConn) {
         this.maxOpenCursorsPerConn = maxOpenCursorsPerConn;
+
+        return this;
+    }
+
+    /**
+     * Gets maximum number of active transactions per connection.
+     * <p>
+     * Defaults to {@link #DFLT_MAX_ACTIVE_TXS_PER_CONN}.
+     *
+     * @return Maximum number of active transactions.
+     */
+    public int getMaxActiveTxsPerConnection() {
+        return maxActiveTxsPerConn;
+    }
+
+    /**
+     * Sets maximum number of active transactions per connection.
+     *
+     * @param maxActiveTxsPerConn Maximum number of active transactions.
+     * @return This instance for chaining.
+     */
+    public ClientConnectorConfiguration setMaxActiveTxsPerConnection(int maxActiveTxsPerConn) {
+        this.maxActiveTxsPerConn = maxActiveTxsPerConn;
 
         return this;
     }
