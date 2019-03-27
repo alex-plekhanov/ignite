@@ -1177,6 +1177,9 @@ public final class IgniteSystemProperties {
      */
     public static final String IGNITE_TX_OWNER_DUMP_REQUESTS_ALLOWED = "IGNITE_TX_OWNER_DUMP_REQUESTS_ALLOWED";
 
+    /** Maximum count of active transactions per connection for thin clients. */
+    public static final String IGNITE_THIN_MAX_ACTIVE_TX_PER_CONNECTION = "IGNITE_THIN_MAX_ACTIVE_TX_PER_CONNECTION";
+
     /**
      * Enforces singleton.
      */

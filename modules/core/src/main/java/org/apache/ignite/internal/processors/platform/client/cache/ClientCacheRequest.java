@@ -20,13 +20,17 @@ package org.apache.ignite.internal.processors.platform.client.cache;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.internal.processors.cache.DynamicCacheDescriptor;
+import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 import org.apache.ignite.internal.processors.platform.client.IgniteClientException;
 
+import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_3_0;
+import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_5_0;
+
 /**
- * Cache get request.
+ * Cache request.
  */
 class ClientCacheRequest extends ClientRequest {
     /** Flag: keep binary. */
@@ -43,12 +47,12 @@ class ClientCacheRequest extends ClientRequest {
      *
      * @param reader Reader.
      */
-    ClientCacheRequest(BinaryRawReader reader) {
+    ClientCacheRequest(BinaryRawReader reader, ClientListenerProtocolVersion ver) {
         super(reader);
 
         cacheId = reader.readInt();
 
-        flags = reader.readByte();
+        flags = ver.compareTo(VER_1_5_0) < 0 ? reader.readByte() : 0;
     }
 
     /**

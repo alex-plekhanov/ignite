@@ -25,6 +25,7 @@ import org.apache.ignite.cache.affinity.Affinity;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.managers.discovery.GridDiscoveryManager;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProcessor;
+import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectableNodePartitions;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
@@ -39,8 +40,8 @@ public class ClientCacheNodePartitionsRequest extends ClientCacheRequest {
      * Initializes a new instance of ClientRawRequest class.
      * @param reader Reader.
      */
-    public ClientCacheNodePartitionsRequest(BinaryRawReader reader) {
-        super(reader);
+    public ClientCacheNodePartitionsRequest(BinaryRawReader reader, ClientListenerProtocolVersion ver) {
+        super(reader, ver);
     }
 
     /** {@inheritDoc} */

@@ -34,6 +34,7 @@ import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.ClientCacheConfiguration;
 import org.apache.ignite.client.ClientException;
+import org.apache.ignite.client.ClientTransactions;
 import org.apache.ignite.client.IgniteClient;
 import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.internal.MarshallerPlatformIds;
@@ -62,6 +63,9 @@ public class TcpIgniteClient implements IgniteClient {
 
     /** Ignite Binary. */
     private final IgniteBinary binary;
+
+    /** Transactions. */
+    private final TcpClientTransactions transactions;
 
     /** Marshaller. */
     private final ClientBinaryMarshaller marsh;
@@ -92,6 +96,8 @@ public class TcpIgniteClient implements IgniteClient {
         serDes = new ClientUtils(marsh);
 
         binary = new ClientBinary(marsh);
+
+        transactions = new TcpClientTransactions(ch, marsh);
     }
 
     /** {@inheritDoc} */
@@ -105,7 +111,7 @@ public class TcpIgniteClient implements IgniteClient {
 
         ch.request(ClientOperation.CACHE_GET_OR_CREATE_WITH_NAME, req -> writeString(name, req));
 
-        return new TcpClientCache<>(name, ch, marsh);
+        return new TcpClientCache<>(name, ch, marsh, transactions);
     }
 
     /** {@inheritDoc} */
@@ -114,16 +120,16 @@ public class TcpIgniteClient implements IgniteClient {
         ensureCacheConfiguration(cfg);
 
         ch.request(ClientOperation.CACHE_GET_OR_CREATE_WITH_CONFIGURATION, 
-            req -> serDes.cacheConfiguration(cfg, req, toClientVersion(ch.serverVersion())));
+            req -> serDes.cacheConfiguration(cfg, req, ch.serverVersion()));
 
-        return new TcpClientCache<>(cfg.getName(), ch, marsh);
+        return new TcpClientCache<>(cfg.getName(), ch, marsh, transactions);
     }
 
     /** {@inheritDoc} */
     @Override public <K, V> ClientCache<K, V> cache(String name) {
         ensureCacheName(name);
 
-        return new TcpClientCache<>(name, ch, marsh);
+        return new TcpClientCache<>(name, ch, marsh, transactions);
     }
 
     /** {@inheritDoc} */
@@ -144,7 +150,7 @@ public class TcpIgniteClient implements IgniteClient {
 
         ch.request(ClientOperation.CACHE_CREATE_WITH_NAME, req -> writeString(name, req));
 
-        return new TcpClientCache<>(name, ch, marsh);
+        return new TcpClientCache<>(name, ch, marsh, transactions);
     }
 
     /** {@inheritDoc} */
@@ -152,9 +158,9 @@ public class TcpIgniteClient implements IgniteClient {
         ensureCacheConfiguration(cfg);
 
         ch.request(ClientOperation.CACHE_CREATE_WITH_CONFIGURATION, 
-            req -> serDes.cacheConfiguration(cfg, req, toClientVersion(ch.serverVersion())));
+            req -> serDes.cacheConfiguration(cfg, req, ch.serverVersion()));
 
-        return new TcpClientCache<>(cfg.getName(), ch, marsh);
+        return new TcpClientCache<>(cfg.getName(), ch, marsh, transactions);
     }
 
     /**
@@ -191,6 +197,11 @@ public class TcpIgniteClient implements IgniteClient {
             true,
             marsh
         ));
+    }
+
+    /** {@inheritDoc} */
+    @Override public ClientTransactions transactions() throws ClientProtocolError {
+        return transactions;
     }
 
     /**

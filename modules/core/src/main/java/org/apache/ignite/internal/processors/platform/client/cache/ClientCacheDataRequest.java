@@ -17,32 +17,34 @@
 
 package org.apache.ignite.internal.processors.platform.client.cache;
 
-import org.apache.ignite.cache.CachePeekMode;
-import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
-import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
-import org.apache.ignite.internal.processors.platform.client.ClientObjectResponse;
-import org.apache.ignite.internal.processors.platform.client.ClientResponse;
+
+import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_3_0;
+import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_5_0;
 
 /**
- * Cache local peek request.
- * Only should be used in testing purposes.
+ * Cache data manipulation request.
  */
-public class ClientCacheLocalPeekRequest extends ClientCacheKeyRequest {
+class ClientCacheDataRequest extends ClientCacheRequest {
+    /** Transaction ID. */
+    private final int txId;
+
     /**
      * Constructor.
      *
      * @param reader Reader.
      */
-    public ClientCacheLocalPeekRequest(BinaryRawReaderEx reader, ClientListenerProtocolVersion ver) {
+    ClientCacheDataRequest(BinaryRawReader reader, ClientListenerProtocolVersion ver) {
         super(reader, ver);
+
+        txId = ver.compareTo(VER_1_5_0) >= 0 ? reader.readInt() : 0;
     }
 
-    /** {@inheritDoc} */
-    @SuppressWarnings("unchecked")
-    @Override public ClientResponse process(ClientConnectionContext ctx) {
-        Object val = cache(ctx).localPeek(key(), CachePeekMode.ALL);
-
-        return new ClientObjectResponse(requestId(), val);
+    /**
+     * Gets transaction ID.
+     */
+    public int txId() {
+        return txId;
     }
 }

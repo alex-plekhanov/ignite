@@ -178,6 +178,13 @@ final class ReliableChannel implements AutoCloseable {
     }
 
     /**
+     * @return Client channel.
+     */
+    public ClientChannel clientChannel() {
+        return ch;
+    }
+
+    /**
      * @return Server version.
      */
     public ProtocolVersion serverVersion() {

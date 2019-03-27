@@ -21,11 +21,13 @@ import org.apache.ignite.internal.binary.BinaryRawReaderEx;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
+import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
 
 /**
  * Key set request.
  */
-public class ClientCacheKeysRequest extends ClientCacheRequest {
+public class ClientCacheKeysRequest extends ClientCacheDataRequest implements ClientTxAwareRequest {
     /** Keys. */
     private final Set<Object> keys;
 
@@ -34,8 +36,8 @@ public class ClientCacheKeysRequest extends ClientCacheRequest {
      *
      * @param reader Reader.
      */
-    ClientCacheKeysRequest(BinaryRawReaderEx reader) {
-        super(reader);
+    ClientCacheKeysRequest(BinaryRawReaderEx reader, ClientListenerProtocolVersion ver) {
+        super(reader, ver);
 
         keys = readSet(reader);
     }
