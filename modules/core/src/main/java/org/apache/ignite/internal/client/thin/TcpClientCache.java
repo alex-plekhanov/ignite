@@ -38,9 +38,11 @@ import org.apache.ignite.client.ClientException;
 import org.apache.ignite.internal.binary.GridBinaryMarshaller;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
+import org.apache.ignite.internal.client.thin.TcpClientTransactions.TcpClientTransaction;
 
 import static java.util.AbstractMap.SimpleEntry;
 import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.DEFAULT_VER;
+import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_3_0;
 
 /**
  * Implementation of {@link ClientCache} over TCP protocol.
@@ -58,6 +60,9 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
     /** Marshaller. */
     private final ClientBinaryMarshaller marsh;
 
+    /** Transactions facade. */
+    private final TcpClientTransactions transactions;
+
     /** Serializer/deserializer. */
     private final ClientUtils serDes;
 
@@ -65,11 +70,12 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
     private boolean keepBinary = false;
 
     /** Constructor. */
-    TcpClientCache(String name, ReliableChannel ch, ClientBinaryMarshaller marsh) {
+    TcpClientCache(String name, ReliableChannel ch, ClientBinaryMarshaller marsh, TcpClientTransactions transactions) {
         this.name = name;
         this.cacheId = ClientUtils.cacheId(name);
         this.ch = ch;
         this.marsh = marsh;
+        this.transactions = transactions;
 
         serDes = new ClientUtils(marsh);
     }
@@ -134,7 +140,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
             this::writeCacheInfo,
             res -> {
                 try {
-                    return serDes.cacheConfiguration(res, DEFAULT_VER);
+                    return serDes.cacheConfiguration(res, ch.serverVersion());
                 }
                 catch (IOException e) {
                     return null;
@@ -390,7 +396,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
             }
         }
         else {
-            binCache = new TcpClientCache<>(name, ch, marsh);
+            binCache = new TcpClientCache<>(name, ch, marsh, transactions);
 
             binCache.keepBinary = true;
         }
@@ -445,6 +451,9 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
         Consumer<BinaryOutputStream> qryWriter = out -> {
             writeCacheInfo(out);
 
+            if (ch.serverVersion().compareTo(V1_3_0) >= 0)
+                out.writeBoolean(keepBinary);
+
             if (qry.getFilter() == null)
                 out.writeByte(GridBinaryMarshaller.NULL);
             else {
@@ -494,7 +503,22 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
     /** Write cache ID and flags. */
     private void writeCacheInfo(BinaryOutputStream out) {
         out.writeInt(cacheId);
-        out.writeByte((byte)(keepBinary ? 1 : 0));
+
+        if (ch.serverVersion().compareTo(V1_3_0) < 0)
+            out.writeByte((byte)(keepBinary ? 1 : 0));
+        else {
+            TcpClientTransaction tx = transactions.tx();
+            int txId = 0;
+
+            if (tx != null) {
+                if (tx.clientChannel() != ch.clientChannel())
+                    throw new ClientException("TODO fail");
+
+                txId = tx.txId();
+            }
+
+            out.writeInt(txId);
+        }
     }
 
     /** */

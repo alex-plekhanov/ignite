@@ -23,17 +23,21 @@ import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 import org.apache.ignite.internal.processors.platform.PlatformContext;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
+import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
 import org.apache.ignite.internal.processors.platform.utils.PlatformUtils;
 import org.apache.ignite.lang.IgniteBiPredicate;
+
+import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_3_0;
 
 /**
  * Scan query request.
  */
 @SuppressWarnings("unchecked")
-public class ClientCacheScanQueryRequest extends ClientCacheRequest {
+public class ClientCacheScanQueryRequest extends ClientCacheDataRequest implements ClientTxAwareRequest {
     /** Java filter. */
     private static final byte FILTER_PLATFORM_JAVA = 1;
 
@@ -58,13 +62,18 @@ public class ClientCacheScanQueryRequest extends ClientCacheRequest {
     /** Filter object. */
     private final Object filterObj;
 
+    /** Keep binary. */
+    private final boolean keepBinary;
+
     /**
      * Ctor.
      *
      * @param reader Reader.
      */
-    public ClientCacheScanQueryRequest(BinaryRawReaderEx reader) {
-        super(reader);
+    public ClientCacheScanQueryRequest(BinaryRawReaderEx reader, ClientListenerProtocolVersion ver) {
+        super(reader, ver);
+
+        keepBinary = ver.compareTo(VER_1_3_0) >= 0 && reader.readBoolean();
 
         filterObj = reader.readObjectDetached();
 
@@ -106,6 +115,11 @@ public class ClientCacheScanQueryRequest extends ClientCacheRequest {
 
             throw e;
         }
+    }
+
+    /** {@inheritDoc} */
+    @Override protected boolean isKeepBinary() {
+        return keepBinary || super.isKeepBinary();
     }
 
     /**

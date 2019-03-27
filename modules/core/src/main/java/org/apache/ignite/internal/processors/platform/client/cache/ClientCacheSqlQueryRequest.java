@@ -21,17 +21,19 @@ import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.SqlQuery;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 import org.apache.ignite.internal.processors.platform.cache.PlatformCache;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
 
 import java.util.concurrent.TimeUnit;
+import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
 
 /**
  * Sql query request.
  */
 @SuppressWarnings("unchecked")
-public class ClientCacheSqlQueryRequest extends ClientCacheRequest {
+public class ClientCacheSqlQueryRequest extends ClientCacheDataRequest implements ClientTxAwareRequest {
     /** Query. */
     private final SqlQuery qry;
 
@@ -40,8 +42,8 @@ public class ClientCacheSqlQueryRequest extends ClientCacheRequest {
      *
      * @param reader Reader.
      */
-    public ClientCacheSqlQueryRequest(BinaryRawReaderEx reader) {
-        super(reader);
+    public ClientCacheSqlQueryRequest(BinaryRawReaderEx reader, ClientListenerProtocolVersion ver) {
+        super(reader, ver);
 
         qry = new SqlQuery(reader.readString(), reader.readString())
                 .setArgs(PlatformCache.readQueryArgs(reader))
