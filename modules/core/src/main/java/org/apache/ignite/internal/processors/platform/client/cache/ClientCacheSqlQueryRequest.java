@@ -26,12 +26,13 @@ import org.apache.ignite.internal.processors.platform.client.ClientConnectionCon
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
 
 import java.util.concurrent.TimeUnit;
+import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
 
 /**
  * Sql query request.
  */
 @SuppressWarnings("unchecked")
-public class ClientCacheSqlQueryRequest extends ClientCacheRequest {
+public class ClientCacheSqlQueryRequest extends ClientCacheRequest implements ClientTxAwareRequest {
     /** Query. */
     private final SqlQuery qry;
 

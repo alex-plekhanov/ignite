@@ -17,11 +17,15 @@
 
 package org.apache.ignite.internal.processors.platform.client;
 
+import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.binary.BinaryWriterExImpl;
 import org.apache.ignite.internal.processors.authentication.AuthorizationContext;
 import org.apache.ignite.internal.processors.odbc.ClientListenerRequest;
 import org.apache.ignite.internal.processors.odbc.ClientListenerRequestHandler;
 import org.apache.ignite.internal.processors.odbc.ClientListenerResponse;
+import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
+import org.apache.ignite.internal.processors.platform.client.tx.ClientTxControlRequest;
 import org.apache.ignite.plugin.security.SecurityException;
 
 /**
@@ -34,6 +38,9 @@ public class ClientRequestHandler implements ClientListenerRequestHandler {
     /** Auth context. */
     private final AuthorizationContext authCtx;
 
+    /** Worker. */
+    private final ClientRequestHandlerWorker worker;
+
     /**
      * Constructor.
      *
@@ -44,12 +51,28 @@ public class ClientRequestHandler implements ClientListenerRequestHandler {
 
         this.ctx = ctx;
         this.authCtx = authCtx;
+
+        worker = new ClientRequestHandlerWorker(ctx);
     }
 
     /** {@inheritDoc} */
     @Override public ClientListenerResponse handle(ClientListenerRequest req) {
         try {
-            return ((ClientRequest)req).process(ctx);
+            // If a transaction was started explicitly for this connection and the request is transactional
+            // or if we are trying to start or end the transaction then process this request in the dedicated thread.
+            if (req instanceof ClientTxControlRequest ||
+                (ctx.txContext() != null && req instanceof ClientTxAwareRequest)) {
+                IgniteInternalFuture<ClientListenerResponse> fut = worker.process((ClientRequest)req);
+
+                try {
+                    return fut.get();
+                }
+                catch (IgniteCheckedException e) {
+                    throw new IgniteClientException(ClientStatus.FAILED, "Failed to process request", e);
+                }
+            }
+            else
+                return ((ClientRequest)req).process(ctx);
         }
         catch (SecurityException ex) {
             throw new IgniteClientException(
@@ -90,5 +113,22 @@ public class ClientRequestHandler implements ClientListenerRequestHandler {
     /** {@inheritDoc} */
     @Override public void unregisterRequest(long reqId) {
         // No-op.
+    }
+
+    /**
+     * Called whenever client is disconnected due to correct connection close
+     * or due to {@code IOException} during network operations.
+     */
+    public void onDisconnect() {
+        if (worker != null) {
+            worker.cancel();
+
+            try {
+                worker.join();
+            }
+            catch (InterruptedException e) {
+                // No-op.
+            }
+        }
     }
 }

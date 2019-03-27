@@ -15,36 +15,58 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.processors.platform.client.cache;
+package org.apache.ignite.internal.processors.platform.client.tx;
 
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
-import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
+import org.apache.ignite.internal.processors.platform.client.ClientStatus;
+import org.apache.ignite.internal.processors.platform.client.IgniteClientException;
+import org.apache.ignite.internal.util.typedef.T2;
+import org.apache.ignite.transactions.Transaction;
 
 /**
- * Query cursor next page request.
+ * End the transaction request.
  */
-public class ClientCacheQueryNextPageRequest extends ClientRequest implements ClientTxAwareRequest {
-    /** Cursor id. */
-    private final long cursorId;
+public class ClientTxEndRequest extends ClientRequest implements ClientTxControlRequest {
+    /** Transaction id. */
+    private final int txId;
+
+    /** Transaction committed. */
+    private final boolean committed;
 
     /**
-     * Ctor.
+     * Constructor.
      *
      * @param reader Reader.
      */
-    public ClientCacheQueryNextPageRequest(BinaryRawReader reader) {
+    public ClientTxEndRequest(BinaryRawReader reader) {
         super(reader);
 
-        cursorId = reader.readLong();
+        txId = reader.readInt();
+        committed = reader.readBoolean();
     }
 
     /** {@inheritDoc} */
     @Override public ClientResponse process(ClientConnectionContext ctx) {
-        ClientCacheQueryCursor cur = ctx.resources().get(cursorId);
+        T2<Transaction, Integer> txCtx = ctx.txContext();
 
-        return new ClientCacheQueryNextPageResponse(requestId(), cur);
+        if (txCtx == null || txCtx.get2() != txId) {
+            throw new IgniteClientException(ClientStatus.TX_ALREADY_COMPLETED,
+                "Transaction with id " + txId + " is already completed.");
+        }
+
+        try (Transaction tx = txCtx.get1()) {
+            if (committed)
+                tx.commit();
+            else
+                tx.rollback();
+        }
+        finally {
+            ctx.txContext(null);
+        }
+
+        return super.process(ctx);
     }
 }

@@ -17,6 +17,11 @@
 
 package org.apache.ignite.internal.processors.platform.client;
 
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.binary.BinaryReaderExImpl;
@@ -25,11 +30,8 @@ import org.apache.ignite.internal.processors.odbc.ClientListenerAbstractConnecti
 import org.apache.ignite.internal.processors.odbc.ClientListenerMessageParser;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 import org.apache.ignite.internal.processors.odbc.ClientListenerRequestHandler;
-
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.concurrent.atomic.AtomicLong;
+import org.apache.ignite.internal.util.typedef.T2;
+import org.apache.ignite.transactions.Transaction;
 
 /**
  * Thin Client connection context.
@@ -44,11 +46,15 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
     /** Version 1.2.0. */
     public static final ClientListenerProtocolVersion VER_1_2_0 = ClientListenerProtocolVersion.create(1, 2, 0);
 
-    /** Version 1.2.0. */
-    public static final ClientListenerProtocolVersion CURRENT_VER = VER_1_2_0;
+    /** Version 1.3.0. */
+    public static final ClientListenerProtocolVersion VER_1_3_0 = ClientListenerProtocolVersion.create(1, 3, 0);
+
+    /** Current version. */
+    public static final ClientListenerProtocolVersion CURRENT_VER = VER_1_3_0;
 
     /** Supported versions. */
     private static final Collection<ClientListenerProtocolVersion> SUPPORTED_VERS = Arrays.asList(
+        VER_1_3_0,
         VER_1_2_0,
         VER_1_1_0,
         VER_1_0_0
@@ -68,6 +74,12 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
 
     /** Cursor counter. */
     private final AtomicLong curCnt = new AtomicLong();
+
+    /** Tx id. */
+    private final AtomicInteger txId = new AtomicInteger();
+
+    /** Tx context. */
+    private volatile T2<Transaction, Integer> txCtx;
 
     /**
      * Ctor.
@@ -144,6 +156,8 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
     @Override public void onDisconnected() {
         resReg.clean();
 
+        handler.onDisconnect();
+
         super.onDisconnected();
     }
 
@@ -168,5 +182,28 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
      */
     public void decrementCursors() {
         curCnt.decrementAndGet();
+    }
+
+    /**
+     * Next transaction id for this connection.
+     */
+    public int nextTxId() {
+        int txId = this.txId.incrementAndGet();
+
+        return txId == 0 ? this.txId.incrementAndGet() : txId;
+    }
+
+    /**
+     * Current transaction context.
+     */
+    public T2<Transaction, Integer> txContext() {
+        return txCtx;
+    }
+
+    /**
+     * @param txCtx Transaction context.
+     */
+    public void txContext(T2<Transaction, Integer> txCtx) {
+        this.txCtx = txCtx;
     }
 }

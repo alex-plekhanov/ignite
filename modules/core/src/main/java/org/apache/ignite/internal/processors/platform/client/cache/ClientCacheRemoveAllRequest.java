@@ -20,11 +20,12 @@ package org.apache.ignite.internal.processors.platform.client.cache;
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
+import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
 
 /**
  * Cache removeAll request.
  */
-public class ClientCacheRemoveAllRequest extends ClientCacheRequest {
+public class ClientCacheRemoveAllRequest extends ClientCacheRequest implements ClientTxAwareRequest {
     /**
      * Constructor.
      *
