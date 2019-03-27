@@ -40,7 +40,6 @@ import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 
 import static java.util.AbstractMap.SimpleEntry;
-import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.CURRENT_VER;
 
 /**
  * Implementation of {@link ClientCache} over TCP protocol.
@@ -134,7 +133,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
             this::writeCacheInfo,
             res -> {
                 try {
-                    return serDes.cacheConfiguration(res, CURRENT_VER);
+                    return serDes.cacheConfiguration(res, ch.serverVersion());
                 }
                 catch (IOException e) {
                     return null;

@@ -44,6 +44,8 @@ public class ClientRequestHandler implements ClientListenerRequestHandler {
 
         this.ctx = ctx;
         this.authCtx = authCtx;
+
+        // TODO add worker
     }
 
     /** {@inheritDoc} */

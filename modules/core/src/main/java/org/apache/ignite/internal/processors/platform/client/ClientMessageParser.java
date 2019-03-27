@@ -203,6 +203,21 @@ public class ClientMessageParser implements ClientListenerMessageParser {
     /** */
     private static final short OP_BINARY_TYPE_PUT = 3003;
 
+    /** Get current transaction for client connection. */
+    private static final short OP_TX_GET = 4000;
+
+    /** Start new transaction. */
+    private static final short OP_TX_START = 4001;
+
+    /** Commit transaction. */
+    private static final short OP_TX_COMMIT = 4002;
+
+    /** Rollback transaction. */
+    private static final short OP_TX_ROLLBACK = 4003;
+
+    /** Close transaction. */
+    private static final short OP_TX_CLOSE = 4004;
+
     /** Marshaller. */
     private final GridBinaryMarshaller marsh;
     
