@@ -83,12 +83,14 @@ public class JdbcThinTransactionsSelfTest extends JdbcThinAbstractSelfTest {
 
         startGrid(0);
 
+/*
         try (Connection c = c(true, NestedTxMode.ERROR)) {
             try (Statement s = c.createStatement()) {
                 s.execute("CREATE TABLE INTS (k int primary key, v int) WITH \"cache_name=ints,wrap_value=false," +
                     "atomicity=transactional_snapshot\"");
             }
         }
+*/
     }
 
     /** {@inheritDoc} */
@@ -108,6 +110,33 @@ public class JdbcThinTransactionsSelfTest extends JdbcThinAbstractSelfTest {
         res.setAutoCommit(autoCommit);
 
         return res;
+    }
+
+    @Test
+    public void testTransactionsBeginCommit() throws Exception {
+        Connection c1 = c(false, NestedTxMode.ERROR);
+        Connection c2 = c(false, NestedTxMode.ERROR);
+
+        try (Statement s = c1.createStatement()) {
+            s.execute("BEGIN");
+            s.execute("COMMIT");
+
+            s.execute("BEGIN");
+            s.execute("ROLLBACK");
+        }
+
+        try (Statement s = c2.createStatement()) {
+            s.execute("BEGIN");
+            s.execute("COMMIT");
+        }
+
+        try (Statement s = c1.createStatement()) {
+            s.execute("BEGIN");
+            s.execute("COMMIT");
+        }
+
+        c1.close();
+        c2.close();
     }
 
     /**

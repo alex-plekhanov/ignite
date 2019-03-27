@@ -386,6 +386,26 @@ public class FunctionalTest {
     }
 
     /**
+     *
+     */
+    @Test
+    public void testSeveralClients() {
+        Ignite ignite = Ignition.start(Config.getServerConfiguration());
+        IgniteClient client1 = Ignition.startClient(getClientConfiguration());
+        IgniteClient client2 = Ignition.startClient(getClientConfiguration());
+
+        ClientCache cache1 = client1.createCache("cache1");
+        ClientCache cache2 = client2.cache("cache1");
+
+        cache1.put(1, 2);
+        System.out.println(cache2.get(1));
+        cache1.put(1, 3);
+        System.out.println(cache2.get(1));
+        cache1.put(2, 1);
+        System.out.println(cache1.get(1));
+    }
+
+    /**
      * Test client fails on start if server is unavailable
      */
     @Test
