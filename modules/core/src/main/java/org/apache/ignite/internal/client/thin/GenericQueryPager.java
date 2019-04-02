@@ -134,6 +134,8 @@ abstract class GenericQueryPager<T> implements QueryPager<T> {
         // Retry entire query to failover
         hasFirstPage = false;
 
+        //cursorId = null;
+
         return ch.service(qryOp, qryWriter, this::readResult);
     }
 }

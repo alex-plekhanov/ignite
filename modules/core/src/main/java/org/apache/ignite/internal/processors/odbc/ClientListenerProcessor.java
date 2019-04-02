@@ -164,7 +164,7 @@ public class ClientListenerProcessor extends GridProcessorAdapter {
                             .idleTimeout(idleTimeout > 0 ? idleTimeout : Long.MAX_VALUE)
                             .build();
 
-                        srv0.start();
+                        //srv0.start();
 
                         srv = srv0;
 
@@ -198,6 +198,14 @@ public class ClientListenerProcessor extends GridProcessorAdapter {
                 throw new IgniteCheckedException("Failed to start client connector processor.", e);
             }
         }
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onKernalStart(boolean active) throws IgniteCheckedException {
+        super.onKernalStart(active);
+
+        if (srv != null)
+            srv.start();
     }
 
     /**
