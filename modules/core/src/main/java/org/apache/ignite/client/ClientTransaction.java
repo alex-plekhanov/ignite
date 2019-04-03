@@ -17,13 +17,6 @@
 
 package org.apache.ignite.client;
 
-import org.apache.ignite.IgniteException;
-import org.apache.ignite.transactions.TransactionConcurrency;
-import org.apache.ignite.transactions.TransactionHeuristicException;
-import org.apache.ignite.transactions.TransactionOptimisticException;
-import org.apache.ignite.transactions.TransactionRollbackException;
-import org.apache.ignite.transactions.TransactionTimeoutException;
-
 /**
  * Thin client transaction.
  */
@@ -31,26 +24,19 @@ public interface ClientTransaction extends AutoCloseable {
     /**
      * Commits this transaction.
      *
-     * @throws IgniteException If commit failed.
-     * @throws TransactionTimeoutException If transaction is timed out.
-     * @throws TransactionRollbackException If transaction is automatically rolled back.
-     * @throws TransactionOptimisticException If transaction concurrency is {@link TransactionConcurrency#OPTIMISTIC}
-     * and commit is optimistically failed.
-     * @throws TransactionHeuristicException If transaction has entered an unknown state.
+     * @throws ClientException If commit failed.
      */
     public void commit() throws ClientException;
 
     /**
      * Rolls back this transaction.
-\     *
-     * @throws IgniteException If rollback failed.
+     *
+     * @throws ClientException If rollback failed.
      */
     public void rollback() throws ClientException;
 
     /**
      * Ends the transaction. Transaction will be rolled back if it has not been committed.
-     *
-     * @throws IgniteException If transaction could not be gracefully ended.
      */
-    @Override public void close() throws ClientException;
+    @Override public void close();
 }
