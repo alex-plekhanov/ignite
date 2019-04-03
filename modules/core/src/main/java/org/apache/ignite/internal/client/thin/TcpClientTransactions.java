@@ -45,19 +45,18 @@ class TcpClientTransactions implements ClientTransactions {
     }
 
     /** {@inheritDoc} */
-    @Override public ClientTransaction txStart() throws ClientException {
+    @Override public ClientTransaction txStart() {
         return txStart0(null, null, null, null);
     }
 
     /** {@inheritDoc} */
-    @Override public ClientTransaction txStart(TransactionConcurrency concurrency, TransactionIsolation isolation)
-        throws ClientException {
+    @Override public ClientTransaction txStart(TransactionConcurrency concurrency, TransactionIsolation isolation) {
         return txStart0(concurrency, isolation, null, null);
     }
 
     /** {@inheritDoc} */
     @Override public ClientTransaction txStart(TransactionConcurrency concurrency, TransactionIsolation isolation, long
-        timeout, int txSize) throws ClientException {
+        timeout, int txSize) {
         return txStart0(concurrency, isolation, timeout, txSize);
     }
 
@@ -68,7 +67,7 @@ class TcpClientTransactions implements ClientTransactions {
      * @param txSize Tx size.
      */
     private ClientTransaction txStart0(TransactionConcurrency concurrency, TransactionIsolation isolation, Long timeout,
-        Integer txSize) throws ClientException {
+        Integer txSize) {
         return ch.service(ClientOperation.TX_START,
             req -> {
                 try (BinaryRawWriterEx writer = new BinaryWriterExImpl(marsh.context(), req, null, null)) {
@@ -85,7 +84,7 @@ class TcpClientTransactions implements ClientTransactions {
     }
 
     /** {@inheritDoc} */
-    @Override public ClientTransactions withLabel(String lb) throws ClientException {
+    @Override public ClientTransactions withLabel(String lb) {
         if (lb == null)
             throw new NullPointerException();
 
@@ -116,12 +115,12 @@ class TcpClientTransactions implements ClientTransactions {
         }
 
         /** {@inheritDoc} */
-        @Override public void commit() throws ClientException {
+        @Override public void commit() {
             sendTxStatus(true);
         }
 
         /** {@inheritDoc} */
-        @Override public void rollback() throws ClientException {
+        @Override public void rollback() {
             sendTxStatus(false);
         }
 

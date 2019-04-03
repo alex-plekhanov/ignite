@@ -119,9 +119,6 @@ final class ReliableChannel implements AutoCloseable {
         try {
             for (int i = 0; i < totalSrvs; i++) {
                 try {
-                    if (failure != null)
-                        changeServer();
-
                     if (ch == null)
                         ch = chFactory.apply(new ClientChannelConfiguration(clientCfg).setAddress(primary)).get();
 
@@ -131,33 +128,32 @@ final class ReliableChannel implements AutoCloseable {
 
                     failure = null;
 
+                    if (failoverPlc == FailoverPolicy.PROHIBIT)
+                        prohibitFailover = true;
+
                     break;
                 }
                 catch (ClientConnectionException e) {
+                    if (failure == null)
+                        failure = e;
+                    else
+                        failure.addSuppressed(e);
+
                     if (prohibitFailover) {
                         //prohibitFailover = false; // TODO discuss on dev-list.
 
                         throw e;
                     }
 
-                    if (failure == null)
-                        failure = e;
-                    else
-                        failure.addSuppressed(e);
-
-                    try {
-                        ch.close();
-                    }
-                    catch (Exception ignored) {
-                    }
-
-                    ch = null;
+                    changeServer();
                 }
                 finally {
-                    if (failoverPlc == FailoverPolicy.PROHIBIT)
-                        prohibitFailover = true;
-                    else if (failoverPlc == FailoverPolicy.ALLOW)
+                    if (failoverPlc == FailoverPolicy.ALLOW) {
                         prohibitFailover = false;
+
+                        if (failure != null)
+                            changeServer();
+                    }
                 }
             }
         }
@@ -239,6 +235,15 @@ final class ReliableChannel implements AutoCloseable {
 
             primary = backups.removeFirst();
         }
+
+        try {
+            ch.close();
+        }
+        catch (Exception ignored) {
+        }
+
+        ch = null;
+
     }
 
     /**

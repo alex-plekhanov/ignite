@@ -17,6 +17,7 @@
 
 package org.apache.ignite.client;
 
+import org.apache.ignite.internal.client.thin.ClientServerError;
 import org.apache.ignite.transactions.TransactionConcurrency;
 import org.apache.ignite.transactions.TransactionIsolation;
 
@@ -28,9 +29,9 @@ public interface ClientTransactions {
      * Starts transaction with default isolation, concurrency, timeout, and invalidation policy.
      *
      * @return New transaction
-     * @throws ClientException If transaction is already started by this connection.
+     * @throws ClientServerError If transaction is already started by this connection.
      */
-    public ClientTransaction txStart() throws ClientException;
+    public ClientTransaction txStart() throws ClientServerError, ClientException;
 
     /**
      * Starts new transaction with the specified concurrency and isolation.
@@ -38,10 +39,10 @@ public interface ClientTransactions {
      * @param concurrency Concurrency.
      * @param isolation Isolation.
      * @return New transaction.
-     * @throws ClientException If transaction is already started by this connection.
+     * @throws ClientServerError If transaction is already started by this connection.
      */
     public ClientTransaction txStart(TransactionConcurrency concurrency, TransactionIsolation isolation)
-        throws ClientException;
+        throws ClientServerError, ClientException;
 
     /**
      * Starts transaction with specified isolation, concurrency, timeout, invalidation flag,
@@ -52,10 +53,10 @@ public interface ClientTransactions {
      * @param timeout Timeout.
      * @param txSize Number of entries participating in transaction (may be approximate).
      * @return New transaction.
-     * @throws ClientException If transaction is already started by this connection.
+     * @throws ClientServerError If transaction is already started by this connection.
      */
     public ClientTransaction txStart(TransactionConcurrency concurrency, TransactionIsolation isolation, long timeout,
-        int txSize) throws ClientException;
+        int txSize) throws ClientServerError, ClientException;
 
     /**
      * Returns instance of {@code ClientTransactions} to mark a transaction with a special label.

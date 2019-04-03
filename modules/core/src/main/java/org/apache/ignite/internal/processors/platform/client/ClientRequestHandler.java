@@ -68,7 +68,8 @@ public class ClientRequestHandler implements ClientListenerRequestHandler {
                     return fut.get();
                 }
                 catch (IgniteCheckedException e) {
-                    throw new IgniteClientException(ClientStatus.FAILED, "Failed to process request", e);
+                    throw e.getCause() instanceof IgniteClientException ? (IgniteClientException)e.getCause() :
+                        new IgniteClientException(ClientStatus.FAILED, e.getMessage(), e);
                 }
             }
             else

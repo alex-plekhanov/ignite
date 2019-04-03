@@ -52,7 +52,11 @@ public class ClientTxEndRequest extends ClientRequest implements ClientTxControl
     @Override public ClientResponse process(ClientConnectionContext ctx) {
         T2<Transaction, Integer> txCtx = ctx.txContext();
 
+        if (txCtx == null && !committed)
+            return super.process(ctx);
+
         if (txCtx == null || txCtx.get2() != txId) {
+
             throw new IgniteClientException(ClientStatus.TX_ALREADY_COMPLETED,
                 "Transaction with id " + txId + " is already completed.");
         }

@@ -17,6 +17,8 @@
 
 package org.apache.ignite.client;
 
+import org.apache.ignite.internal.client.thin.ClientServerError;
+
 /**
  * Thin client transaction.
  */
@@ -24,16 +26,16 @@ public interface ClientTransaction extends AutoCloseable {
     /**
      * Commits this transaction.
      *
-     * @throws ClientException If commit failed.
+     * @throws ClientServerError If commit failed.
      */
-    public void commit() throws ClientException;
+    public void commit() throws ClientServerError, ClientException;
 
     /**
      * Rolls back this transaction.
      *
-     * @throws ClientException If rollback failed.
+     * @throws ClientServerError If rollback failed.
      */
-    public void rollback() throws ClientException;
+    public void rollback() throws ClientServerError, ClientException;
 
     /**
      * Ends the transaction. Transaction will be rolled back if it has not been committed.
