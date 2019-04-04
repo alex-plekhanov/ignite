@@ -25,7 +25,7 @@ import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareReq
 /**
  * Cache removeAll request.
  */
-public class ClientCacheRemoveAllRequest extends ClientCacheRequest implements ClientTxAwareRequest {
+public class ClientCacheRemoveAllRequest extends ClientCacheRequest {
     /**
      * Constructor.
      *

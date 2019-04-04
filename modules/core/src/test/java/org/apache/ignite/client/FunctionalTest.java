@@ -623,14 +623,14 @@ public class FunctionalTest {
                 }
             }
 
-            // TODO Check different type of cache operations.
+            // Check different type of cache operations.
             try (ClientTransaction tx = client.transactions().txStart()) {
-                // put, putAll, putIfAbsent
+                // Operations: put, putAll, putIfAbsent.
                 cache.put(2, "value10");
                 cache.putAll(F.asMap(1, "value11", 3, "value12"));
                 cache.putIfAbsent(4, "value13");
 
-                // get, getAll, getAndPut, getAndRemove, getAndReplace
+                // Operations: get, getAll, getAndPut, getAndRemove, getAndReplace.
                 assertEquals("value10", cache.get(2));
                 assertEquals(F.asMap(1, "value11", 2, "value10"),
                     cache.getAll(new HashSet<>(Arrays.asList(1, 2))));
@@ -638,18 +638,22 @@ public class FunctionalTest {
                 assertEquals("value14", cache.getAndReplace(4, "value15"));
                 assertEquals("value15", cache.getAndRemove(4));
 
-                // contains
+                // Operations: contains.
                 assertTrue(cache.containsKey(2));
                 assertFalse(cache.containsKey(4));
 
-                // replace, replace
+                // Operations: replace.
+                cache.put(4, "");
+                assertTrue(cache.replace(4, "value16"));
+                assertTrue(cache.replace(4, "value16", "value17"));
 
-
-                // remove, remove, removeAll, removeAll
-
-                // query?
-
-                // clear
+                // Operations: remove, removeAll
+                cache.putAll(F.asMap(5, "", 6, ""));
+                assertTrue(cache.remove(5));
+                assertTrue(cache.remove(4, "value17"));
+                cache.removeAll(new HashSet<>(Arrays.asList(3, 6)));
+                assertFalse(cache.containsKey(3));
+                assertFalse(cache.containsKey(6));
 
                 tx.rollback();
             }
