@@ -2392,8 +2392,6 @@ public class IgniteTxManager extends GridCacheSharedManagerAdapter {
         }
 
         clearThreadMap(tx);
-
-        transactionMap(tx).remove(tx.xidVersion(), tx);
     }
 
     /**
@@ -2417,13 +2415,9 @@ public class IgniteTxManager extends GridCacheSharedManagerAdapter {
         }
 
         assert !threadMap.containsValue(tx) : tx;
-        assert !transactionMap(tx).containsValue(tx) : tx;
         assert !haveSystemTxForThread(Thread.currentThread().getId());
 
         if (threadMap.putIfAbsent(threadId, tx) != null)
-            throw new IgniteCheckedException("Thread already has started a transaction.");
-
-        if (transactionMap(tx).putIfAbsent(tx.xidVersion(), tx) != null)
             throw new IgniteCheckedException("Thread already has started a transaction.");
 
         tx.threadId(threadId);

@@ -15,17 +15,18 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.processors.cache.distributed;
+package org.apache.ignite.internal.processors.cache;
 
 import org.apache.ignite.transactions.TransactionConcurrency;
 
-import static org.apache.ignite.transactions.TransactionConcurrency.PESSIMISTIC;
+import static org.apache.ignite.transactions.TransactionConcurrency.OPTIMISTIC;
 
 /**
- *
+ * JTA Tx Manager test.
  */
-public class IgnitePessimisticTxSuspendResumeTest extends IgniteAbstractTxSuspendResumeTest {
-    @Override protected TransactionConcurrency transactionConcurrency() {
-        return PESSIMISTIC;
+public class GridJtaOptimisticTxTransactionManagerSelfTest extends GridJtaTransactionManagerSelfTest {
+    /** {@inheritDoc} */
+    @Override protected TransactionConcurrency txConcurrency() {
+        return OPTIMISTIC;
     }
 }

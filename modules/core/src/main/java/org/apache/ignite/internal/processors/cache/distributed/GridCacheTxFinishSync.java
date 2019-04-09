@@ -44,6 +44,7 @@ public class GridCacheTxFinishSync<K, V> {
     private IgniteLogger log;
 
     /** Nodes map. */
+    // TODO replace threadMap with xidMap
     private ConcurrentMap<Long, ThreadFinishSync> threadMap = new ConcurrentHashMap<>();
 
     /**
