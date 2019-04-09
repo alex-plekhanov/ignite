@@ -56,7 +56,10 @@ public enum IgniteFeatures {
 
 
     /** Displaying versbose transaction information: --info option of --tx control script command. */
-    TX_INFO_COMMAND(7);
+    TX_INFO_COMMAND(7),
+
+    /** Support of suspend/resume operations for pessimistic transactions.  */
+    SUSPEND_RESUME_PESSIMISTIC_TX(8);
 
     /**
      * Unique feature identifier.

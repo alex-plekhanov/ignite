@@ -385,11 +385,24 @@ public class GridCacheMvccCandidate implements Externalizable,
     }
 
     /**
-     * @return Thread ID.
+     * @return Thread ID. Can be outdated for explicit transactions.
      * @see Thread#getId()
      */
     public long threadId() {
         return threadId;
+    }
+
+    /**
+     * If there is transaction started explicitly and the lock was acquired within this transaction then the lock is
+     * held by the transaction. In this case, holder ID it's a unique per node negative number generated from the
+     * transaction ID.
+     * If there are no explicit transactions started, but the lock was explicitly acquired then the lock is held by
+     * the thread requested this lock. In this case, holder ID equals to thread ID (always positive).
+     *
+     * @return Lock holder ID.
+     */
+    public long holderId() {
+        return tx() && !singleImplicit() ? -ver.order() : threadId;
     }
 
     /**
