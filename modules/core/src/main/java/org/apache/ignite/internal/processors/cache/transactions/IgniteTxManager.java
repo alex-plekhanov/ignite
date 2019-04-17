@@ -1605,46 +1605,46 @@ public class IgniteTxManager extends GridCacheSharedManagerAdapter {
      * per-thread counter so that further awaitAck call will wait for finish response.
      *
      * @param rmtNodeId Remote node ID for which finish request is being sent.
-     * @param threadId Near tx thread ID.
+     * @param xid Near tx ID.
      */
-    public void beforeFinishRemote(UUID rmtNodeId, long threadId) {
+    public void beforeFinishRemote(UUID rmtNodeId, GridCacheVersion xid) {
         if (finishSyncDisabled)
             return;
 
         assert txFinishSync != null;
 
-        txFinishSync.onFinishSend(rmtNodeId, threadId);
+        txFinishSync.onFinishSend(rmtNodeId, xid);
     }
 
     /**
      * Callback invoked when near finish response is received from remote node.
      *
      * @param rmtNodeId Remote node ID from which response is received.
-     * @param threadId Near tx thread ID.
+     * @param xid Near tx ID.
      */
-    public void onFinishedRemote(UUID rmtNodeId, long threadId) {
+    public void onFinishedRemote(UUID rmtNodeId, GridCacheVersion xid) {
         if (finishSyncDisabled)
             return;
 
         assert txFinishSync != null;
 
-        txFinishSync.onAckReceived(rmtNodeId, threadId);
+        txFinishSync.onAckReceived(rmtNodeId, xid);
     }
 
     /**
      * Asynchronously waits for last finish request ack.
      *
      * @param rmtNodeId Remote node ID.
-     * @param threadId Near tx thread ID.
+     * @param xid Near tx ID.
      * @return {@code null} if ack was received or future that will be completed when ack is received.
      */
-    @Nullable public IgniteInternalFuture<?> awaitFinishAckAsync(UUID rmtNodeId, long threadId) {
+    @Nullable public IgniteInternalFuture<?> awaitFinishAckAsync(UUID rmtNodeId, GridCacheVersion xid) {
         if (finishSyncDisabled)
             return null;
 
         assert txFinishSync != null;
 
-        return txFinishSync.awaitAckAsync(rmtNodeId, threadId);
+        return txFinishSync.awaitAckAsync(rmtNodeId, xid);
     }
 
     /**
