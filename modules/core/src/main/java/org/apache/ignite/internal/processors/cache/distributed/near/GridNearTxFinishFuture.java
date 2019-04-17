@@ -797,11 +797,14 @@ public final class GridNearTxFinishFuture<K, V> extends GridCacheCompoundIdentit
                 if (!wait)
                     fut.onDone();
             }
-            catch (ClusterTopologyCheckedException ignored) {
+            catch (ClusterTopologyCheckedException e) {
                 // Remove previous mapping.
                 mappings.remove(m.primary().id());
 
                 fut.onNodeLeft(n.id(), false);
+
+                if (tx.pessimistic() && !useCompletedVer)
+                    cctx.tm().onFinishRequestFail(n.id(), tx.xidVersion(), e);
             }
             catch (IgniteCheckedException e) {
                 if (msgLog.isDebugEnabled()) {
@@ -813,6 +816,9 @@ public final class GridNearTxFinishFuture<K, V> extends GridCacheCompoundIdentit
 
                 // Fail the whole thing.
                 fut.onDone(e);
+
+                if (tx.pessimistic() && !useCompletedVer)
+                    cctx.tm().onFinishRequestFail(n.id(), tx.xidVersion(), e);
             }
         }
     }

@@ -29,7 +29,6 @@ import org.apache.ignite.internal.processors.cache.GridCacheSharedContext;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
 import org.apache.ignite.internal.util.future.GridFinishedFuture;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
-import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.lang.IgniteFuture;
 import org.jetbrains.annotations.Nullable;
 
@@ -44,7 +43,6 @@ public class GridCacheTxFinishSync<K, V> {
     private IgniteLogger log;
 
     /** Tx map. */
-    // TODO fix memory leak.
     private ConcurrentMap<GridCacheVersion, TxFinishSync> xidMap = new ConcurrentHashMap<>();
 
     /**
@@ -63,12 +61,14 @@ public class GridCacheTxFinishSync<K, V> {
      * @param xid Tx ID.
      */
     public void onFinishSend(UUID nodeId, GridCacheVersion xid) {
-        TxFinishSync txSync = xidMap.get(xid);
+        TxFinishSync txSync = xidMap.computeIfAbsent(xid, sync -> new TxFinishSync(xid));
 
-        if (txSync == null)
-            txSync = F.addIfAbsent(xidMap, xid, new TxFinishSync(xid));
+        synchronized (txSync) {
+            txSync.onSend(nodeId);
 
-        txSync.onSend(nodeId);
+            // Entries for this tx can be removed concurrently by other nodes events before we call onSend() method.
+            xidMap.putIfAbsent(xid, txSync);
+        }
     }
 
     /**
@@ -104,8 +104,14 @@ public class GridCacheTxFinishSync<K, V> {
     public void onAckReceived(UUID nodeId, GridCacheVersion xid) {
         TxFinishSync txSync = xidMap.get(xid);
 
-        if (txSync != null)
+        if (txSync != null) {
             txSync.onReceive(nodeId);
+
+            synchronized (txSync) {
+                if (txSync.isEmpty())
+                    xidMap.remove(xid, txSync);
+            }
+        }
     }
 
     /**
@@ -114,8 +120,34 @@ public class GridCacheTxFinishSync<K, V> {
      * @param nodeId Left node ID.
      */
     public void onNodeLeft(UUID nodeId) {
-        for (TxFinishSync txSync : xidMap.values())
+        for (TxFinishSync txSync : xidMap.values()) {
             txSync.onNodeLeft(nodeId);
+
+            synchronized (txSync) {
+                if (txSync.isEmpty())
+                    xidMap.remove(txSync.xid, txSync);
+            }
+        }
+    }
+
+    /**
+     * Callback invoked when failure occurs.
+     *
+     * @param nodeId Node ID.
+     * @param xid Tx ID.
+     * @param e Error.
+     */
+    public void onFail(UUID nodeId, GridCacheVersion xid, Exception e) {
+        TxFinishSync txSync = xidMap.get(xid);
+
+        if (txSync != null) {
+            txSync.onFail(nodeId, e);
+
+            synchronized (txSync) {
+                if (txSync.isEmpty())
+                    xidMap.remove(xid, txSync);
+            }
+        }
     }
 
     /**
@@ -193,7 +225,7 @@ public class GridCacheTxFinishSync<K, V> {
          * @param nodeId Node ID response received from.
          */
         public void onReceive(UUID nodeId) {
-            TxNodeFinishSync sync = nodeMap.get(nodeId);
+            TxNodeFinishSync sync = nodeMap.remove(nodeId);
 
             if (sync != null)
                 sync.onReceive();
@@ -207,6 +239,24 @@ public class GridCacheTxFinishSync<K, V> {
 
             if (sync != null)
                 sync.onNodeLeft();
+        }
+
+        /**
+         * @param nodeId Node ID.
+         * @param e Error.
+         */
+        public void onFail(UUID nodeId, Exception e) {
+            TxNodeFinishSync sync = nodeMap.remove(nodeId);
+
+            if (sync != null)
+                sync.onFail(e);
+        }
+
+        /**
+         * Ack's received from all alive nodes.
+         */
+        public boolean isEmpty() {
+            return nodeMap.isEmpty();
         }
     }
 
@@ -333,6 +383,22 @@ public class GridCacheTxFinishSync<K, V> {
                         reconnectFut,
                         "Failed to wait for transaction synchronizer, client node disconnected: " + nodeId);
                     pendingFut.onDone(err);
+
+                    pendingFut = null;
+                }
+            }
+        }
+
+        /**
+         * Callback for request send failure.
+         */
+        public void onFail(Exception e) {
+            synchronized (this) {
+                nodeLeft = true;
+
+                if (pendingFut != null) {
+                    pendingFut.onDone(new IgniteCheckedException("Failed to wait for transaction synchronizer " +
+                        "completed state, failed to send request to node: " + nodeId, e));
 
                     pendingFut = null;
                 }
