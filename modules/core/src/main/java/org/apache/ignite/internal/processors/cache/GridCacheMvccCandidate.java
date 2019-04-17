@@ -88,11 +88,11 @@ public class GridCacheMvccCandidate implements Externalizable,
     /** Linked reentry. */
     private GridCacheMvccCandidate reentry;
 
-    /** Previous lock for the thread. */
+    /** Previous lock for the holder. */
     @GridToStringExclude
     private transient volatile GridCacheMvccCandidate prev;
 
-    /** Next lock for the thread. */
+    /** Next lock for the holder. */
     @GridToStringExclude
     private transient volatile GridCacheMvccCandidate next;
 
@@ -385,11 +385,23 @@ public class GridCacheMvccCandidate implements Externalizable,
     }
 
     /**
-     * @return Thread ID.
+     * @return Thread ID. Can be outdated for explicit transactions.
      * @see Thread#getId()
      */
     public long threadId() {
         return threadId;
+    }
+
+    /**
+     * If there is transaction started explicitly and the lock was acquired within this transaction then the lock is
+     * held by the transaction. In this case, holder ID it's a negative number generated from the transaction ID.
+     * If there are no explicit transactions started, but the lock was explicitly acquired then the lock is held by
+     * the thread requested this lock. In this case, holder ID equals to thread ID (always positive).
+     *
+     * @return Lock holder ID.
+     */
+    public long holderId() {
+        return tx() && !singleImplicit() ? -ver.order() : threadId;
     }
 
     /**
@@ -526,31 +538,31 @@ public class GridCacheMvccCandidate implements Externalizable,
     }
 
     /**
-     * @return Lock that comes before in the same thread, possibly <tt>null</tt>.
+     * @return Lock that comes before for the same holder, possibly <tt>null</tt>.
      */
     @Nullable public GridCacheMvccCandidate previous() {
         return prev;
     }
 
     /**
-     * @param prev Lock that comes before in the same thread.
+     * @param prev Lock that comes before for the same holder.
      */
     public void previous(GridCacheMvccCandidate prev) {
-        assert threadId == prev.threadId : "Invalid threadId [this=" + this + ", prev=" + prev + ']';
+        assert holderId() == prev.holderId(): "Invalid holderId [this=" + this + ", prev=" + prev + ']';
 
         this.prev = prev;
     }
 
     /**
      *
-     * @return Gets next candidate in this thread.
+     * @return Gets next candidate for this holder.
      */
     public GridCacheMvccCandidate next() {
         return next;
     }
 
     /**
-     * @param next Next candidate in this thread.
+     * @param next Next candidate for this holder.
      */
     public void next(GridCacheMvccCandidate next) {
         this.next = next;
