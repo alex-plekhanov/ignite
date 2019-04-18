@@ -43,7 +43,10 @@ public enum IgniteFeatures {
     DATA_PACKET_COMPRESSION(3),
 
     /** Support of different rebalance size for nodes.  */
-    DIFFERENT_REBALANCE_POOL_SIZE(4);
+    DIFFERENT_REBALANCE_POOL_SIZE(4),
+
+    /** Support of suspend/resume operations for pessimistic transactions.  */
+    SUSPEND_RESUME_PESSIMISTIC_TX(5);
 
     /**
      * Unique feature identifier.
