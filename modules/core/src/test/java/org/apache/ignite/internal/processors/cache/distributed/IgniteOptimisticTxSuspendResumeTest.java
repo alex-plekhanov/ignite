@@ -32,6 +32,7 @@ import org.apache.ignite.transactions.TransactionConcurrency;
 import org.apache.ignite.transactions.TransactionIsolation;
 import org.junit.Test;
 
+import static org.apache.ignite.cache.CacheMode.LOCAL;
 import static org.apache.ignite.cache.CacheMode.PARTITIONED;
 import static org.apache.ignite.cache.CacheMode.REPLICATED;
 import static org.apache.ignite.transactions.TransactionConcurrency.OPTIMISTIC;
@@ -252,6 +253,9 @@ public class IgniteOptimisticTxSuspendResumeTest extends IgniteAbstractTxSuspend
 
             // Generate different keys: 0 - primary, 1 - backup, 2 - neither primary nor backup.
             for (int type = 0; type < 3; type++) {
+                if (cfg.getCacheMode() == LOCAL)
+                    continue;
+
                 if (type == 1 && cfg.getCacheMode() == PARTITIONED && cfg.getBackups() == 0)
                     continue;
 
@@ -265,7 +269,8 @@ public class IgniteOptimisticTxSuspendResumeTest extends IgniteAbstractTxSuspend
                 keys.add(keys0);
             }
 
-            cacheKeys.put(cacheName, keys);
+            if (!keys.isEmpty())
+                cacheKeys.put(cacheName, keys);
         }
 
         return cacheKeys;

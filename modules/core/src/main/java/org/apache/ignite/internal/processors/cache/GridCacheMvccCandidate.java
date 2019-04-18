@@ -394,7 +394,8 @@ public class GridCacheMvccCandidate implements Externalizable,
 
     /**
      * If there is transaction started explicitly and the lock was acquired within this transaction then the lock is
-     * held by the transaction. In this case, holder ID it's a negative number generated from the transaction ID.
+     * held by the transaction. In this case, holder ID it's a unique per node negative number generated from the
+     * transaction ID.
      * If there are no explicit transactions started, but the lock was explicitly acquired then the lock is held by
      * the thread requested this lock. In this case, holder ID equals to thread ID (always positive).
      *

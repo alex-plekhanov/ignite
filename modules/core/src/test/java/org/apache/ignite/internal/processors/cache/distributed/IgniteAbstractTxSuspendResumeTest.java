@@ -44,6 +44,7 @@ import org.apache.ignite.transactions.TransactionTimeoutException;
 import org.junit.Test;
 
 import static org.apache.ignite.cache.CacheAtomicityMode.TRANSACTIONAL;
+import static org.apache.ignite.cache.CacheMode.LOCAL;
 import static org.apache.ignite.cache.CacheMode.PARTITIONED;
 import static org.apache.ignite.cache.CacheMode.REPLICATED;
 import static org.apache.ignite.cache.CacheWriteSynchronizationMode.FULL_SYNC;
@@ -60,7 +61,7 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
     private static final long TX_TIMEOUT = 200;
 
     /** Future timeout */
-    private static final int FUT_TIMEOUT = 5000;
+    protected static final int FUT_TIMEOUT = 5000;
 
     /** */
     protected static final int CLIENT_CNT = 2;
@@ -143,7 +144,8 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
         for (CacheConfiguration<Integer, Integer> ccfg : cacheConfigurations()) {
             grid(0).createCache(ccfg);
 
-            client.createNearCache(ccfg.getName(), new NearCacheConfiguration<>());
+            if (ccfg.getCacheMode() != LOCAL)
+                client.createNearCache(ccfg.getName(), new NearCacheConfiguration<>());
         }
 
         awaitPartitionMapExchange();
@@ -183,7 +185,9 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
 
                     final AtomicInteger cntr = new AtomicInteger(0);
 
-                    cache.put(-1, -1);
+                    for (int j = -1; j > -10; j--)
+                        cache.put(j, j);
+
                     cache.put(cntr.get(), cntr.getAndIncrement());
 
                     tx.suspend();
@@ -204,6 +208,9 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
 
                                 assertEquals(ACTIVE, tx.state());
 
+                                for (int j = -1; j > -10; j--)
+                                    cache.put(j, j);
+
                                 cache.put(cntr.get(), cntr.getAndIncrement());
 
                                 tx.suspend();
@@ -213,7 +220,8 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
 
                     tx.resume();
 
-                    cache.remove(-1);
+                    for (int j = -1; j > -10; j--)
+                        cache.remove(j);
 
                     tx.commit();
 
@@ -259,6 +267,9 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
                                 tx.resume();
 
                                 assertEquals(ACTIVE, tx.state());
+
+                                cache.put(-1, -1);
+                                otherCache.put(-1, -1);
 
                                 cache.put(cntr.get(), cntr.get());
                                 otherCache.put(cntr.get(), cntr.getAndIncrement());
@@ -467,6 +478,23 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
 
                     tx.suspend();
 
+                    GridTestUtils.runAsync(() -> {
+                            tx.resume();
+
+                            cache.put(1, 1);
+                            cache.put(2, 2);
+
+                            tx.suspend();
+                    }).get(FUT_TIMEOUT);
+
+                    tx.resume();
+
+                    cache.put(1, 1);
+                    cache.put(2, 2);
+                    cache.put(3, 3);
+
+                    tx.suspend();
+
                     long start = U.currentTimeMillis();
 
                     while (TX_TIMEOUT >= U.currentTimeMillis() - start)
@@ -489,6 +517,10 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
                     assertEquals(ROLLED_BACK, tx.state());
 
                     tx.close();
+
+                    assertFalse(cache.containsKey(1));
+                    assertFalse(cache.containsKey(2));
+                    assertFalse(cache.containsKey(3));
                 }
             }
         });
@@ -508,6 +540,23 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
                         TX_TIMEOUT, 0);
 
                     cache.put(1, 1);
+
+                    tx.suspend();
+
+                    GridTestUtils.runAsync(() -> {
+                        tx.resume();
+
+                        cache.put(1, 1);
+                        cache.put(2, 2);
+
+                        tx.suspend();
+                    }).get(FUT_TIMEOUT);
+
+                    tx.resume();
+
+                    cache.put(1, 1);
+                    cache.put(2, 2);
+                    cache.put(3, 3);
 
                     U.sleep(TX_TIMEOUT * 2);
 
@@ -530,6 +579,8 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
                     tx.close();
 
                     assertNull(cache.get(1));
+                    assertNull(cache.get(2));
+                    assertNull(cache.get(3));
                 }
             }
         });
@@ -578,6 +629,7 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
         cfgs.add(cacheConfiguration("cache2", PARTITIONED, 1, false));
         cfgs.add(cacheConfiguration("cache3", PARTITIONED, 1, true));
         cfgs.add(cacheConfiguration("cache4", REPLICATED, 0, false));
+        cfgs.add(cacheConfiguration("cache5", LOCAL, 0, false));
 
         return cfgs;
     }
@@ -617,10 +669,16 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
 
             ClusterNode locNode = ignite.cluster().localNode();
 
-            log.info("Run test for node [node=" + locNode.id() + ", client=" + locNode.isClient() + ']');
+            log.info(">>> Run test for node [node=" + locNode.id() + ", client=" + locNode.isClient() + ']');
 
-            for (CacheConfiguration ccfg : cacheConfigurations())
+            for (CacheConfiguration ccfg : cacheConfigurations()) {
+                if (locNode.isClient() && ccfg.getCacheMode() == LOCAL)
+                    continue;
+
+                log.info(">>>> Run test for cache " + ccfg.getName());
+
                 c.apply(ignite, ignite.cache(ccfg.getName()));
+            }
         }
     }
 
