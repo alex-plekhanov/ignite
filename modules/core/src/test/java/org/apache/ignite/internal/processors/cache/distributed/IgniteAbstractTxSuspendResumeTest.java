@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteException;
+import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.CacheConfiguration;
@@ -57,8 +58,12 @@ import static org.apache.ignite.transactions.TransactionState.SUSPENDED;
  *
  */
 public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstractTest {
+    /** Force mvcc. */
+    protected static final boolean FORCE_MVCC =
+        IgniteSystemProperties.getBoolean(IgniteSystemProperties.IGNITE_FORCE_MVCC_MODE_IN_TESTS, false);
+
     /** Transaction timeout. */
-    private static final long TX_TIMEOUT = 200;
+    private static final long TX_TIMEOUT = 400L;
 
     /** Future timeout */
     protected static final int FUT_TIMEOUT = 5000;
@@ -144,7 +149,7 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
         for (CacheConfiguration<Integer, Integer> ccfg : cacheConfigurations()) {
             grid(0).createCache(ccfg);
 
-            if (ccfg.getCacheMode() != LOCAL)
+            if (ccfg.getCacheMode() != LOCAL && !FORCE_MVCC)
                 client.createNearCache(ccfg.getName(), new NearCacheConfiguration<>());
         }
 
@@ -500,10 +505,7 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
 
                     tx.suspend();
 
-                    long start = U.currentTimeMillis();
-
-                    while (TX_TIMEOUT >= U.currentTimeMillis() - start)
-                        Thread.sleep(TX_TIMEOUT * 2);
+                    U.sleep(TX_TIMEOUT + 100L);
 
                     GridTestUtils.assertThrowsWithCause(new Callable<Object>() {
                         @Override public Object call() throws Exception {
@@ -563,7 +565,7 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
                     cache.put(2, 2);
                     cache.put(3, 3);
 
-                    U.sleep(TX_TIMEOUT * 2);
+                    U.sleep(TX_TIMEOUT + 100L);
 
                     GridTestUtils.assertThrowsWithCause(new Callable<Object>() {
                         @Override public Object call() throws Exception {
@@ -634,7 +636,9 @@ public abstract class IgniteAbstractTxSuspendResumeTest extends GridCommonAbstra
         cfgs.add(cacheConfiguration("cache2", PARTITIONED, 1, false));
         cfgs.add(cacheConfiguration("cache3", PARTITIONED, 1, true));
         cfgs.add(cacheConfiguration("cache4", REPLICATED, 0, false));
-        cfgs.add(cacheConfiguration("cache5", LOCAL, 0, false));
+
+        if (!FORCE_MVCC)
+            cfgs.add(cacheConfiguration("cache5", LOCAL, 0, false));
 
         return cfgs;
     }

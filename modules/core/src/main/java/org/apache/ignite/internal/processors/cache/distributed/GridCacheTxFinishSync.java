@@ -255,7 +255,7 @@ public class GridCacheTxFinishSync<K, V> {
         /**
          * Ack's received from all alive nodes.
          */
-        public boolean isEmpty() {
+        private boolean isEmpty() {
             return nodeMap.isEmpty();
         }
     }
