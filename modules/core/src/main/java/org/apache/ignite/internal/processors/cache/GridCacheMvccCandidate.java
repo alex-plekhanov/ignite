@@ -88,11 +88,11 @@ public class GridCacheMvccCandidate implements Externalizable,
     /** Linked reentry. */
     private GridCacheMvccCandidate reentry;
 
-    /** Previous lock for the holder. */
+    /** Previous lock for the thread. */
     @GridToStringExclude
     private transient volatile GridCacheMvccCandidate prev;
 
-    /** Next lock for the holder. */
+    /** Next lock for the thread. */
     @GridToStringExclude
     private transient volatile GridCacheMvccCandidate next;
 
@@ -539,31 +539,31 @@ public class GridCacheMvccCandidate implements Externalizable,
     }
 
     /**
-     * @return Lock that comes before for the same holder, possibly <tt>null</tt>.
+     * @return Lock that comes before in the same thread, possibly <tt>null</tt>.
      */
     @Nullable public GridCacheMvccCandidate previous() {
         return prev;
     }
 
     /**
-     * @param prev Lock that comes before for the same holder.
+     * @param prev Lock that comes before in the same thread.
      */
     public void previous(GridCacheMvccCandidate prev) {
-        assert holderId() == prev.holderId(): "Invalid holderId [this=" + this + ", prev=" + prev + ']';
+        assert threadId == prev.threadId : "Invalid threadId [this=" + this + ", prev=" + prev + ']';
 
         this.prev = prev;
     }
 
     /**
      *
-     * @return Gets next candidate for this holder.
+     * @return Gets next candidate in this thread.
      */
     public GridCacheMvccCandidate next() {
         return next;
     }
 
     /**
-     * @param next Next candidate for this holder.
+     * @param next Next candidate in this thread.
      */
     public void next(GridCacheMvccCandidate next) {
         this.next = next;
