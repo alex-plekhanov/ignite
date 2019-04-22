@@ -406,6 +406,25 @@ public class GridCacheMvccCandidate implements Externalizable,
     }
 
     /**
+     * Is lock held by the thread.
+     *
+     * @param threadId Thread id.
+     */
+    public boolean isHeldByThread(long threadId) {
+        return holderId() == threadId;
+    }
+
+    /**
+     * Is lock held by the thread or cache version.
+     *
+     * @param threadId Thread id.
+     * @param ver Version.
+     */
+    public boolean isHeldByIdOrThread(long threadId, GridCacheVersion ver) {
+        return holderId() == threadId || this.ver.equals(ver);
+    }
+
+    /**
      * @return Lock version.
      */
     public GridCacheVersion version() {
