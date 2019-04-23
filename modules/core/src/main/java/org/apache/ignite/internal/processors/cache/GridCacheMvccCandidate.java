@@ -393,25 +393,12 @@ public class GridCacheMvccCandidate implements Externalizable,
     }
 
     /**
-     * If there is transaction started explicitly and the lock was acquired within this transaction then the lock is
-     * held by the transaction. In this case, holder ID it's a unique per node negative number generated from the
-     * transaction ID.
-     * If there are no explicit transactions started, but the lock was explicitly acquired then the lock is held by
-     * the thread requested this lock. In this case, holder ID equals to thread ID (always positive).
-     *
-     * @return Lock holder ID.
-     */
-    public long holderId() {
-        return tx() && !singleImplicit() ? -ver.order() : threadId;
-    }
-
-    /**
      * Is lock held by the thread.
      *
      * @param threadId Thread id.
      */
     public boolean isHeldByThread(long threadId) {
-        return holderId() == threadId;
+        return this.threadId == threadId && !isHeldByTx();
     }
 
     /**
@@ -420,8 +407,28 @@ public class GridCacheMvccCandidate implements Externalizable,
      * @param threadId Thread id.
      * @param ver Version.
      */
-    public boolean isHeldByIdOrThread(long threadId, GridCacheVersion ver) {
-        return holderId() == threadId || this.ver.equals(ver);
+    public boolean isHeldByThreadOrVer(long threadId, GridCacheVersion ver) {
+        return isHeldByTx() ? this.ver.equals(ver) : this.threadId == threadId;
+    }
+
+    /**
+     * Lock has the same holder as other lock.
+     *
+     * @param other Other lock.
+     */
+    public boolean hasSameHolderAs(GridCacheMvccCandidate other) {
+        return isHeldByTx() ? other.isHeldByTx() && ver.equals(other.ver) :
+            !other.isHeldByTx() && threadId == other.threadId;
+    }
+
+    /**
+     * If there is transaction started explicitly and the lock was acquired within this transaction then the lock is
+     * held by the transaction, otherwise (explicit locks or implicit transactions) lock is held by the thread.
+     *
+     * @return {@code true} if lock held by tx, {@code false} if lock held by thread.
+     */
+    private boolean isHeldByTx() {
+        return tx() && !singleImplicit();
     }
 
     /**

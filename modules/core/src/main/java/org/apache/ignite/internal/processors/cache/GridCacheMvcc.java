@@ -315,7 +315,7 @@ public final class GridCacheMvcc {
                     if (first.owner()) {
                         // If reentry, add at the beginning. Note that
                         // no reentry happens for DHT-local candidates.
-                        if (!cand.dhtLocal() && first.holderId() == cand.holderId()) {
+                        if (!cand.dhtLocal() && first.hasSameHolderAs(cand)) {
                             assert !first.serializable();
 
                             cand.setOwner();
@@ -338,7 +338,7 @@ public final class GridCacheMvcc {
                         // Add after the owner or serializable tx.
                         if (c.owner() || c.serializable()) {
                             // Threads are checked above.
-                            assert cand.dhtLocal() || c.holderId() != cand.holderId();
+                            assert cand.dhtLocal() || !c.hasSameHolderAs(cand);
 
                             // Reposition.
                             it.next();
@@ -643,7 +643,7 @@ public final class GridCacheMvcc {
         if (!dhtLoc && !reenter) {
             GridCacheMvccCandidate owner = localOwner();
 
-            if (owner != null && owner.isHeldByIdOrThread(threadId, ver))
+            if (owner != null && owner.isHeldByThreadOrVer(threadId, ver))
                 return null;
         }
 
@@ -654,7 +654,7 @@ public final class GridCacheMvcc {
                 GridCacheMvccCandidate owner = localOwner();
 
                 // Only proceed if this is a re-entry.
-                if (owner == null || !owner.isHeldByIdOrThread(threadId, ver))
+                if (owner == null || !owner.isHeldByThreadOrVer(threadId, ver))
                     return null;
             }
         }
@@ -1345,10 +1345,10 @@ public final class GridCacheMvcc {
      * @param ver Lock version.
      * @return Remote candidate.
      */
-    @Nullable public GridCacheMvccCandidate localCandidateByIdOrThread(UUID nodeId, long threadId, GridCacheVersion ver) {
+    @Nullable public GridCacheMvccCandidate localCandidateByThreadOrVer(UUID nodeId, long threadId, GridCacheVersion ver) {
         if (locs != null) {
             for (GridCacheMvccCandidate c : locs) {
-                if (c.nodeId().equals(nodeId) && c.isHeldByIdOrThread(threadId, ver))
+                if (c.nodeId().equals(nodeId) && c.isHeldByThreadOrVer(threadId, ver))
                     return c;
             }
         }
@@ -1471,7 +1471,7 @@ public final class GridCacheMvcc {
             for (int i = 0; i < owners.size(); i++) {
                 GridCacheMvccCandidate owner = owners.candidate(i);
 
-                if (owner.isHeldByIdOrThread(threadId, lockVer))
+                if (owner.isHeldByThreadOrVer(threadId, lockVer))
                     return true;
             }
         }
