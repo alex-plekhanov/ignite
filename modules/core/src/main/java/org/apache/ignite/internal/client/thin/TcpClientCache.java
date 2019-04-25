@@ -41,8 +41,7 @@ import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.client.thin.TcpClientTransactions.TcpClientTransaction;
 
 import static java.util.AbstractMap.SimpleEntry;
-import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.DEFAULT_VER;
-import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_3_0;
+import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_5_0;
 
 /**
  * Implementation of {@link ClientCache} over TCP protocol.
@@ -451,7 +450,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
         Consumer<BinaryOutputStream> qryWriter = out -> {
             writeCacheInfo(out);
 
-            if (ch.serverVersion().compareTo(V1_3_0) >= 0)
+            if (ch.serverVersion().compareTo(V1_5_0) >= 0)
                 out.writeBoolean(keepBinary);
 
             if (qry.getFilter() == null)
@@ -504,7 +503,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
     private void writeCacheInfo(BinaryOutputStream out) {
         out.writeInt(cacheId);
 
-        if (ch.serverVersion().compareTo(V1_3_0) < 0)
+        if (ch.serverVersion().compareTo(V1_5_0) < 0)
             out.writeByte((byte)(keepBinary ? 1 : 0));
         else {
             TcpClientTransaction tx = transactions.tx();

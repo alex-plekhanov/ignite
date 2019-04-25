@@ -58,11 +58,15 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
     /** Version 1.4.0. Added: Affinity Awareness, IEP-23. */
     public static final ClientListenerProtocolVersion VER_1_4_0 = ClientListenerProtocolVersion.create(1, 4, 0);
 
+    /** Version 1.5.0. Added: Transactions support, IEP-34. */
+    public static final ClientListenerProtocolVersion VER_1_5_0 = ClientListenerProtocolVersion.create(1, 5, 0);
+
     /** Default version. */
-    public static final ClientListenerProtocolVersion DEFAULT_VER = VER_1_4_0;
+    public static final ClientListenerProtocolVersion DEFAULT_VER = VER_1_5_0;
 
     /** Supported versions. */
     private static final Collection<ClientListenerProtocolVersion> SUPPORTED_VERS = Arrays.asList(
+        VER_1_5_0,
         VER_1_4_0,
         VER_1_3_0,
         VER_1_2_0,
@@ -187,7 +191,7 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
     @Override public void onDisconnected() {
         resReg.clean();
 
-        handler.onDisconnect();
+        // TODO close transactions
 
         super.onDisconnected();
     }

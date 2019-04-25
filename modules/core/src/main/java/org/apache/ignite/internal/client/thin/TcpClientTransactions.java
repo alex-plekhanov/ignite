@@ -25,7 +25,7 @@ import org.apache.ignite.internal.binary.BinaryWriterExImpl;
 import org.apache.ignite.transactions.TransactionConcurrency;
 import org.apache.ignite.transactions.TransactionIsolation;
 
-import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_3_0;
+import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_5_0;
 
 /**
  * Implementation of {@link ClientTransactions} over TCP protocol.
@@ -76,9 +76,9 @@ class TcpClientTransactions implements ClientTransactions {
 
         TcpClientTransaction tx0 = ch.service(ClientOperation.TX_START,
             req -> {
-                if (ch.serverVersion().compareTo(V1_3_0) < 0) {
+                if (ch.serverVersion().compareTo(V1_5_0) < 0) {
                     throw new ClientProtocolError(String.format("Transactions not supported by server protocol " +
-                        "version %s, required version %s", ch.serverVersion(), V1_3_0));
+                        "version %s, required version %s", ch.serverVersion(), V1_5_0));
                 }
 
                 try (BinaryRawWriterEx writer = new BinaryWriterExImpl(marsh.context(), req, null, null)) {

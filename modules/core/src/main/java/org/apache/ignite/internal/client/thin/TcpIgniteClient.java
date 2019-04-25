@@ -54,8 +54,6 @@ import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.marshaller.MarshallerContext;
 import org.apache.ignite.marshaller.jdk.JdkMarshaller;
 
-import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_3_0;
-
 /**
  * Implementation of {@link IgniteClient} over TCP protocol.
  */

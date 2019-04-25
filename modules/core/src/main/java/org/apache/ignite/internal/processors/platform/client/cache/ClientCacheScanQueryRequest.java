@@ -32,6 +32,7 @@ import org.apache.ignite.internal.processors.platform.utils.PlatformUtils;
 import org.apache.ignite.lang.IgniteBiPredicate;
 
 import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_3_0;
+import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_5_0;
 
 /**
  * Scan query request.
@@ -73,7 +74,7 @@ public class ClientCacheScanQueryRequest extends ClientCacheDataRequest implemen
     public ClientCacheScanQueryRequest(BinaryRawReaderEx reader, ClientListenerProtocolVersion ver) {
         super(reader, ver);
 
-        keepBinary = ver.compareTo(VER_1_3_0) >= 0 && reader.readBoolean();
+        keepBinary = ver.compareTo(VER_1_5_0) >= 0 && reader.readBoolean();
 
         filterObj = reader.readObjectDetached();
 

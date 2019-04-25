@@ -21,6 +21,7 @@ import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 
 import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_3_0;
+import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_5_0;
 
 /**
  * Cache data manipulation request.
@@ -37,7 +38,7 @@ class ClientCacheDataRequest extends ClientCacheRequest {
     ClientCacheDataRequest(BinaryRawReader reader, ClientListenerProtocolVersion ver) {
         super(reader, ver);
 
-        txId = ver.compareTo(VER_1_3_0) >= 0 ? reader.readInt() : 0;
+        txId = ver.compareTo(VER_1_5_0) >= 0 ? reader.readInt() : 0;
     }
 
     /**

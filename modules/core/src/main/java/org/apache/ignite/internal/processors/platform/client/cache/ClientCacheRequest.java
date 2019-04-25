@@ -27,6 +27,7 @@ import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 import org.apache.ignite.internal.processors.platform.client.IgniteClientException;
 
 import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_3_0;
+import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_5_0;
 
 /**
  * Cache request.
@@ -51,7 +52,7 @@ class ClientCacheRequest extends ClientRequest {
 
         cacheId = reader.readInt();
 
-        flags = ver.compareTo(VER_1_3_0) < 0 ? reader.readByte() : 0;
+        flags = ver.compareTo(VER_1_5_0) < 0 ? reader.readByte() : 0;
     }
 
     /**
