@@ -653,6 +653,8 @@ public class FunctionalTest {
             assertFalse(cache.containsKey(2));
 
             // TODO test concurrent transactions started by different threads.
+
+            // TODO test IGNITE_THIN_MAX_ACTIVE_TX_PER_CONNECTION
         }
     }
 

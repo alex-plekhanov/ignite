@@ -20,7 +20,7 @@ package org.apache.ignite.internal.processors.platform.client.tx;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.transactions.Transaction;
+import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxLocal;
 import org.apache.ignite.transactions.TransactionState;
 
 /**
@@ -31,7 +31,7 @@ public class ClientTxContext {
     private final int txId;
 
     /** Transaction. */
-    private final Transaction tx;
+    private final GridNearTxLocal tx;
 
     /** Lock. */
     private final Lock lock = new ReentrantLock();
@@ -39,7 +39,7 @@ public class ClientTxContext {
     /**
      * Constructor.
      */
-    public ClientTxContext(int txId, Transaction tx) {
+    public ClientTxContext(int txId, GridNearTxLocal tx) {
         this.txId = txId;
         this.tx = tx;
     }
@@ -47,6 +47,7 @@ public class ClientTxContext {
     /**
      * Aquire context to work with transaction in the current thread.
      */
+    @SuppressWarnings("LockAcquiredButNotSafelyReleased")
     public void aquire() throws IgniteCheckedException {
         lock.lock();
 
@@ -77,7 +78,24 @@ public class ClientTxContext {
     /**
      * Gets transaction.
      */
-    public Transaction tx() {
+    public GridNearTxLocal tx() {
         return tx;
+    }
+
+    /**
+     * Close transaction context.
+     */
+    public void close() {
+        lock.lock();
+
+        try {
+            tx.close();
+        }
+        catch (Exception ignore) {
+            // No-op.
+        }
+        finally {
+            lock.unlock();
+        }
     }
 }

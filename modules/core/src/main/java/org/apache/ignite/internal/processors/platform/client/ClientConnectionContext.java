@@ -191,7 +191,7 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
     @Override public void onDisconnected() {
         resReg.clean();
 
-        // TODO close transactions
+        cleanupTxs();
 
         super.onDisconnected();
     }
@@ -286,5 +286,15 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
         txs.remove(txId);
 
         txsCnt.decrementAndGet();
+    }
+
+    /**
+     *
+     */
+    private void cleanupTxs() {
+        for (ClientTxContext txCtx : txs.values())
+            txCtx.close();
+
+        txs.clear();
     }
 }

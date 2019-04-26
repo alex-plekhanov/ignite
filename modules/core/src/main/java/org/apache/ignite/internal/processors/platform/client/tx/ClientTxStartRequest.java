@@ -17,16 +17,16 @@
 
 package org.apache.ignite.internal.processors.platform.client.tx;
 
-import org.apache.ignite.IgniteTransactions;
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.configuration.TransactionConfiguration;
+import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxLocal;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientIntResponse;
 import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
-import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.internal.processors.platform.client.ClientStatus;
+import org.apache.ignite.internal.processors.platform.client.IgniteClientException;
 import org.apache.ignite.internal.util.typedef.internal.CU;
-import org.apache.ignite.transactions.Transaction;
 import org.apache.ignite.transactions.TransactionConcurrency;
 import org.apache.ignite.transactions.TransactionIsolation;
 
@@ -72,12 +72,27 @@ public class ClientTxStartRequest extends ClientRequest {
         TransactionIsolation txIsolation = isolation != null ? isolation : cfg.getDefaultTxIsolation();
         long txTimeout = timeout >= 0L ? timeout : cfg.getDefaultTxTimeout();
 
-        IgniteTransactions txs = ctx.kernalContext().cache().transactions();
+        GridNearTxLocal tx;
 
-        if (!F.isEmpty(lb))
-            txs = txs.withLabel(lb);
+        ctx.kernalContext().gateway().readLock();
 
-        Transaction tx = txs.txStart(txConcurrency, txIsolation, txTimeout, 0);
+        try {
+            tx = ctx.kernalContext().cache().context().tm().newTx(
+                false,
+                false,
+                null,
+                txConcurrency,
+                txIsolation,
+                txTimeout,
+                true,
+                null,
+                0,
+                lb
+            );
+        }
+        finally {
+            ctx.kernalContext().gateway().readUnlock();
+        }
 
         try {
             tx.suspend();
@@ -96,7 +111,7 @@ public class ClientTxStartRequest extends ClientRequest {
                 e.addSuppressed(e1);
             }
 
-            throw e;
+            throw new IgniteClientException(ClientStatus.FAILED, e.getMessage(), e);
         }
     }
 }

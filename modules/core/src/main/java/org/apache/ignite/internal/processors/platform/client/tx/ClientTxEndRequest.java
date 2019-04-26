@@ -17,13 +17,14 @@
 
 package org.apache.ignite.internal.processors.platform.client.tx;
 
+import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.binary.BinaryRawReader;
+import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxLocal;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
 import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 import org.apache.ignite.internal.processors.platform.client.IgniteClientException;
-import org.apache.ignite.transactions.Transaction;
 
 /**
  * End the transaction request.
@@ -57,11 +58,14 @@ public class ClientTxEndRequest extends ClientRequest implements ClientTxAwareRe
         if (txCtx == null)
             throw new IgniteClientException(ClientStatus.TX_NOT_FOUND, "Transaction with id " + txId + " not found.");
 
-        try (Transaction tx = txCtx.tx()) {
+        try (GridNearTxLocal tx = txCtx.tx()) {
             if (committed)
                 tx.commit();
             else
                 tx.rollback();
+        }
+        catch (IgniteCheckedException e) {
+            throw new IgniteClientException(ClientStatus.FAILED, e.getMessage(), e);
         }
         finally {
             ctx.removeTxContext(txId);
