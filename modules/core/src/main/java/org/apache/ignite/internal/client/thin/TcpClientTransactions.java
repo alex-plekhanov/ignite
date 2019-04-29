@@ -71,10 +71,12 @@ class TcpClientTransactions implements ClientTransactions {
      * @param timeout Timeout.
      */
     private ClientTransaction txStart0(TransactionConcurrency concurrency, TransactionIsolation isolation, Long timeout) {
-        if (tx() != null)
+        TcpClientTransaction tx0 = tx();
+
+        if (tx0 != null && !tx0.isClosed())
             throw new ClientException("Transaction is already started by current thread.");
 
-        TcpClientTransaction tx0 = ch.service(ClientOperation.TX_START,
+        tx0 = ch.service(ClientOperation.TX_START,
             req -> {
                 if (ch.serverVersion().compareTo(V1_5_0) < 0) {
                     throw new ClientProtocolError(String.format("Transactions not supported by server protocol " +
@@ -142,7 +144,7 @@ class TcpClientTransactions implements ClientTransactions {
 
         /** {@inheritDoc} */
         @Override public void commit() {
-            if (tx.get() == null)
+            if (tx.get() == null || closed)
                 throw new ClientException("The transaction is already closed");
 
             if (tx.get() != this)
@@ -178,7 +180,7 @@ class TcpClientTransactions implements ClientTransactions {
             ch.service(ClientOperation.TX_END,
                 req -> {
                     if (clientCh != ch.clientChannel())
-                        throw new ClientException("TODO fail");
+                        throw new ClientException("Transaction context has been lost due to connection errors");
 
                     req.writeInt(txId);
                     req.writeBoolean(committed);

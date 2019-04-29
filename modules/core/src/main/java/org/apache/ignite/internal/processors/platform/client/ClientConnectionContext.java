@@ -75,7 +75,7 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
     );
 
     /** Active transactions limit. */
-    private static final int ACTIVE_TX_LIMIT = IgniteSystemProperties.getInteger(
+    public static final int ACTIVE_TX_LIMIT = IgniteSystemProperties.getInteger(
         IGNITE_THIN_MAX_ACTIVE_TX_PER_CONNECTION, 100);
 
     /** Message parser. */
@@ -107,6 +107,7 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
 
     /** Active transactions count. */
     private final AtomicInteger txsCnt = new AtomicInteger();
+
     /**
      * Ctor.
      *

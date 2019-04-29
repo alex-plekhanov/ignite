@@ -507,11 +507,14 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
             out.writeByte((byte)(keepBinary ? 1 : 0));
         else {
             TcpClientTransaction tx = transactions.tx();
+
             int txId = 0;
 
-            if (tx != null) {
-                if (tx.clientChannel() != ch.clientChannel())
-                    throw new ClientException("TODO fail");
+            if (tx != null && !tx.isClosed()) {
+                if (tx.clientChannel() != ch.clientChannel()) {
+                    throw new ClientException("Transaction context has been lost due to connection errors. " +
+                        "Cache operations are prohibited until current transaction closed.");
+                }
 
                 txId = tx.txId();
             }

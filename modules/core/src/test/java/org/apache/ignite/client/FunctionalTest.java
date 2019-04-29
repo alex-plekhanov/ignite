@@ -19,13 +19,17 @@ package org.apache.ignite.client;
 
 import java.lang.management.ManagementFactory;
 import java.util.AbstractMap.SimpleEntry;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -46,6 +50,8 @@ import org.apache.ignite.cache.QueryIndex;
 import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.internal.client.thin.ClientServerError;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProcessor;
+import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
+import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.mxbean.ClientProcessorMXBean;
@@ -441,7 +447,7 @@ public class FunctionalTest {
             cache.put(0, "value0");
             cache.put(1, "value1");
 
-            // Test nested transaction is not possible.
+            // Test nested transactions is not possible.
             try (ClientTransaction tx = client.transactions().txStart()) {
                 try (ClientTransaction tx1 = client.transactions().txStart()) {
                     fail();
@@ -478,6 +484,7 @@ public class FunctionalTest {
 
             // Test end of already completed transaction.
             ClientTransaction tx0 = client.transactions().txStart();
+
             tx0.close();
 
             try {
@@ -503,6 +510,7 @@ public class FunctionalTest {
                 tx.commit();
             }
 
+/*  TODO IGNITE-11697
             // Test transaction with timeout.
             try (ClientTransaction tx = client.transactions().txStart(PESSIMISTIC, READ_COMMITTED, 100L)) {
                 cache.put(1, "value3");
@@ -529,6 +537,7 @@ public class FunctionalTest {
             }
 
             assertEquals("value2", cache.get(1));
+*/
 
             cache.put(1, "value5");
 
@@ -652,9 +661,133 @@ public class FunctionalTest {
                 cache.getAll(new HashSet<>(Arrays.asList(0, 1))));
             assertFalse(cache.containsKey(2));
 
-            // TODO test concurrent transactions started by different threads.
+            // Test concurrent transactions started by different threads.
+            try (ClientTransaction tx = client.transactions().txStart(PESSIMISTIC, READ_COMMITTED)) {
+                CyclicBarrier barrier = new CyclicBarrier(2);
 
-            // TODO test IGNITE_THIN_MAX_ACTIVE_TX_PER_CONNECTION
+                cache.put(0, "value18");
+
+                Thread t = new Thread(() -> {
+                    try (ClientTransaction tx1 = client.transactions().txStart(PESSIMISTIC, READ_COMMITTED)) {
+                        cache.put(1, "value19");
+
+                        barrier.await();
+
+                        assertEquals("value8", cache.get(0));
+
+                        barrier.await();
+
+                        tx1.commit();
+
+                        barrier.await();
+
+                        assertEquals("value18", cache.get(0));
+                    }
+                    catch (InterruptedException | BrokenBarrierException ignore) {
+                        // No-op.
+                    }
+                });
+
+                t.start();
+
+                barrier.await();
+
+                assertEquals("value9", cache.get(1));
+
+                barrier.await();
+
+                tx.commit();
+
+                barrier.await();
+
+                assertEquals("value19", cache.get(1));
+
+                t.join();
+            }
+
+            // Test transaction usage by different threads.
+            try (ClientTransaction tx = client.transactions().txStart(PESSIMISTIC, READ_COMMITTED)) {
+                cache.put(0, "value20");
+
+                Thread t = new Thread(() -> {
+                    // Implicit transaction started here.
+                    cache.put(1, "value21");
+
+                    assertEquals("value18", cache.get(0));
+
+                    try {
+                        // Transaction can't be commited by another thread.
+                        tx.commit();
+
+                        fail();
+                    }
+                    catch (ClientException expected) {
+                        // No-op.
+                    }
+
+                    // Transaction can be closed by another thread.
+                    tx.close();
+
+                    assertEquals("value18", cache.get(0));
+                });
+
+                t.start();
+
+                t.join();
+
+                assertEquals("value21", cache.get(1));
+
+                try {
+                    // Transaction can't be commited after another thread close this transaction.
+                    tx.commit();
+
+                    fail();
+                }
+                catch (ClientException expected) {
+                    // No-op.
+                }
+
+                assertEquals("value18", cache.get(0));
+
+                // Start implicit transaction after explicit transaction has been closed by another thread.
+                cache.put(0, "value22");
+
+                t = new Thread(() -> assertEquals("value22", cache.get(0)));
+
+                t.start();
+
+                t.join();
+
+                // New explicit transaction can be started after current transaction has been closed by another thread.
+                try (ClientTransaction tx1 = client.transactions().txStart(PESSIMISTIC, READ_COMMITTED)){
+                    cache.put(0, "value23");
+
+                    tx1.commit();
+                }
+
+                assertEquals("value23", cache.get(0));
+            }
+
+            // Test active transactions limit.
+            List<ClientTransaction> txs = new ArrayList<>(ClientConnectionContext.ACTIVE_TX_LIMIT);
+
+            for (int i = 0; i < ClientConnectionContext.ACTIVE_TX_LIMIT; i++) {
+                Thread t = new Thread(() -> txs.add(client.transactions().txStart()));
+
+                t.start();
+
+                t.join();
+            }
+
+            try (ClientTransaction tx = client.transactions().txStart()) {
+                fail();
+            }
+            catch (ClientServerError e) {
+                assertEquals(e.getCode(), ClientStatus.TX_LIMIT_EXCEEDED);
+            }
+
+            for (ClientTransaction tx : txs)
+                tx.close();
         }
     }
 
