@@ -19,11 +19,10 @@ package org.apache.ignite.internal.client.thin;
 
 import java.util.Collection;
 import java.util.function.Consumer;
-import org.apache.ignite.internal.binary.streams.BinaryInputStream;
-import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
-import org.apache.ignite.internal.processors.platform.client.ClientStatus;
-import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.ClientConnectionException;
+import org.apache.ignite.client.ClientException;
+import org.apache.ignite.internal.binary.streams.BinaryInputStream;
+import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 
 /**
  * Generic query pager. Override {@link this#readResult(BinaryInputStream)} to make it specific.
@@ -36,7 +35,7 @@ abstract class GenericQueryPager<T> implements QueryPager<T> {
     private final ClientOperation pageQryOp;
 
     /** Query writer. */
-    private final Consumer<BinaryOutputStream> qryWriter;
+    private final Consumer<PayloadOutputStream> qryWriter;
 
     /** Channel. */
     private final ReliableChannel ch;
@@ -55,7 +54,7 @@ abstract class GenericQueryPager<T> implements QueryPager<T> {
         ReliableChannel ch,
         ClientOperation qryOp,
         ClientOperation pageQryOp,
-        Consumer<BinaryOutputStream> qryWriter
+        Consumer<PayloadOutputStream> qryWriter
     ) {
         this.ch = ch;
         this.qryOp = qryOp;

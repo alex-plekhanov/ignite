@@ -37,7 +37,6 @@ import org.apache.ignite.client.ClientCacheConfiguration;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.internal.binary.GridBinaryMarshaller;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
-import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.client.thin.TcpClientTransactions.TcpClientTransaction;
 
 import static java.util.AbstractMap.SimpleEntry;
@@ -144,7 +143,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
             this::writeCacheInfo,
             res -> {
                 try {
-                    return serDes.cacheConfiguration(res, ch.serverVersion());
+                    return serDes.cacheConfiguration(res, res.clientChannel().serverVersion());
                 }
                 catch (IOException e) {
                     return null;
@@ -435,7 +434,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
         if (qry == null)
             throw new NullPointerException("qry");
 
-        Consumer<BinaryOutputStream> qryWriter = out -> {
+        Consumer<PayloadOutputStream> qryWriter = out -> {
             writeCacheInfo(out);
             serDes.write(qry, out);
         };
@@ -452,7 +451,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
 
     /** Handle scan query. */
     private QueryCursor<Cache.Entry<K, V>> scanQuery(ScanQuery<K, V> qry) {
-        Consumer<BinaryOutputStream> qryWriter = out -> {
+        Consumer<PayloadOutputStream> qryWriter = out -> {
             writeCacheInfo(out);
 
             if (qry.getFilter() == null)
@@ -479,7 +478,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
 
     /** Handle SQL query. */
     private QueryCursor<Cache.Entry<K, V>> sqlQuery(SqlQuery qry) {
-        Consumer<BinaryOutputStream> qryWriter = out -> {
+        Consumer<PayloadOutputStream> qryWriter = out -> {
             writeCacheInfo(out);
             serDes.writeObject(out, qry.getType());
             serDes.writeObject(out, qry.getSql());
@@ -502,7 +501,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
     }
 
     /** Write cache ID and flags. */
-    private void writeCacheInfo(BinaryOutputStream out) {
+    private void writeCacheInfo(PayloadOutputStream out) {
         out.writeInt(cacheId);
 
         byte flags = keepBinary ? KEEP_BINARY_FLAG_MASK : 0;
@@ -512,7 +511,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
         if (tx != null && !tx.isClosed()) {
             flags |= TRANSACTIONAL_FLAG_MASK;
 
-            if (tx.clientChannel() != ch.clientChannel()) {
+            if (tx.clientChannel() != out.clientChannel()) {
                 throw new ClientException("Transaction context has been lost due to connection errors. " +
                     "Cache operations are prohibited until current transaction closed.");
             }

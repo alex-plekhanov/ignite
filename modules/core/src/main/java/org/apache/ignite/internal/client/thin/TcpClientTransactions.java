@@ -83,9 +83,9 @@ class TcpClientTransactions implements ClientTransactions {
 
         tx0 = ch.service(ClientOperation.TX_START,
             req -> {
-                if (ch.serverVersion().compareTo(V1_5_0) < 0) {
+                if (req.clientChannel().serverVersion().compareTo(V1_5_0) < 0) {
                     throw new ClientProtocolError(String.format("Transactions not supported by server protocol " +
-                        "version %s, required version %s", ch.serverVersion(), V1_5_0));
+                        "version %s, required version %s", req.clientChannel().serverVersion(), V1_5_0));
                 }
 
                 try (BinaryRawWriterEx writer = new BinaryWriterExImpl(marsh.context(), req, null, null)) {
@@ -95,7 +95,7 @@ class TcpClientTransactions implements ClientTransactions {
                     writer.writeString(lb);
                 }
             },
-            res -> new TcpClientTransaction(res.readInt(), ch.clientChannel())
+            res -> new TcpClientTransaction(res.readInt(), res.clientChannel())
         );
 
         tx.set(tx0);
@@ -184,7 +184,7 @@ class TcpClientTransactions implements ClientTransactions {
         private void sendTxStatus(boolean committed) {
             ch.service(ClientOperation.TX_END,
                 req -> {
-                    if (clientCh != ch.clientChannel())
+                    if (clientCh != req.clientChannel())
                         throw new ClientException("Transaction context has been lost due to connection errors");
 
                     req.writeInt(txId);

@@ -35,7 +35,8 @@ import org.junit.runners.Suite;
     FunctionalQueryTest.class,
     IgniteBinaryQueryTest.class,
     SslParametersTest.class,
-    ConnectionTest.class
+    ConnectionTest.class,
+    AsyncChannelTest.class
 })
 public class ClientTestSuite {
     // No-op.

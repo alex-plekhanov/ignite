@@ -22,7 +22,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
-import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 
 /**
  * Fields query pager.
@@ -42,7 +41,7 @@ class ClientFieldsQueryPager extends GenericQueryPager<List<?>> implements Field
         ReliableChannel ch,
         ClientOperation qryOp,
         ClientOperation pageQryOp,
-        Consumer<BinaryOutputStream> qryWriter,
+        Consumer<PayloadOutputStream> qryWriter,
         boolean keepBinary,
         ClientBinaryMarshaller marsh
     ) {

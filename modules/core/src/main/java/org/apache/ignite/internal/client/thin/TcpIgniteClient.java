@@ -122,7 +122,7 @@ public class TcpIgniteClient implements IgniteClient {
         ensureCacheConfiguration(cfg);
 
         ch.request(ClientOperation.CACHE_GET_OR_CREATE_WITH_CONFIGURATION, 
-            req -> serDes.cacheConfiguration(cfg, req, ch.serverVersion()));
+            req -> serDes.cacheConfiguration(cfg, req, req.clientChannel().serverVersion()));
 
         return new TcpClientCache<>(cfg.getName(), ch, marsh, transactions);
     }
@@ -160,7 +160,7 @@ public class TcpIgniteClient implements IgniteClient {
         ensureCacheConfiguration(cfg);
 
         ch.request(ClientOperation.CACHE_CREATE_WITH_CONFIGURATION, 
-            req -> serDes.cacheConfiguration(cfg, req, ch.serverVersion()));
+            req -> serDes.cacheConfiguration(cfg, req, req.clientChannel().serverVersion()));
 
         return new TcpClientCache<>(cfg.getName(), ch, marsh, transactions);
     }
@@ -185,7 +185,7 @@ public class TcpIgniteClient implements IgniteClient {
         if (qry == null)
             throw new NullPointerException("qry");
 
-        Consumer<BinaryOutputStream> qryWriter = out -> {
+        Consumer<PayloadOutputStream> qryWriter = out -> {
             out.writeInt(0); // no cache ID
             out.writeByte((byte)1); // keep binary
             serDes.write(qry, out);
