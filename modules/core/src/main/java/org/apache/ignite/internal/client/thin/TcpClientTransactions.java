@@ -20,6 +20,7 @@ package org.apache.ignite.internal.client.thin;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.ClientTransaction;
 import org.apache.ignite.client.ClientTransactions;
+import org.apache.ignite.configuration.ClientTransactionConfiguration;
 import org.apache.ignite.internal.binary.BinaryRawWriterEx;
 import org.apache.ignite.internal.binary.BinaryWriterExImpl;
 import org.apache.ignite.transactions.TransactionConcurrency;
@@ -43,10 +44,14 @@ class TcpClientTransactions implements ClientTransactions {
     /** Current thread transaction. */
     private final ThreadLocal<TcpClientTransaction> tx = new ThreadLocal<>();
 
+    /** Tx config. */
+    private final ClientTransactionConfiguration txCfg;
+
     /** Constructor. */
-    TcpClientTransactions(ReliableChannel ch, ClientBinaryMarshaller marsh) {
+    TcpClientTransactions(ReliableChannel ch, ClientBinaryMarshaller marsh, ClientTransactionConfiguration txCfg) {
         this.ch = ch;
         this.marsh = marsh;
+        this.txCfg = txCfg;
     }
 
     /** {@inheritDoc} */
@@ -84,9 +89,9 @@ class TcpClientTransactions implements ClientTransactions {
                 }
 
                 try (BinaryRawWriterEx writer = new BinaryWriterExImpl(marsh.context(), req, null, null)) {
-                    writer.writeByte((byte)(concurrency == null ? -1 : concurrency.ordinal()));
-                    writer.writeByte((byte)(isolation == null ? -1 : isolation.ordinal()));
-                    writer.writeLong(timeout == null ? -1L : timeout);
+                    writer.writeByte((byte)(concurrency == null ? txCfg.getDefaultTxConcurrency() : concurrency).ordinal());
+                    writer.writeByte((byte)(isolation == null ? txCfg.getDefaultTxIsolation() : isolation).ordinal());
+                    writer.writeLong(timeout == null ? txCfg.getDefaultTxTimeout() : timeout);
                     writer.writeString(lb);
                 }
             },
@@ -103,7 +108,7 @@ class TcpClientTransactions implements ClientTransactions {
         if (lb == null)
             throw new NullPointerException();
 
-        TcpClientTransactions txs = new TcpClientTransactions(ch, marsh);
+        TcpClientTransactions txs = new TcpClientTransactions(ch, marsh, txCfg);
 
         txs.lb = lb;
 

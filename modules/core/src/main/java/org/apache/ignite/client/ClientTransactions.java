@@ -17,6 +17,7 @@
 
 package org.apache.ignite.client;
 
+import org.apache.ignite.configuration.ClientTransactionConfiguration;
 import org.apache.ignite.internal.client.thin.ClientServerError;
 import org.apache.ignite.transactions.TransactionConcurrency;
 import org.apache.ignite.transactions.TransactionIsolation;
@@ -26,9 +27,11 @@ import org.apache.ignite.transactions.TransactionIsolation;
  */
 public interface ClientTransactions {
     /**
-     * Starts transaction with default isolation, concurrency, timeout.
+     * Starts transaction with default isolation, concurrency and timeout.
+     * Default values can be configured via {@code ClientConfiguration.TransactionConfiguration} property.
      *
-     * @return New transaction
+     * @see ClientTransactionConfiguration
+     * @return New transaction.
      * @throws ClientException If transaction is already started by this thread.
      */
     public ClientTransaction txStart() throws ClientServerError, ClientException;

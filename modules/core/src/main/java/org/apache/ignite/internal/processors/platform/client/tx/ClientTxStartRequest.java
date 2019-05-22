@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.processors.platform.client.tx;
 
 import org.apache.ignite.binary.BinaryRawReader;
-import org.apache.ignite.configuration.TransactionConfiguration;
 import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxLocal;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientIntResponse;
@@ -26,7 +25,6 @@ import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
 import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 import org.apache.ignite.internal.processors.platform.client.IgniteClientException;
-import org.apache.ignite.internal.util.typedef.internal.CU;
 import org.apache.ignite.transactions.TransactionConcurrency;
 import org.apache.ignite.transactions.TransactionIsolation;
 
@@ -54,24 +52,14 @@ public class ClientTxStartRequest extends ClientRequest {
     public ClientTxStartRequest(BinaryRawReader reader) {
         super(reader);
 
-        byte tmp;
-        concurrency = (tmp = reader.readByte()) < 0 ? null : TransactionConcurrency.fromOrdinal(tmp);
-        isolation = (tmp = reader.readByte()) < 0 ? null : TransactionIsolation.fromOrdinal(tmp);
+        concurrency = TransactionConcurrency.fromOrdinal(reader.readByte());
+        isolation = TransactionIsolation.fromOrdinal(reader.readByte());
         timeout = reader.readLong();
         lb = reader.readString();
     }
 
     /** {@inheritDoc} */
     @Override public ClientResponse process(ClientConnectionContext ctx) {
-        TransactionConfiguration cfg = CU.transactionConfiguration(null, ctx.kernalContext().config());
-
-/* TODO
-        TransactionConcurrency txConcurrency = concurrency != null ? concurrency : cfg.getDefaultTxConcurrency();
-*/
-        TransactionConcurrency txConcurrency = TransactionConcurrency.OPTIMISTIC;
-        TransactionIsolation txIsolation = isolation != null ? isolation : cfg.getDefaultTxIsolation();
-        long txTimeout = timeout >= 0L ? timeout : cfg.getDefaultTxTimeout();
-
         GridNearTxLocal tx;
 
         ctx.kernalContext().gateway().readLock();
@@ -81,9 +69,9 @@ public class ClientTxStartRequest extends ClientRequest {
                 false,
                 false,
                 null,
-                txConcurrency,
-                txIsolation,
-                txTimeout,
+                TransactionConcurrency.OPTIMISTIC, // TODO: concurrency,
+                isolation,
+                timeout,
                 true,
                 null,
                 0,

@@ -37,6 +37,7 @@ import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.ClientTransactions;
 import org.apache.ignite.client.IgniteClient;
 import org.apache.ignite.configuration.ClientConfiguration;
+import org.apache.ignite.configuration.ClientTransactionConfiguration;
 import org.apache.ignite.internal.MarshallerPlatformIds;
 import org.apache.ignite.internal.binary.BinaryCachingMetadataHandler;
 import org.apache.ignite.internal.binary.BinaryMetadata;
@@ -97,7 +98,8 @@ public class TcpIgniteClient implements IgniteClient {
 
         binary = new ClientBinary(marsh);
 
-        transactions = new TcpClientTransactions(ch, marsh);
+        transactions = new TcpClientTransactions(ch, marsh,
+            new ClientTransactionConfiguration(cfg.getTransactionConfiguration()));
     }
 
     /** {@inheritDoc} */
