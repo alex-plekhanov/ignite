@@ -200,7 +200,7 @@ public class TcpIgniteClient implements IgniteClient {
     }
 
     /** {@inheritDoc} */
-    @Override public ClientTransactions transactions() throws ClientProtocolError {
+    @Override public ClientTransactions transactions() {
         return transactions;
     }
 

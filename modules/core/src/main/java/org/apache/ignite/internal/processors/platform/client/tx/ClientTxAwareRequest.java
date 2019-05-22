@@ -25,4 +25,9 @@ public interface ClientTxAwareRequest {
      * Gets transaction ID.
      */
     public int txId();
+
+    /**
+     * Was request made under transaction.
+     */
+    public boolean isTransactional();
 }

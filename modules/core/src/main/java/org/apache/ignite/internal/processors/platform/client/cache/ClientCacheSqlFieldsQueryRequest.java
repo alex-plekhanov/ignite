@@ -24,7 +24,6 @@ import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
 import org.apache.ignite.internal.processors.cache.DynamicCacheDescriptor;
 import org.apache.ignite.internal.processors.cache.query.SqlFieldsQueryEx;
-import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 import org.apache.ignite.internal.processors.odbc.jdbc.JdbcStatementType;
 import org.apache.ignite.internal.processors.platform.cache.PlatformCache;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
@@ -52,8 +51,8 @@ public class ClientCacheSqlFieldsQueryRequest extends ClientCacheDataRequest imp
      *
      * @param reader Reader.
      */
-    public ClientCacheSqlFieldsQueryRequest(BinaryRawReaderEx reader, ClientListenerProtocolVersion ver) {
-        super(reader, ver);
+    public ClientCacheSqlFieldsQueryRequest(BinaryRawReaderEx reader) {
+        super(reader);
 
         // Same request format as in JdbcQueryExecuteRequest.
         String schema = reader.readString();

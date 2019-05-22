@@ -20,14 +20,10 @@ package org.apache.ignite.internal.processors.platform.client.cache;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.internal.processors.cache.DynamicCacheDescriptor;
-import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 import org.apache.ignite.internal.processors.platform.client.IgniteClientException;
-
-import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_3_0;
-import static org.apache.ignite.internal.processors.platform.client.ClientConnectionContext.VER_1_5_0;
 
 /**
  * Cache request.
@@ -35,6 +31,9 @@ import static org.apache.ignite.internal.processors.platform.client.ClientConnec
 class ClientCacheRequest extends ClientRequest {
     /** Flag: keep binary. */
     private static final byte FLAG_KEEP_BINARY = 1;
+
+    /** Flag: under transaction. */
+    private static final byte FLAG_TRANSACTIONAL = 2;
 
     /** Cache ID. */
     private final int cacheId;
@@ -47,12 +46,12 @@ class ClientCacheRequest extends ClientRequest {
      *
      * @param reader Reader.
      */
-    ClientCacheRequest(BinaryRawReader reader, ClientListenerProtocolVersion ver) {
+    ClientCacheRequest(BinaryRawReader reader) {
         super(reader);
 
         cacheId = reader.readInt();
 
-        flags = ver.compareTo(VER_1_5_0) < 0 ? reader.readByte() : 0;
+        flags = reader.readByte();
     }
 
     /**
@@ -72,6 +71,15 @@ class ClientCacheRequest extends ClientRequest {
      */
     protected boolean isKeepBinary() {
         return (flags & FLAG_KEEP_BINARY) == FLAG_KEEP_BINARY;
+    }
+
+    /**
+     *  Gets a value indicating whether request was made under transaction.
+     *
+     * @return flag value.
+     */
+    protected boolean isTransactional() {
+        return (flags & FLAG_TRANSACTIONAL) != 0;
     }
 
     /**

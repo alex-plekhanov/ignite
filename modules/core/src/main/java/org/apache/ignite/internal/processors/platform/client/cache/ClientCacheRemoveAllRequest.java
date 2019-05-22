@@ -31,8 +31,8 @@ public class ClientCacheRemoveAllRequest extends ClientCacheDataRequest {
      *
      * @param reader Reader.
      */
-    public ClientCacheRemoveAllRequest(BinaryRawReader reader, ClientListenerProtocolVersion ver) {
-        super(reader, ver);
+    public ClientCacheRemoveAllRequest(BinaryRawReader reader) {
+        super(reader);
     }
 
     /** {@inheritDoc} */

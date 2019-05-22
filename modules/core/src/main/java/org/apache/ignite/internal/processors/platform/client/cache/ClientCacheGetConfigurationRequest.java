@@ -38,7 +38,7 @@ public class ClientCacheGetConfigurationRequest extends ClientCacheRequest {
      * @param ver Client version.
      */
     public ClientCacheGetConfigurationRequest(BinaryRawReader reader, ClientListenerProtocolVersion ver) {
-        super(reader, ver);
+        super(reader);
         
         this.ver = ver;
     }

@@ -17,13 +17,11 @@
 
 package org.apache.ignite.internal.processors.platform.client.cache;
 
-import org.apache.ignite.internal.binary.BinaryRawReaderEx;
-import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
-import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
-import org.apache.ignite.internal.processors.platform.client.ClientResponse;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
+import org.apache.ignite.internal.processors.platform.client.ClientResponse;
 import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
 
 /**
@@ -38,8 +36,8 @@ public class ClientCachePutAllRequest extends ClientCacheDataRequest implements 
      *
      * @param reader Reader.
      */
-    public ClientCachePutAllRequest(BinaryRawReaderEx reader, ClientListenerProtocolVersion ver) {
-        super(reader, ver);
+    public ClientCachePutAllRequest(BinaryRawReaderEx reader) {
+        super(reader);
 
         int cnt = reader.readInt();
 

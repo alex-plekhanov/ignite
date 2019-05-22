@@ -263,7 +263,7 @@ public class ClientMessageParser implements ClientListenerMessageParser {
 
         switch (opCode) {
             case OP_CACHE_GET:
-                return new ClientCacheGetRequest(reader, ver);
+                return new ClientCacheGetRequest(reader);
 
             case OP_BINARY_TYPE_NAME_GET:
                 return new ClientBinaryTypeNameGetRequest(reader);
@@ -272,7 +272,7 @@ public class ClientMessageParser implements ClientListenerMessageParser {
                 return new ClientBinaryTypeGetRequest(reader);
 
             case OP_CACHE_PUT:
-                return new ClientCachePutRequest(reader, ver);
+                return new ClientCachePutRequest(reader);
 
             case OP_BINARY_TYPE_NAME_PUT:
                 return new ClientBinaryTypeNamePutRequest(reader);
@@ -281,7 +281,7 @@ public class ClientMessageParser implements ClientListenerMessageParser {
                 return new ClientBinaryTypePutRequest(reader);
 
             case OP_QUERY_SCAN:
-                return new ClientCacheScanQueryRequest(reader, ver);
+                return new ClientCacheScanQueryRequest(reader);
 
             case OP_QUERY_SCAN_CURSOR_GET_PAGE:
                 return new ClientCacheQueryNextPageRequest(reader);
@@ -290,64 +290,64 @@ public class ClientMessageParser implements ClientListenerMessageParser {
                 return new ClientResourceCloseRequest(reader);
 
             case OP_CACHE_CONTAINS_KEY:
-                return new ClientCacheContainsKeyRequest(reader, ver);
+                return new ClientCacheContainsKeyRequest(reader);
 
             case OP_CACHE_CONTAINS_KEYS:
-                return new ClientCacheContainsKeysRequest(reader, ver);
+                return new ClientCacheContainsKeysRequest(reader);
 
             case OP_CACHE_GET_ALL:
-                return new ClientCacheGetAllRequest(reader, ver);
+                return new ClientCacheGetAllRequest(reader);
 
             case OP_CACHE_GET_AND_PUT:
-                return new ClientCacheGetAndPutRequest(reader, ver);
+                return new ClientCacheGetAndPutRequest(reader);
 
             case OP_CACHE_GET_AND_REPLACE:
-                return new ClientCacheGetAndReplaceRequest(reader, ver);
+                return new ClientCacheGetAndReplaceRequest(reader);
 
             case OP_CACHE_GET_AND_REMOVE:
-                return new ClientCacheGetAndRemoveRequest(reader, ver);
+                return new ClientCacheGetAndRemoveRequest(reader);
 
             case OP_CACHE_PUT_IF_ABSENT:
-                return new ClientCachePutIfAbsentRequest(reader, ver);
+                return new ClientCachePutIfAbsentRequest(reader);
 
             case OP_CACHE_GET_AND_PUT_IF_ABSENT:
-                return new ClientCacheGetAndPutIfAbsentRequest(reader, ver);
+                return new ClientCacheGetAndPutIfAbsentRequest(reader);
 
             case OP_CACHE_REPLACE:
-                return new ClientCacheReplaceRequest(reader, ver);
+                return new ClientCacheReplaceRequest(reader);
 
             case OP_CACHE_REPLACE_IF_EQUALS:
-                return new ClientCacheReplaceIfEqualsRequest(reader, ver);
+                return new ClientCacheReplaceIfEqualsRequest(reader);
 
             case OP_CACHE_PUT_ALL:
-                return new ClientCachePutAllRequest(reader, ver);
+                return new ClientCachePutAllRequest(reader);
 
             case OP_CACHE_CLEAR:
-                return new ClientCacheClearRequest(reader, ver);
+                return new ClientCacheClearRequest(reader);
 
             case OP_CACHE_CLEAR_KEY:
-                return new ClientCacheClearKeyRequest(reader, ver);
+                return new ClientCacheClearKeyRequest(reader);
 
             case OP_CACHE_CLEAR_KEYS:
-                return new ClientCacheClearKeysRequest(reader, ver);
+                return new ClientCacheClearKeysRequest(reader);
 
             case OP_CACHE_REMOVE_KEY:
-                return new ClientCacheRemoveKeyRequest(reader, ver);
+                return new ClientCacheRemoveKeyRequest(reader);
 
             case OP_CACHE_REMOVE_IF_EQUALS:
-                return new ClientCacheRemoveIfEqualsRequest(reader, ver);
+                return new ClientCacheRemoveIfEqualsRequest(reader);
 
             case OP_CACHE_GET_SIZE:
-                return new ClientCacheGetSizeRequest(reader, ver);
+                return new ClientCacheGetSizeRequest(reader);
 
             case OP_CACHE_REMOVE_KEYS:
-                return new ClientCacheRemoveKeysRequest(reader, ver);
+                return new ClientCacheRemoveKeysRequest(reader);
 
             case OP_CACHE_LOCAL_PEEK:
-                return new ClientCacheLocalPeekRequest(reader, ver);
+                return new ClientCacheLocalPeekRequest(reader);
 
             case OP_CACHE_REMOVE_ALL:
-                return new ClientCacheRemoveAllRequest(reader, ver);
+                return new ClientCacheRemoveAllRequest(reader);
 
             case OP_CACHE_CREATE_WITH_NAME:
                 return new ClientCacheCreateWithNameRequest(reader);
@@ -359,7 +359,7 @@ public class ClientMessageParser implements ClientListenerMessageParser {
                 return new ClientCacheDestroyRequest(reader);
 
             case OP_CACHE_NODE_PARTITIONS:
-                return new ClientCacheNodePartitionsRequest(reader, ver);
+                return new ClientCacheNodePartitionsRequest(reader);
 
             case OP_CACHE_PARTITIONS:
                 return new ClientCachePartitionsRequest(reader);
@@ -377,13 +377,13 @@ public class ClientMessageParser implements ClientListenerMessageParser {
                 return new ClientCacheGetOrCreateWithConfigurationRequest(reader, ver);
 
             case OP_QUERY_SQL:
-                return new ClientCacheSqlQueryRequest(reader, ver);
+                return new ClientCacheSqlQueryRequest(reader);
 
             case OP_QUERY_SQL_CURSOR_GET_PAGE:
                 return new ClientCacheQueryNextPageRequest(reader);
 
             case OP_QUERY_SQL_FIELDS:
-                return new ClientCacheSqlFieldsQueryRequest(reader, ver);
+                return new ClientCacheSqlFieldsQueryRequest(reader);
 
             case OP_QUERY_SQL_FIELDS_CURSOR_GET_PAGE:
                 return new ClientCacheQueryNextPageRequest(reader);

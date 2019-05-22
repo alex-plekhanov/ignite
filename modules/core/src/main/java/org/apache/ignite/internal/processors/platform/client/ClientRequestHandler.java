@@ -67,9 +67,9 @@ public class ClientRequestHandler implements ClientListenerRequestHandler {
     @Override public ClientListenerResponse handle(ClientListenerRequest req) {
         try {
             if (req instanceof ClientTxAwareRequest) {
-                int txId = ((ClientTxAwareRequest)req).txId();
+                if (((ClientTxAwareRequest)req).isTransactional()) {
+                    int txId = ((ClientTxAwareRequest)req).txId();
 
-                if (txId != 0) {
                     ClientTxContext txCtx = ctx.txContext(txId);
 
                     if (txCtx != null) {

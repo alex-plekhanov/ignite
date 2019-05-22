@@ -19,7 +19,6 @@ package org.apache.ignite.internal.processors.platform.client.cache;
 
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.cache.CachePeekMode;
-import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientLongResponse;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
@@ -37,8 +36,8 @@ public class ClientCacheGetSizeRequest extends ClientCacheDataRequest implements
      *
      * @param reader Reader.
      */
-    public ClientCacheGetSizeRequest(BinaryRawReader reader, ClientListenerProtocolVersion ver) {
-        super(reader, ver);
+    public ClientCacheGetSizeRequest(BinaryRawReader reader) {
+        super(reader);
 
         int cnt = reader.readInt();
 

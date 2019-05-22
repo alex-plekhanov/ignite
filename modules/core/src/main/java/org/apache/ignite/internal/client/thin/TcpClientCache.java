@@ -41,12 +41,17 @@ import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.client.thin.TcpClientTransactions.TcpClientTransaction;
 
 import static java.util.AbstractMap.SimpleEntry;
-import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_5_0;
 
 /**
  * Implementation of {@link ClientCache} over TCP protocol.
  */
 class TcpClientCache<K, V> implements ClientCache<K, V> {
+    /** Request flag: keep binary. */
+    private static final byte FLAG_KEEP_BINARY = 0x01;
+
+    /** Request flag: transactional. */
+    private static final byte FLAG_TRANSACTIONAL = 0x02;
+
     /** Cache id. */
     private final int cacheId;
 
@@ -450,9 +455,6 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
         Consumer<BinaryOutputStream> qryWriter = out -> {
             writeCacheInfo(out);
 
-            if (ch.serverVersion().compareTo(V1_5_0) >= 0)
-                out.writeBoolean(keepBinary);
-
             if (qry.getFilter() == null)
                 out.writeByte(GridBinaryMarshaller.NULL);
             else {
@@ -503,24 +505,23 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
     private void writeCacheInfo(BinaryOutputStream out) {
         out.writeInt(cacheId);
 
-        if (ch.serverVersion().compareTo(V1_5_0) < 0)
-            out.writeByte((byte)(keepBinary ? 1 : 0));
-        else {
-            TcpClientTransaction tx = transactions.tx();
+        byte flags = keepBinary ? FLAG_KEEP_BINARY : 0;
 
-            int txId = 0;
+        TcpClientTransaction tx = transactions.tx();
 
-            if (tx != null && !tx.isClosed()) {
-                if (tx.clientChannel() != ch.clientChannel()) {
-                    throw new ClientException("Transaction context has been lost due to connection errors. " +
-                        "Cache operations are prohibited until current transaction closed.");
-                }
+        if (tx != null && !tx.isClosed()) {
+            flags |= FLAG_TRANSACTIONAL;
 
-                txId = tx.txId();
+            if (tx.clientChannel() != ch.clientChannel()) {
+                throw new ClientException("Transaction context has been lost due to connection errors. " +
+                    "Cache operations are prohibited until current transaction closed.");
             }
 
-            out.writeInt(txId);
+            out.writeByte(flags);
+            out.writeInt(tx.txId());
         }
+        else
+            out.writeByte(flags);
     }
 
     /** */

@@ -78,4 +78,9 @@ public class ClientTxEndRequest extends ClientRequest implements ClientTxAwareRe
     @Override public int txId() {
         return txId;
     }
+
+    /** {@inheritDoc} */
+    @Override public boolean isTransactional() {
+        return true;
+    }
 }

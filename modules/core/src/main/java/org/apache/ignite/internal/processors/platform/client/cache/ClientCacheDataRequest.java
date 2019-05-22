@@ -35,10 +35,10 @@ class ClientCacheDataRequest extends ClientCacheRequest {
      *
      * @param reader Reader.
      */
-    ClientCacheDataRequest(BinaryRawReader reader, ClientListenerProtocolVersion ver) {
-        super(reader, ver);
+    ClientCacheDataRequest(BinaryRawReader reader) {
+        super(reader);
 
-        txId = ver.compareTo(VER_1_5_0) >= 0 ? reader.readInt() : 0;
+        txId = isTransactional() ? reader.readInt() : 0;
     }
 
     /**
@@ -46,5 +46,10 @@ class ClientCacheDataRequest extends ClientCacheRequest {
      */
     public int txId() {
         return txId;
+    }
+
+    /** {@inheritDoc} */
+    @Override public boolean isTransactional() {
+        return super.isTransactional();
     }
 }

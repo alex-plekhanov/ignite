@@ -19,7 +19,6 @@ package org.apache.ignite.internal.processors.platform.client.cache;
 
 import org.apache.ignite.cache.CachePeekMode;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
-import org.apache.ignite.internal.processors.odbc.ClientListenerProtocolVersion;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientObjectResponse;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
@@ -34,8 +33,8 @@ public class ClientCacheLocalPeekRequest extends ClientCacheKeyRequest {
      *
      * @param reader Reader.
      */
-    public ClientCacheLocalPeekRequest(BinaryRawReaderEx reader, ClientListenerProtocolVersion ver) {
-        super(reader, ver);
+    public ClientCacheLocalPeekRequest(BinaryRawReaderEx reader) {
+        super(reader);
     }
 
     /** {@inheritDoc} */
