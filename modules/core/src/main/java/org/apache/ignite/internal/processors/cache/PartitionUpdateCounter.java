@@ -125,11 +125,6 @@ public interface PartitionUpdateCounter extends Iterable<long[]> {
     public boolean sequential();
 
     /**
-     * @return {@code True} if counter has not seen any update.
-     */
-    public boolean empty();
-
-    /**
      * @return Iterator for pairs [start, range] for each out-of-order update in the update counter sequence.
      */
     @Override public Iterator<long[]> iterator();

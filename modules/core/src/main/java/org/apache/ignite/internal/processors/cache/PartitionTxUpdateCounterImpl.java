@@ -24,8 +24,10 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.NavigableSet;
-import java.util.TreeSet;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.internal.pagemem.wal.record.RollbackRecord;
@@ -57,6 +59,7 @@ import org.jetbrains.annotations.Nullable;
  * </ol>
  */
 public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
+    public static int maxSize = 0;
     /**
      * Max allowed missed updates. Overflow will trigger critical failure handler to prevent OOM.
      */
@@ -66,7 +69,10 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     private static final byte VERSION = 1;
 
     /** Queue of applied out of order counter updates. */
-    private TreeSet<Item> queue = new TreeSet<>();
+    private NavigableSet<Item> queue = new ConcurrentSkipListSet<>();
+
+    /** Lock. TODO */
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     /** LWM. */
     private final AtomicLong cntr = new AtomicLong();
@@ -99,11 +105,6 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
         return cntr.get();
     }
 
-    /** */
-    protected synchronized long highestAppliedCounter() {
-        return queue.isEmpty() ? cntr.get() : queue.last().absolute();
-    }
-
     /**
      * @return Next update counter. For tx mode called by {@link DataStreamerImpl} IsolatedUpdater.
      */
@@ -116,96 +117,108 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     }
 
     /** {@inheritDoc} */
-    @Override public synchronized void update(long val) throws IgniteCheckedException {
-        // Absolute counter should be not less than last applied update.
-        // Otherwise supplier doesn't contain some updates and rebalancing couldn't restore consistency.
-        // Best behavior is to stop node by failure handler in such a case.
-        if (!gaps().isEmpty() && val < highestAppliedCounter())
-            throw new IgniteCheckedException("Failed to update the counter [newVal=" + val + ", curState=" + this + ']');
+    @Override public void update(long val) throws IgniteCheckedException {
+        lock.writeLock().lock();
 
-        long cur = cntr.get();
+        try {
+            // Absolute counter should be not less than last applied update.
+            // Otherwise supplier doesn't contain some updates and rebalancing couldn't restore consistency.
+            // Best behavior is to stop node by failure handler in such a case.
+            if (!queue.isEmpty() && val < queue.last().absolute())
+                throw new IgniteCheckedException("Failed to update the counter [newVal=" + val + ", curState=" + this + ']');
 
-        // Reserved update counter is updated only on exchange or in non-tx mode.
-        reserveCntr.set(Math.max(cur, val));
+            long cur = cntr.get();
 
-        if (val <= cur)
-            return;
+            // Reserved update counter is updated only on exchange or in non-tx mode.
+            reserveCntr.set(Math.max(cur, val));
 
-        cntr.set(val);
+            if (val <= cur)
+                return;
 
-        if (!queue.isEmpty())
+            cntr.set(val);
+
             queue.clear();
+        }
+        finally {
+            lock.writeLock().unlock();
+        }
     }
 
     /** {@inheritDoc} */
-    @Override public synchronized boolean update(long start, long delta) {
-        long cur = cntr.get(), next;
+    @Override public boolean update(long start, long delta) {
+        lock.readLock().lock();
 
-        if (cur > start)
-            return false;
+        // TODO make thread safe
+        try {
+            long cur = cntr.get(), next;
 
-        if (cur < start) {
-            // Try merge with adjacent gaps in sequence.
-            Item tmp = new Item(start, delta);
-            Item ref = tmp;
+            if (cur > start)
+                return false;
 
-            NavigableSet<Item> set = queue.headSet(tmp, false);
+            if (cur < start) {
+                // Try merge with adjacent gaps in sequence.
+                Item tmp = new Item(start, delta);
+                Item ref = tmp;
 
-            // Merge with previous, possibly modifying previous.
-            if (!set.isEmpty()) {
-                Item last = set.last();
+                Item last = queue.lower(tmp);
 
-                if (last.start + last.delta == start) {
-                    tmp = last;
+                // Merge with previous, possibly modifying previous.
+                if (last != null) {
+                    if (last.start + last.delta == start) {
+                        tmp = last;
 
-                    last.delta += delta;
+                        last.delta += delta;
+                    }
+                    else if (last.within(start) && last.within(start + delta - 1))
+                        return false;
                 }
-                else if (last.within(start) && last.within(start + delta - 1))
-                    return false;
+
+                // Merge with next, possibly modifying previous and removing next.
+                Item first = queue.higher(tmp);
+
+                if (first != null) {
+                    if (tmp.start + tmp.delta == first.start) {
+                        if (ref != tmp) {
+                            tmp.delta += first.delta;
+
+                            queue.remove(first);
+                        }
+                        else {
+                            tmp = first;
+
+                            first.start = start;
+                            first.delta += delta;
+                        }
+                    }
+                }
+
+                if (tmp != ref)
+                    return true;
+
+                return offer(tmp); // backup node with gaps
             }
 
-            // Merge with next, possibly modifying previous and removing next.
-            if (!(set = queue.tailSet(tmp, false)).isEmpty()) {
-                Item first = set.first();
+            while (true) {
+                boolean res = cntr.compareAndSet(cur, next = start + delta);
 
-                if (tmp.start + tmp.delta == first.start) {
-                    if (ref != tmp) {
-                        tmp.delta += first.delta;
+                assert res;
 
-                        set.pollFirst(); // Merge and remove obsolete head.
-                    }
-                    else {
-                        tmp = first;
+                Item peek = peek();
 
-                        first.start = start;
-                        first.delta += delta;
-                    }
-                }
+                if (peek == null || peek.start != next)
+                    return true;
+
+                Item item = poll();
+
+                assert peek == item;
+
+                start = item.start;
+                delta = item.delta;
+                cur = next;
             }
-
-            if (tmp != ref)
-                return true;
-
-            return offer(new Item(start, delta)); // backup node with gaps
         }
-
-        while (true) {
-            boolean res = cntr.compareAndSet(cur, next = start + delta);
-
-            assert res;
-
-            Item peek = peek();
-
-            if (peek == null || peek.start != next)
-                return true;
-
-            Item item = poll();
-
-            assert peek == item;
-
-            start = item.start;
-            delta = item.delta;
-            cur = next;
+        finally {
+            lock.readLock().unlock();
         }
     }
 
@@ -233,32 +246,42 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
         if (queue.size() == MAX_MISSED_UPDATES) // Should trigger failure handler.
             throw new IgniteException("Too many gaps [cntr=" + this + ']');
 
+        if (queue.size() >= maxSize)
+            maxSize = queue.size() + 1;
+
         return queue.add(item);
     }
 
     /** {@inheritDoc} */
-    @Override public synchronized GridLongList finalizeUpdateCounters() {
-        Item item = poll();
+    @Override public GridLongList finalizeUpdateCounters() {
+        lock.writeLock().lock();
 
-        GridLongList gaps = null;
+        try {
+            Item item = poll();
 
-        while (item != null) {
-            if (gaps == null)
-                gaps = new GridLongList((queue.size() + 1) * 2);
+            GridLongList gaps = null;
 
-            long start = cntr.get() + 1;
-            long end = item.start;
+            while (item != null) {
+                if (gaps == null)
+                    gaps = new GridLongList((queue.size() + 1) * 2);
 
-            gaps.add(start);
-            gaps.add(end);
+                long start = cntr.get() + 1;
+                long end = item.start;
 
-            // Close pending ranges.
-            cntr.set(item.start + item.delta);
+                gaps.add(start);
+                gaps.add(end);
 
-            item = poll();
+                // Close pending ranges.
+                cntr.set(item.start + item.delta);
+
+                item = poll();
+            }
+
+            return gaps;
         }
-
-        return gaps;
+        finally {
+            lock.writeLock().unlock();
+        }
     }
 
     /** {@inheritDoc} */
@@ -278,16 +301,18 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     }
 
     /** {@inheritDoc} */
-    @Override public synchronized boolean sequential() {
-        return gaps().isEmpty();
+    @Override public boolean sequential() {
+        return queue.isEmpty();
     }
 
     /** {@inheritDoc} */
-    @Override public synchronized @Nullable byte[] getBytes() {
-        if (queue.isEmpty())
-            return null;
+    @Override public @Nullable byte[] getBytes() {
+        lock.writeLock().lock();
 
         try {
+            if (queue.isEmpty())
+                return null;
+
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
 
             DataOutputStream dos = new DataOutputStream(bos);
@@ -310,16 +335,19 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
         catch (IOException e) {
             throw new IgniteException(e);
         }
+        finally {
+            lock.writeLock().unlock();
+        }
     }
 
     /**
      * @param raw Raw bytes.
      */
-    private @Nullable TreeSet<Item> fromBytes(@Nullable byte[] raw) {
-        if (raw == null)
-            return new TreeSet<>();
+    private @Nullable NavigableSet<Item> fromBytes(@Nullable byte[] raw) {
+        NavigableSet<Item> ret = new ConcurrentSkipListSet<>();
 
-        TreeSet<Item> ret = new TreeSet<>();
+        if (raw == null)
+            return ret;
 
         try {
             ByteArrayInputStream bis = new ByteArrayInputStream(raw);
@@ -340,18 +368,20 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
         }
     }
 
-    /** */
-    private TreeSet<Item> gaps() {
-        return queue;
-    }
-
     /** {@inheritDoc} */
-    @Override public synchronized void reset() {
-        cntr.set(0);
+    @Override public void reset() {
+        lock.writeLock().lock();
 
-        reserveCntr.set(0);
+        try {
+            cntr.set(0);
 
-        queue = new TreeSet<>();
+            reserveCntr.set(0);
+
+            queue = new ConcurrentSkipListSet<>();
+        }
+        finally {
+            lock.writeLock().unlock();
+        }
     }
 
     /**
@@ -443,20 +473,12 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     }
 
     /** {@inheritDoc} */
-    @Override public synchronized boolean empty() {
-        return get() == 0 && sequential();
-    }
-
-    /** {@inheritDoc} */
     @Override public Iterator<long[]> iterator() {
-        return F.iterator(queue.iterator(), item -> {
-            return new long[] {item.start, item.delta};
-        }, true);
+        return F.iterator(queue.iterator(), item -> new long[] {item.start, item.delta}, true);
     }
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return "Counter [lwm=" + get() + ", holes=" + queue +
-            ", maxApplied=" + highestAppliedCounter() + ", hwm=" + reserveCntr.get() + ']';
+        return "Counter [lwm=" + get() + ", holes=" + queue + ", hwm=" + reserveCntr.get() + ']';
     }
 }

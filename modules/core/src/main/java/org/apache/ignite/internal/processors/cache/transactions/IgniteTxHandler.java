@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.cache.processor.EntryProcessor;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
@@ -118,6 +119,8 @@ import static org.apache.ignite.transactions.TransactionState.ROLLING_BACK;
  * Isolated logic to process cache messages.
  */
 public class IgniteTxHandler {
+    public static AtomicLong updCntrCnt = new AtomicLong();
+    public static AtomicLong updCntrTime = new AtomicLong();
     /** Logger. */
     private IgniteLogger log;
 
@@ -2271,6 +2274,9 @@ public class IgniteTxHandler {
         if (counters == null)
             return;
 
+        updCntrCnt.incrementAndGet();
+        long t0 = System.nanoTime();
+
         for (PartitionUpdateCountersMessage counter : counters) {
             GridCacheContext ctx0 = ctx.cacheContext(counter.cacheId());
 
@@ -2330,6 +2336,8 @@ public class IgniteTxHandler {
                         "[cacheId=" + counter.cacheId() + ", part=" + counter.partition(i) + "]");
             }
         }
+
+        updCntrTime.addAndGet(System.nanoTime() - t0);
     }
 
     /**

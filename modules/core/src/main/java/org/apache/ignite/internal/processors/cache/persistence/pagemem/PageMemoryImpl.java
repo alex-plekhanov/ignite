@@ -33,6 +33,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
@@ -124,6 +125,8 @@ import static org.apache.ignite.internal.util.GridUnsafe.wrapPointer;
  */
 @SuppressWarnings({"LockAcquiredButNotSafelyReleased"})
 public class PageMemoryImpl implements PageMemoryEx {
+    public static AtomicLong writeLockCounter = new AtomicLong();
+    public static AtomicLong readLockCounter = new AtomicLong();
     /** */
     public static final long PAGE_MARKER = 0x0000000000000001L;
 
@@ -1480,6 +1483,8 @@ public class PageMemoryImpl implements PageMemoryEx {
 
     /** {@inheritDoc} */
     @Override  public long readLock(long absPtr, long pageId, boolean force, boolean touch) {
+        readLockCounter.incrementAndGet();
+
         assert started;
 
         int tag = force ? -1 : PageIdUtils.tag(pageId);
@@ -1539,6 +1544,8 @@ public class PageMemoryImpl implements PageMemoryEx {
      * @return Pointer to the page write buffer.
      */
     private long writeLockPage(long absPtr, FullPageId fullId, boolean checkTag) {
+        writeLockCounter.incrementAndGet();
+
         int tag = checkTag ? PageIdUtils.tag(fullId.pageId()) : OffheapReadWriteLock.TAG_LOCK_ALWAYS;
 
         boolean locked = rwLock.writeLock(absPtr + PAGE_LOCK_OFFSET, tag);
