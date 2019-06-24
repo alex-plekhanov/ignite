@@ -31,7 +31,6 @@ import org.apache.ignite.configuration.DataRegionConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.configuration.WALMode;
-import org.apache.ignite.internal.processors.cache.PartitionTxUpdateCounterImpl;
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheOffheapManager;
 import org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl;
 import org.apache.ignite.spi.eventstorage.NoopEventStorageSpi;
@@ -144,7 +143,6 @@ public class TxProfileTest extends GridCommonAbstractTest {
         System.out.println("Init0 time: " + GridCacheOffheapManager.init0time.get()/1_000_000L);
         System.out.println("ApplyUpdCntr cnt: " + IgniteTxHandler.updCntrCnt.get());
         System.out.println("ApplyUpdCntr time: " + IgniteTxHandler.updCntrTime.get()/1_000_000L);
-        System.out.println("PartUpdCntr maxSize: " + PartitionTxUpdateCounterImpl.maxSize);
         System.out.println(">>>> Total test time: " + (System.currentTimeMillis() - t0));
         System.out.println("Test completed. Waiting 10 seconds...");
         //doSleep(10_000L);
