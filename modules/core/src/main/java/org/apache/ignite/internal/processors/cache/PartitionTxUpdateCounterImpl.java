@@ -27,8 +27,6 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.internal.pagemem.wal.record.RollbackRecord;
@@ -70,9 +68,6 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
     /** Queue of applied out of order counter updates. */
     private NavigableMap<Long, Item> queue = new TreeMap<>();
-
-    /** Lock. TODO */
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     /** LWM. */
     private final AtomicLong cntr = new AtomicLong();
@@ -117,10 +112,7 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     }
 
     /** {@inheritDoc} */
-    @Override public void update(long val) throws IgniteCheckedException {
-        lock.writeLock().lock();
-
-        try {
+    @Override public synchronized void update(long val) throws IgniteCheckedException {
             Item lastUpdate = queue.lastEntry().getValue();
 
             // Absolute counter should be not less than last applied update.
@@ -140,18 +132,10 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
             cntr.set(val);
 
             queue.clear();
-        }
-        finally {
-            lock.writeLock().unlock();
-        }
     }
 
     /** {@inheritDoc} */
-    @Override public boolean update(long start, long delta) {
-        lock.writeLock().lock();
-
-        // TODO make thread safe
-        try {
+    @Override public synchronized boolean update(long start, long delta) {
             long cur = cntr.get(), next;
 
             if (cur > start)
@@ -201,10 +185,6 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
                 next += nextItem.delta;
             }
-        }
-        finally {
-            lock.writeLock().unlock();
-        }
     }
 
     /** {@inheritDoc} */
@@ -215,10 +195,7 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     }
 
     /** {@inheritDoc} */
-    @Override public GridLongList finalizeUpdateCounters() {
-        lock.writeLock().lock();
-
-        try {
+    @Override public synchronized GridLongList finalizeUpdateCounters() {
             Map.Entry<Long, Item> item = queue.pollFirstEntry();
 
             GridLongList gaps = null;
@@ -240,10 +217,6 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
             }
 
             return gaps;
-        }
-        finally {
-            lock.writeLock().unlock();
-        }
     }
 
     /** {@inheritDoc} */
@@ -268,9 +241,7 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     }
 
     /** {@inheritDoc} */
-    @Override public @Nullable byte[] getBytes() {
-        lock.writeLock().lock();
-
+    @Override public synchronized @Nullable byte[] getBytes() {
         try {
             if (queue.isEmpty())
                 return null;
@@ -296,9 +267,6 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
         }
         catch (IOException e) {
             throw new IgniteException(e);
-        }
-        finally {
-            lock.writeLock().unlock();
         }
     }
 
@@ -334,19 +302,12 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     }
 
     /** {@inheritDoc} */
-    @Override public void reset() {
-        lock.writeLock().lock();
+    @Override public synchronized void reset() {
+        cntr.set(0);
 
-        try {
-            cntr.set(0);
+        reserveCntr.set(0);
 
-            reserveCntr.set(0);
-
-            queue = new TreeMap<>();
-        }
-        finally {
-            lock.writeLock().unlock();
-        }
+        queue = new TreeMap<>();
     }
 
     /**
