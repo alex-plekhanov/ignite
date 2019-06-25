@@ -48,7 +48,7 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 5, time = 2)
 @Measurement(iterations = 10, time = 3)
-public class PartitionUpdateCounterBenchmark {
+public class JmhPartitionUpdateCounterBenchmark {
     /** Buffer size to store gaps. */
     private static final int GAPS_BUFFER_SIZE = 50;
 
@@ -104,7 +104,7 @@ public class PartitionUpdateCounterBenchmark {
      */
     public static void main(String[] args) throws Exception {
         final Options options = new OptionsBuilder()
-            .include(PartitionUpdateCounterBenchmark.class.getSimpleName())
+            .include(JmhPartitionUpdateCounterBenchmark.class.getSimpleName())
             .build();
 
         new Runner(options).run();
