@@ -7,6 +7,7 @@ import org.apache.ignite.internal.benchmarks.jmh.runner.JmhIdeBenchmarkRunner;
 import org.apache.ignite.internal.processors.cache.PartitionTxUpdateCounterImpl;
 import org.apache.ignite.internal.processors.cache.PartitionUpdateCounter;
 import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
@@ -38,7 +39,7 @@ public class PartitionUpdateCounterBenchmark {
     /**
      * Setup.
      */
-    @Setup
+    @Setup(Level.Iteration)
     public void setup() {
         rnd = new Random(0);
 

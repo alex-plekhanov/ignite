@@ -154,19 +154,19 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
             if (prev != null) {
                 Item prevItem = prev.getValue();
 
-                if (prevItem.absolute() == start)
+                if (prevItem.absolute() == start) {
                     prevItem.delta += delta;
-                else
-                    return !prevItem.within(next - 1);
-            }
-            else {
-                if (queue.size() >= MAX_MISSED_UPDATES) // Should trigger failure handler.
-                    throw new IgniteException("Too many gaps [cntr=" + this + ']');
 
-                return queue.put(start, new Item(start, delta)) == null;
+                    return true;
+                }
+                else if (prevItem.within(next - 1))
+                    return false;
             }
 
-            return true;
+            if (queue.size() >= MAX_MISSED_UPDATES) // Should trigger failure handler.
+                throw new IgniteException("Too many gaps [cntr=" + this + ']');
+
+            return queue.put(start, new Item(start, delta)) == null;
         }
         else { // cur == start
             long next = start + delta;
