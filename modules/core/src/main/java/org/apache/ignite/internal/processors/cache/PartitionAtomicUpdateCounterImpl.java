@@ -131,6 +131,11 @@ public class PartitionAtomicUpdateCounterImpl implements PartitionUpdateCounter 
     }
 
     /** {@inheritDoc} */
+    @Override public boolean empty() {
+        return get() == 0;
+    }
+
+    /** {@inheritDoc} */
     @Override public Iterator<long[]> iterator() {
         return new GridEmptyIterator<>();
     }

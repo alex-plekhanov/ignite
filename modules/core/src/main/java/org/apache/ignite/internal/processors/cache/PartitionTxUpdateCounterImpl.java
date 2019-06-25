@@ -33,7 +33,6 @@ import org.apache.ignite.internal.pagemem.wal.record.RollbackRecord;
 import org.apache.ignite.internal.processors.datastreamer.DataStreamerImpl;
 import org.apache.ignite.internal.util.GridLongList;
 import org.apache.ignite.internal.util.typedef.F;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -113,78 +112,77 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
     /** {@inheritDoc} */
     @Override public synchronized void update(long val) throws IgniteCheckedException {
-            Item lastUpdate = queue.lastEntry().getValue();
+        Item lastUpdate = queue.lastEntry().getValue();
 
-            // Absolute counter should be not less than last applied update.
-            // Otherwise supplier doesn't contain some updates and rebalancing couldn't restore consistency.
-            // Best behavior is to stop node by failure handler in such a case.
-            if (lastUpdate != null && val < lastUpdate.absolute())
-                throw new IgniteCheckedException("Failed to update the counter [newVal=" + val + ", curState=" + this + ']');
+        // Absolute counter should be not less than last applied update.
+        // Otherwise supplier doesn't contain some updates and rebalancing couldn't restore consistency.
+        // Best behavior is to stop node by failure handler in such a case.
+        if (lastUpdate != null && val < lastUpdate.absolute())
+            throw new IgniteCheckedException("Failed to update the counter [newVal=" + val + ", curState=" + this + ']');
 
-            long cur = cntr.get();
+        long cur = cntr.get();
 
-            // Reserved update counter is updated only on exchange or in non-tx mode.
-            reserveCntr.set(Math.max(cur, val));
+        // Reserved update counter is updated only on exchange or in non-tx mode.
+        reserveCntr.set(Math.max(cur, val));
 
-            if (val <= cur)
-                return;
+        if (val <= cur)
+            return;
 
-            cntr.set(val);
+        cntr.set(val);
 
-            queue.clear();
+        queue.clear();
     }
 
     /** {@inheritDoc} */
     @Override public synchronized boolean update(long start, long delta) {
-            long cur = cntr.get(), next;
+        long cur = cntr.get();
 
-            if (cur > start)
-                return false;
+        if (cur > start)
+            return false;
+        else if (cur < start) {
+            long next = start + delta;
 
-            if (cur < start) {
-                // Merge with next.
-                Item nextItem = queue.remove(start + delta);
+            // Merge with next.
+            Item nextItem = queue.remove(next);
 
-                if (nextItem != null)
-                    delta += nextItem.delta;
+            if (nextItem != null)
+                delta += nextItem.delta;
 
-                Map.Entry<Long, Item> prev = queue.lowerEntry(start);
+            Map.Entry<Long, Item> prev = queue.lowerEntry(start);
 
-                // Merge with previous, possibly modifying previous.
-                if (prev != null) {
-                    Item prevItem = prev.getValue();
+            // Merge with previous, possibly modifying previous.
+            if (prev != null) {
+                Item prevItem = prev.getValue();
 
-                    if (prevItem.absolute() == start)
-                        prevItem.delta += delta;
-                    else if (prevItem.within(start + delta - 1))
-                        return false;
-                }
-                else {
-                    if (queue.size() >= MAX_MISSED_UPDATES) // Should trigger failure handler.
-                        throw new IgniteException("Too many gaps [cntr=" + this + ']');
+                if (prevItem.absolute() == start)
+                    prevItem.delta += delta;
+                else
+                    return !prevItem.within(next - 1);
+            }
+            else {
+                if (queue.size() >= MAX_MISSED_UPDATES) // Should trigger failure handler.
+                    throw new IgniteException("Too many gaps [cntr=" + this + ']');
 
-                    return queue.put(start, new Item(start, delta)) == null;
-                }
-
-                return true;
+                return queue.put(start, new Item(start, delta)) == null;
             }
 
-            next = start + delta;
+            return true;
+        }
+        else { // cur == start
+            long next = start + delta;
 
-            while (true) {
-                boolean res = cntr.compareAndSet(cur, next);
+            // There is only one next item possible, all other items will be merged.
+            Item nextItem = queue.remove(next);
 
-                assert res;
-
-                Item nextItem = queue.remove(next);
-
-                if (nextItem == null)
-                    return true;
-
-                cur = next;
-
+            if (nextItem != null)
                 next += nextItem.delta;
-            }
+
+            boolean res = cntr.compareAndSet(cur, next);
+
+            assert res;
+
+            return true;
+        }
     }
 
     /** {@inheritDoc} */
@@ -196,27 +194,27 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
     /** {@inheritDoc} */
     @Override public synchronized GridLongList finalizeUpdateCounters() {
-            Map.Entry<Long, Item> item = queue.pollFirstEntry();
+        Map.Entry<Long, Item> item = queue.pollFirstEntry();
 
-            GridLongList gaps = null;
+        GridLongList gaps = null;
 
-            while (item != null) {
-                if (gaps == null)
-                    gaps = new GridLongList((queue.size() + 1) * 2);
+        while (item != null) {
+            if (gaps == null)
+                gaps = new GridLongList((queue.size() + 1) * 2);
 
-                long start = cntr.get() + 1;
-                long end = item.getKey();
+            long start = cntr.get() + 1;
+            long end = item.getValue().start;
 
-                gaps.add(start);
-                gaps.add(end);
+            gaps.add(start);
+            gaps.add(end);
 
-                // Close pending ranges.
-                cntr.set(item.getValue().absolute());
+            // Close pending ranges.
+            cntr.set(item.getValue().absolute());
 
-                item = queue.pollFirstEntry();
-            }
+            item = queue.pollFirstEntry();
+        }
 
-            return gaps;
+        return gaps;
     }
 
     /** {@inheritDoc} */
@@ -236,16 +234,16 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     }
 
     /** {@inheritDoc} */
-    @Override public boolean sequential() {
+    @Override public synchronized boolean sequential() {
         return queue.isEmpty();
     }
 
     /** {@inheritDoc} */
     @Override public synchronized @Nullable byte[] getBytes() {
-        try {
-            if (queue.isEmpty())
-                return null;
+        if (queue.isEmpty())
+            return null;
 
+        try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
 
             DataOutputStream dos = new DataOutputStream(bos);
@@ -288,7 +286,7 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
             int cnt = dis.readInt(); // Holes count.
 
-            while(cnt-- > 0) {
+            while (cnt-- > 0) {
                 Item item = new Item(dis.readLong(), dis.readLong());
 
                 ret.put(item.start, item);
@@ -307,13 +305,13 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
         reserveCntr.set(0);
 
-        queue = new TreeMap<>();
+        queue.clear();
     }
 
     /**
      * Update counter task. Update from start value by delta value.
      */
-    private static class Item implements Comparable<Item> {
+    private static class Item {
         /** */
         private long start;
 
@@ -327,11 +325,6 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
         private Item(long start, long delta) {
             this.start = start;
             this.delta = delta;
-        }
-
-        /** {@inheritDoc} */
-        @Override public int compareTo(@NotNull Item o) {
-            return Long.compare(this.start, o.start);
         }
 
         /** {@inheritDoc} */
@@ -399,12 +392,17 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     }
 
     /** {@inheritDoc} */
+    @Override public synchronized boolean empty() {
+        return get() == 0 && sequential();
+    }
+
+    /** {@inheritDoc} */
     @Override public Iterator<long[]> iterator() {
         return F.iterator(queue.values().iterator(), item -> new long[] {item.start, item.delta}, true);
     }
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return "Counter [lwm=" + get() + ", holes=" + queue + ", hwm=" + reserveCntr.get() + ']';
+        return "Counter [lwm=" + get() + ", holes=" + queue.values() + ", hwm=" + reserveCntr.get() + ']';
     }
 }
