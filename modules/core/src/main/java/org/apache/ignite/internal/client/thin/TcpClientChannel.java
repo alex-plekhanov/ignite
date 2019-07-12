@@ -17,7 +17,6 @@
 
 package org.apache.ignite.internal.client.thin;
 
-import java.io.DataInput;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -72,7 +71,6 @@ import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
-import org.apache.ignite.internal.util.io.GridUnsafeDataInput;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_0_0;
@@ -105,12 +103,6 @@ class TcpClientChannel implements ClientChannel {
     /** Input stream. */
     private final InputStream in;
 
-    /** Data input. */
-    private final DataInput dataInput;
-
-    /** Total bytes read by channel. */
-    private long totalBytesRead;
-
     /** Request id. */
     private final AtomicLong reqId = new AtomicLong(1);
 
@@ -132,10 +124,6 @@ class TcpClientChannel implements ClientChannel {
 
             out = sock.getOutputStream();
             in = sock.getInputStream();
-
-            GridUnsafeDataInput dis = new GridUnsafeDataInput();
-            dis.inputStream(in);
-            dataInput = dis;
         }
         catch (IOException e) {
             throw handleIOError("addr=" + cfg.getAddress(), e);
@@ -260,36 +248,32 @@ class TcpClientChannel implements ClientChannel {
      * Process next response from the input stream and complete corresponding future.
      */
     private void processNextResponse() throws ClientProtocolError, ClientConnectionException {
-        int resSize = readInt();
+        final int MIN_RES_SIZE = 8 + 4; // Minimal response size: long (8 bytes) ID + int (4 bytes) status.
+
+        int resSize = new BinaryHeapInputStream(read(4)).readInt();
 
         if (resSize <= 0)
             throw new ClientProtocolError(String.format("Invalid response size: %s", resSize));
 
-        long bytesReadOnStartReq = totalBytesRead;
+        BinaryInputStream resIn = new BinaryHeapInputStream(read(MIN_RES_SIZE));
 
-        long resId = readLong();
+        long resId = resIn.readLong();
 
         ClientRequestFuture pendingReq = pendingReqs.get(resId);
 
         if (pendingReq == null)
             throw new ClientProtocolError(String.format("Unexpected response ID [%s]", resId));
 
-        int status;
-
-        BinaryInputStream resIn;
-
-        status = readInt();
-
-        int hdrSize = (int)(totalBytesRead - bytesReadOnStartReq);
+        int status = resIn.readInt();
 
         if (status == 0) {
-            if (resSize <= hdrSize)
+            if (resSize <= MIN_RES_SIZE)
                 pendingReq.onDone();
             else
-                pendingReq.onDone(read(resSize - hdrSize));
+                pendingReq.onDone(read(resSize - MIN_RES_SIZE));
         }
         else {
-            resIn = new BinaryHeapInputStream(read(resSize - hdrSize));
+            resIn = new BinaryHeapInputStream(read(resSize - MIN_RES_SIZE));
 
             String err = new BinaryReaderExImpl(null, resIn, null, true).readString();
 
@@ -384,7 +368,7 @@ class TcpClientChannel implements ClientChannel {
     /** Receive and handle handshake response. */
     private void handshakeRes(String user, String pwd)
         throws ClientConnectionException, ClientAuthenticationException {
-        int resSize = readInt();
+        int resSize = new BinaryHeapInputStream(read(4)).readInt();
 
         if (resSize <= 0)
             throw new ClientProtocolError(String.format("Invalid handshake response size: %s", resSize));
@@ -448,57 +432,7 @@ class TcpClientChannel implements ClientChannel {
             readBytesNum += bytesNum;
         }
 
-        totalBytesRead += readBytesNum;
-
         return bytes;
-    }
-
-    /**
-     * Read long value from input stream.
-     */
-    private long readLong() {
-        try {
-            long val = dataInput.readLong();
-
-            totalBytesRead += Long.BYTES;
-
-            return val;
-        }
-        catch (IOException e) {
-            throw handleIOError(e);
-        }
-    }
-
-    /**
-     * Read int value from input stream.
-     */
-    private int readInt() {
-        try {
-            int val = dataInput.readInt();
-
-            totalBytesRead += Integer.BYTES;
-
-            return val;
-        }
-        catch (IOException e) {
-            throw handleIOError(e);
-        }
-    }
-
-    /**
-     * Read short value from input stream.
-     */
-    private short readShort() {
-        try {
-            short val = dataInput.readShort();
-
-            totalBytesRead += Short.BYTES;
-
-            return val;
-        }
-        catch (IOException e) {
-            throw handleIOError(e);
-        }
     }
 
     /** Write bytes to the output stream. */

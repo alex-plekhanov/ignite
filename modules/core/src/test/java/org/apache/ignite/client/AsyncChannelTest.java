@@ -70,6 +70,22 @@ public class AsyncChannelTest extends GridCommonAbstractTest {
         awaitPartitionMapExchange();
     }
 
+@Test
+public void testTest() throws Exception {
+    try (IgniteClient client = Ignition.startClient(new ClientConfiguration().setAddresses(CLIENT_CONN_ADDR))) {
+        log.info("Before start");
+        doSleep(10000);
+        log.info("Started");
+
+        ClientCache<Integer, Integer> clientCache = client.cache(CACHE_NAME);
+
+        for (int i = 0; i < 10000; i++)
+            clientCache.put(i, i);
+
+        log.info("End");
+    }
+
+}
     /**
      * Test that client channel works in async mode.
      */
