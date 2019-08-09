@@ -53,9 +53,4 @@ interface ClientChannel extends AutoCloseable {
      * @return Server topology version.
      */
     public AffinityTopologyVersion serverTopologyVersion();
-
-    /**
-     * Add topology change listener.
-     */
-    public void addTopologyChangeListener(Consumer<ClientChannel> lsnr);
 }

@@ -37,7 +37,6 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -129,9 +128,6 @@ class TcpClientChannel implements ClientChannel {
 
     /** Pending requests. */
     private final Map<Long, ClientRequestFuture> pendingReqs = new ConcurrentHashMap<>();
-
-    /** Topology change listeners. */
-    private final Collection<Consumer<ClientChannel>> topChangeLsnrs = new CopyOnWriteArrayList<>();
 
     /** Constructor. */
     TcpClientChannel(ClientChannelConfiguration cfg) throws ClientConnectionException, ClientAuthenticationException {
@@ -292,9 +288,6 @@ class TcpClientChannel implements ClientChannel {
                 int minorTopVer = dataInput.readInt();
 
                 srvTopVer = new AffinityTopologyVersion(topVer, minorTopVer);
-
-                for (Consumer<ClientChannel> lsnr : topChangeLsnrs)
-                    lsnr.accept(this);
             }
 
             if ((flags & ClientFlag.ERROR) != 0)
@@ -338,11 +331,6 @@ class TcpClientChannel implements ClientChannel {
     /** {@inheritDoc} */
     @Override public AffinityTopologyVersion serverTopologyVersion() {
         return srvTopVer;
-    }
-
-    /** {@inheritDoc} */
-    @Override public void addTopologyChangeListener(Consumer<ClientChannel> lsnr) {
-        topChangeLsnrs.add(lsnr);
     }
 
     /** Validate {@link ClientConfiguration}. */
