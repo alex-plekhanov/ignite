@@ -19,11 +19,13 @@ package org.apache.ignite.internal.client.thin;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.ignite.IgniteBinary;
+import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
+import org.apache.ignite.internal.binary.BinaryObjectExImpl;
 import org.apache.ignite.internal.binary.BinaryReaderExImpl;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
@@ -38,6 +40,9 @@ public class ClientCacheAffinityMapping {
 
     /** Affinity information for each cache. */
     private final Map<Integer, CacheAffinityInfo> cacheAffinity = new HashMap<>();
+
+    /** Binary data processor. */
+    private final IgniteBinary binary = null; // TODO
 
     /**
      * @param topVer Topology version.
@@ -62,8 +67,23 @@ public class ClientCacheAffinityMapping {
     public UUID nodeForKey(int cacheId, Object key) {
         CacheAffinityInfo affinityInfo = cacheAffinity.get(cacheId);
 
-        if (affinityInfo == null)
+        if (affinityInfo == null || affinityInfo.keyCfg == null || affinityInfo.partMapping == null)
             return null;
+
+        if (!affinityInfo.keyCfg.isEmpty()) {
+            int typeId = binary.typeId(key.getClass().getName());
+
+            Integer fieldId = affinityInfo.keyCfg.get(typeId);
+
+            if (fieldId != null) {
+                BinaryObject obj = binary.toBinary(key);
+
+                if (obj instanceof BinaryObjectExImpl)
+                    key = ((BinaryObjectExImpl)obj).field(fieldId);
+                else
+                    return null; // TODO Warning?
+            }
+        }
 
         return affinityInfo.nodeForKey(key);
     }
@@ -204,8 +224,7 @@ public class ClientCacheAffinityMapping {
          * @param key Key.
          */
         private UUID nodeForKey(Object key) {
-            if (partMapping == null)
-                return null;
+            assert partMapping != null;
 
             int part = RendezvousAffinityFunction.calculatePartition(key, affinityMask, partMapping.length);
 
