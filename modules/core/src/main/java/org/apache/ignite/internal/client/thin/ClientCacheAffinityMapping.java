@@ -33,17 +33,11 @@ import org.apache.ignite.internal.util.typedef.internal.U;
  *
  */
 public class ClientCacheAffinityMapping {
-    /** Empty partition mapping. */
-    private static UUID[] EMPTY_PART_MAPPING = new UUID[0];
-
     /** Topology version. */
     private final AffinityTopologyVersion topVer;
 
-    /** Cache key configuration. */
-    private final Map<Integer, Map<Integer, Integer>> cacheKeyCfg = new HashMap<>();
-
-    /** Cache partition mapping. */
-    private final Map<Integer, UUID[]> cachePartMapping = new HashMap<>();
+    /** Affinity information for each cache. */
+    private final Map<Integer, CacheAffinityInfo> cacheAffinity = new HashMap<>();
 
     /**
      * @param topVer Topology version.
@@ -57,6 +51,21 @@ public class ClientCacheAffinityMapping {
      */
     public AffinityTopologyVersion topologyVersion() {
         return topVer;
+    }
+
+    /**
+     * Calculates affinity node for given cache and key.
+     *
+     * @param cacheId Cache ID.
+     * @param key Key.
+     */
+    public UUID nodeForKey(int cacheId, Object key) {
+        CacheAffinityInfo affinityInfo = cacheAffinity.get(cacheId);
+
+        if (affinityInfo == null)
+            return null;
+
+        return affinityInfo.nodeForKey(key);
     }
 
     /**
@@ -95,28 +104,19 @@ public class ClientCacheAffinityMapping {
                 int cachesCnt = in.readInt();
 
                 if (applicable) { // Affinity awareness is applicable for this caches.
-                    int cacheIds[] = new int[cachesCnt];
+                    Map<Integer, Map<Integer, Integer>> cacheKeyCfg = U.newHashMap(cachesCnt);
 
-                    for (int j = 0; j < cachesCnt; j++) {
-                        int cacheId = in.readInt();
-
-                        cacheIds[j] = cacheId;
-
-                        aff.cacheKeyCfg.put(cacheId, readCacheKeyConfiguration(in));
-                    }
+                    for (int j = 0; j < cachesCnt; j++)
+                        cacheKeyCfg.put(in.readInt(), readCacheKeyConfiguration(in));
 
                     UUID[] partToNode = readNodePartitions(in);
 
-                    for (int cacheId : cacheIds)
-                        aff.cachePartMapping.put(cacheId, partToNode);
+                    for (Map.Entry<Integer, Map<Integer, Integer>> keyCfg : cacheKeyCfg.entrySet())
+                        aff.cacheAffinity.put(keyCfg.getKey(), new CacheAffinityInfo(keyCfg.getValue(), partToNode));
                 }
                 else { // Affinity awareness is not applicable for this caches.
-                    for (int j = 0; j < cachesCnt; j++) {
-                        int cacheId = in.readInt();
-
-                        aff.cacheKeyCfg.put(cacheId, Collections.emptyMap());
-                        aff.cachePartMapping.put(cacheId, EMPTY_PART_MAPPING);
-                    }
+                    for (int j = 0; j < cachesCnt; j++)
+                        aff.cacheAffinity.put(in.readInt(), new CacheAffinityInfo(null, null));
                 }
             }
 
@@ -175,7 +175,7 @@ public class ClientCacheAffinityMapping {
     }
 
     /**
-     * TODO
+     * Class to store affinity information for cache.
      */
     private static class CacheAffinityInfo {
         /** Key configuration. */
@@ -187,10 +187,29 @@ public class ClientCacheAffinityMapping {
         /** Affinity mask. */
         private final int affinityMask;
 
+        /**
+         * @param keyCfg Cache key configuration or {@code null} if affinity awareness is not applicable for this cache.
+         * @param partMapping Partition to node mapping or {@code null} if affinity awareness is not applicable for
+         * this cache.
+         */
         private CacheAffinityInfo(Map<Integer, Integer> keyCfg, UUID[] partMapping) {
             this.keyCfg = keyCfg;
             this.partMapping = partMapping;
             affinityMask = partMapping != null ? RendezvousAffinityFunction.calculateMask(partMapping.length) : 0;
+        }
+
+        /**
+         * Calculates node for given key.
+         *
+         * @param key Key.
+         */
+        private UUID nodeForKey(Object key) {
+            if (partMapping == null)
+                return null;
+
+            int part = RendezvousAffinityFunction.calculatePartition(key, affinityMask, partMapping.length);
+
+            return partMapping[part];
         }
     }
 }
