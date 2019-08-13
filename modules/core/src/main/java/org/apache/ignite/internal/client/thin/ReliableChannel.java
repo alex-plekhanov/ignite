@@ -20,10 +20,13 @@ package org.apache.ignite.internal.client.thin;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Deque;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -38,26 +41,25 @@ import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 
 /**
- * Adds failover abd thread-safety to {@link ClientChannel}.
+ * Adds failover to {@link ClientChannel}.
  */
 final class ReliableChannel implements AutoCloseable {
-    /** Raw channel. */
-    private final Function<ClientChannelConfiguration, Result<ClientChannel>> chFactory;
+    /** Client channel holders for each configured address. */
+    private final ClientChannelHolder[] channels;
 
-    /** Servers count. */
-    private final int srvCnt;
+    /** Index of the current channel. */
+    private int curChIdx;
 
-    /** Primary server. */
-    private InetSocketAddress primary;
+    /** Affinity awareness enabled. */
+    private final boolean affinityAwarenessEnabled;
 
-    /** Backup servers. */
-    private final Deque<InetSocketAddress> backups = new LinkedList<>();
+    /** Cache affinity awareness context. */
+    private final ClientCacheAffinityContext affinityCtx;
 
-    /** Channel. */
-    private ClientChannel ch;
+    /** Node channels. */
+    private final Map<UUID, ClientChannelHolder> nodeChannels = new ConcurrentHashMap<>();
 
-    /** Ignite config. */
-    private final ClientConfiguration clientCfg;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     /** Channel is closed. */
     private boolean closed;
@@ -65,41 +67,34 @@ final class ReliableChannel implements AutoCloseable {
     /**
      * Constructor.
      */
-    ReliableChannel(
-        Function<ClientChannelConfiguration, Result<ClientChannel>> chFactory,
-        ClientConfiguration clientCfg
-    ) throws ClientException {
-        if (chFactory == null)
-            throw new NullPointerException("chFactory");
-
+    ReliableChannel(ClientConfiguration clientCfg) throws ClientException {
         if (clientCfg == null)
             throw new NullPointerException("clientCfg");
 
-        this.chFactory = chFactory;
-        this.clientCfg = clientCfg;
-
         List<InetSocketAddress> addrs = parseAddresses(clientCfg.getAddresses());
 
-        srvCnt = addrs.size();
+        channels = new ClientChannelHolder[addrs.size()];
 
-        primary = addrs.get(new Random().nextInt(addrs.size())); // we already verified there is at least one address
+        for (int i = 0; i < channels.length; i++)
+            channels[i] = new ClientChannelHolder(new ClientChannelConfiguration(clientCfg, addrs.get(i)));
 
-        for (InetSocketAddress a : addrs) {
-            if (a != primary)
-                backups.add(a);
-        }
+        curChIdx = new Random().nextInt(channels.length); // We already verified there is at least one address.
+
+        affinityAwarenessEnabled = clientCfg.affinityAwarenessEnabled() && channels.length > 1;
+
+        affinityCtx = null; // TODO
 
         ClientConnectionException lastEx = null;
 
-        for (int i = 0; i < addrs.size(); i++) {
+        for (int i = 0; i < channels.length; i++) {
             try {
-                ch = chFactory.apply(new ClientChannelConfiguration(clientCfg).setAddress(primary)).get();
+                channels[curChIdx].getOrCreateChannel();
 
                 return;
             } catch (ClientConnectionException e) {
                 lastEx = e;
 
-                rollAddress();
+                rollChannel();
             }
         }
 
@@ -107,14 +102,11 @@ final class ReliableChannel implements AutoCloseable {
     }
 
     /** {@inheritDoc} */
-    @Override public synchronized void close() throws Exception {
+    @Override public synchronized void close() {
         closed = true;
 
-        if (ch != null) {
-            ch.close();
-
-            ch = null;
-        }
+        for (ClientChannelHolder hld : channels)
+            hld.closeChannel();
     }
 
     /**
@@ -127,7 +119,7 @@ final class ReliableChannel implements AutoCloseable {
     ) throws ClientException {
         ClientConnectionException failure = null;
 
-        for (int i = 0; i < srvCnt; i++) {
+        for (int i = 0; i < channels.length; i++) {
             ClientChannel ch = null;
 
             try {
@@ -141,7 +133,7 @@ final class ReliableChannel implements AutoCloseable {
                 else
                     failure.addSuppressed(e);
 
-                changeServer(ch);
+                onChannelFailure(ch);
             }
         }
 
@@ -161,6 +153,53 @@ final class ReliableChannel implements AutoCloseable {
      */
     public void request(ClientOperation op, Consumer<PayloadOutputChannel> payloadWriter) throws ClientException {
         service(op, payloadWriter, null);
+    }
+
+    /**
+     * Send request to affinity node and handle response.
+     */
+    public <T> T affinityService(
+        int cacheId,
+        Object key,
+        ClientOperation op,
+        Consumer<PayloadOutputChannel> payloadWriter,
+        Function<PayloadInputChannel, T> payloadReader
+    ) throws ClientException {
+        if (!affinityAwarenessEnabled)
+            return service(op, payloadWriter, payloadReader);
+
+/*
+        affinityCtx.updateAffinityIfNeeded(cacheId);
+
+        if (affinityCtx.updateNeeded)
+            service(
+                ClientOperation.CACHE_PARTITIONS,
+                ch -> ClientCacheAffinityMapping.writeRequest(ch, cacheId),
+                ClientCacheAffinityMapping::readResponse
+            );
+*/
+        // TODO
+        ClientConnectionException failure = null;
+
+        for (int i = 0; i < channels.length; i++) {
+            ClientChannel ch = null;
+
+            try {
+                ch = channel();
+
+                return ch.service(op, payloadWriter, payloadReader);
+            }
+            catch (ClientConnectionException e) {
+                if (failure == null)
+                    failure = e;
+                else
+                    failure.addSuppressed(e);
+
+                onChannelFailure(ch);
+            }
+        }
+
+        throw failure;
     }
 
     /**
@@ -199,35 +238,87 @@ final class ReliableChannel implements AutoCloseable {
         if (closed)
             throw new ClientException("Channel is closed");
 
-        if (ch == null) {
-            try {
-                ch = chFactory.apply(new ClientChannelConfiguration(clientCfg).setAddress(primary)).get();
-            }
-            catch (ClientConnectionException e) {
-                rollAddress();
-
-                throw e;
-            }
+        try {
+            return channels[curChIdx].getOrCreateChannel();
         }
+        catch (ClientConnectionException e) {
+            rollChannel();
 
-        return ch;
-    }
-
-    /** */
-    private void rollAddress() {
-        if (!backups.isEmpty()) {
-            backups.addLast(primary);
-
-            primary = backups.removeFirst();
+            throw e;
         }
     }
 
     /** */
-    private synchronized void changeServer(ClientChannel oldCh) {
-        if (oldCh == ch && ch != null) {
-            rollAddress();
+    private synchronized void rollChannel() {
+        curChIdx = (curChIdx + 1) % channels.length;
+    }
 
-            U.closeQuiet(ch);
+    /** */
+    private synchronized void onChannelFailure(ClientChannel oldCh) {
+        if (oldCh == channels[curChIdx].ch && oldCh != null) {
+            channels[curChIdx].closeChannel();
+
+            rollChannel();
+        }
+    }
+
+    private void initAllChannelsAsync() {
+        // TODO check pending requests
+        executor.submit(
+            () -> {
+                for (ClientChannelHolder hld : channels) {
+                    try {
+                        hld.getOrCreateChannel();
+                    }
+                    catch (Exception ignore) {
+                        // No-op.
+                    }
+                }
+            }
+        );
+    }
+
+    /**
+     * TODO
+     */
+    private class ClientChannelHolder {
+        /** Channel configuration. */
+        private final ClientChannelConfiguration chCfg;
+
+        /** Channel. */
+        private ClientChannel ch;
+
+        /**
+         * @param chCfg Channel config.
+         */
+        private ClientChannelHolder(ClientChannelConfiguration chCfg) {
+            this.chCfg = chCfg;
+        }
+
+        /**
+         * Get or create channel.
+         */
+        private synchronized ClientChannel getOrCreateChannel() {
+            if (ch == null) {
+                ch = new TcpClientChannel(chCfg);
+
+                if (ch.serverNodeId() != null)
+                    nodeChannels.putIfAbsent(ch.serverNodeId(), this);
+            }
+
+            return ch;
+        }
+
+        /**
+         * Close channel.
+         */
+        private synchronized void closeChannel() {
+            if (ch != null) {
+                if (ch.serverNodeId() != null)
+                    nodeChannels.remove(ch.serverNodeId(), this);
+
+                U.closeQuiet(ch);
+            }
 
             ch = null;
         }

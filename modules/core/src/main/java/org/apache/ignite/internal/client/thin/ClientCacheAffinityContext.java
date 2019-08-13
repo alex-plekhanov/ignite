@@ -14,47 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.ignite.internal.client.thin;
 
-import org.apache.ignite.client.ClientException;
+import org.apache.ignite.IgniteBinary;
 
 /**
- * Result of a function throwing an exception.
+ * Client cache affinity awareness context.
  */
-final class Result<T> {
-    /** Value. */
-    private final T val;
+public class ClientCacheAffinityContext {
+    /** Binary data processor. */
+    private final IgniteBinary binary = null; // TODO
 
-    /** Exception. */
-    private final ClientException ex;
-
-    /**
-     * Initializes a successful result.
-     */
-    Result(T val) {
-        this.val = val;
-        ex = null;
-    }
-
-    /**
-     * Initializes a failed result.
-     */
-    Result(ClientException ex) {
-        if (ex == null)
-            throw new NullPointerException("ex");
-
-        this.ex = ex;
-        val = null;
-    }
-
-    /**
-     * @return Value;
-     */
-    public T get() throws ClientException {
-        if (ex != null)
-            throw ex;
-
-        return val;
-    }
 }

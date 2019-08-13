@@ -63,8 +63,9 @@ public class ClientCacheAffinityMapping {
      *
      * @param cacheId Cache ID.
      * @param key Key.
+     * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and key.
      */
-    public UUID nodeForKey(int cacheId, Object key) {
+    public UUID affinityNode(int cacheId, Object key) {
         CacheAffinityInfo affinityInfo = cacheAffinity.get(cacheId);
 
         if (affinityInfo == null || affinityInfo.keyCfg == null || affinityInfo.partMapping == null)
@@ -76,12 +77,16 @@ public class ClientCacheAffinityMapping {
             Integer fieldId = affinityInfo.keyCfg.get(typeId);
 
             if (fieldId != null) {
-                BinaryObject obj = binary.toBinary(key);
+                Object obj = binary.toBinary(key);
 
-                if (obj instanceof BinaryObjectExImpl)
+                if (obj instanceof BinaryObjectExImpl) {
                     key = ((BinaryObjectExImpl)obj).field(fieldId);
-                else
-                    return null; // TODO Warning?
+
+                    if (key instanceof BinaryObject)
+                        key = ((BinaryObject)key).deserialize();
+                }
+                else // Can't get field value, affinity node can't be determined in this case.
+                    return null;
             }
         }
 
