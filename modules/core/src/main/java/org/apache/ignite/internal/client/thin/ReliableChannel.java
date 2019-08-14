@@ -95,11 +95,14 @@ final class ReliableChannel implements AutoCloseable {
             try {
                 channels[curChIdx].getOrCreateChannel();
 
+                if (affinityAwarenessEnabled)
+                    initAllChannelsAsync();
+
                 return;
             } catch (ClientConnectionException e) {
                 lastEx = e;
 
-                rollChannel();
+                rollCurrentChannel();
             }
         }
 
@@ -202,10 +205,6 @@ final class ReliableChannel implements AutoCloseable {
 
                 onChannelFailure(ch);
             }
-            finally {
-                if (affinityAwarenessEnabled && failure == null)
-                    initAllChannelsAsync();
-            }
         }
 
         throw failure;
@@ -251,31 +250,44 @@ final class ReliableChannel implements AutoCloseable {
             return channels[curChIdx].getOrCreateChannel();
         }
         catch (ClientConnectionException e) {
-            rollChannel();
+            rollCurrentChannel();
 
             throw e;
         }
     }
 
     /** */
-    private synchronized void rollChannel() {
+    private synchronized void rollCurrentChannel() {
         curChIdx = (curChIdx + 1) % channels.length;
     }
 
-    /** */
-    private synchronized void onChannelFailure(ClientChannel oldCh) {
-        if (oldCh == channels[curChIdx].ch && oldCh != null) {
-            channels[curChIdx].closeChannel();
+    /**
+     * On current channel failure.
+     */
+    private synchronized void onChannelFailure(ClientChannel ch) {
+        // There is nothing wrong if curChIdx was concurrently changed, since channel was closed if current index was
+        // changed by another thread and no other channel will be closed because onChannelFailure checks channel binded
+        // to the index before closing it.
+        onChannelFailure(curChIdx, ch);
+    }
 
-            rollChannel();
+    /**
+     * On failure of the channel with the specified index.
+     */
+    private synchronized void onChannelFailure(int chIdx, ClientChannel ch) {
+        if (ch == channels[chIdx].ch && ch != null) {
+            channels[chIdx].closeChannel();
+
+            if (chIdx == curChIdx)
+                rollCurrentChannel();
         }
     }
 
     /**
-     * Asynchronously try to estabelish connection to all defined servers.
+     * Asynchronously try to establish a connection to all configured servers.
      */
     private void initAllChannelsAsync() {
-        // Skip if there is already channel reinit scheduled.
+        // Skip if there is already channels reinit scheduled.
         if (scheduledChannelsReinit.compareAndSet(false, true)) {
             executor.submit(
                 () -> {
@@ -302,19 +314,19 @@ final class ReliableChannel implements AutoCloseable {
     private void onTopologyChanged(ClientChannel ch) {
         AffinityTopologyVersion topVer = ch.serverTopologyVersion();
 
-        if (topVer.compareTo(topVer) > 0) // TODO Check max topology version.
+        if (affinityAwarenessEnabled && topVer.compareTo(topVer) > 0) // TODO Check max topology version.
             initAllChannelsAsync();
     }
 
     /**
-     * TODO
+     * Channels holder.
      */
     private class ClientChannelHolder {
         /** Channel configuration. */
         private final ClientChannelConfiguration chCfg;
 
         /** Channel. */
-        private ClientChannel ch;
+        private volatile ClientChannel ch;
 
         /**
          * @param chCfg Channel config.
