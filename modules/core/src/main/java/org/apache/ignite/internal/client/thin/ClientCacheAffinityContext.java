@@ -36,6 +36,9 @@ public class ClientCacheAffinityContext {
     /** Contains last topology version and known nodes of this version. */
     private final AtomicReference<TopologyNodes> lastTop = new AtomicReference<>();
 
+    /** Current affinity mapping. */
+    private final AtomicReference<ClientCacheAffinityMapping> affinityMapping = new AtomicReference<>();
+
     /**
      * @param binary Binary data processor.
      */
@@ -74,7 +77,23 @@ public class ClientCacheAffinityContext {
      * @param cacheId Cache id.
      */
     public boolean affinityUpdateRequired(int cacheId) {
-        // TODO
+        // TODO store cacheId
+
+        TopologyNodes top = lastTop.get();
+
+        if (top == null) // Don't know current topology version.
+            return false;
+
+        ClientCacheAffinityMapping mapping = affinityMapping.get();
+
+        if (mapping == null)
+            return true;
+
+        if (top.topVer.compareTo(mapping.topologyVersion()) > 0)
+            return true;
+
+        // TODO if cache not in mapping return true else return false.
+
         return true;
     }
 
@@ -89,8 +108,26 @@ public class ClientCacheAffinityContext {
      * @param ch Payload input channel.
      */
     public boolean readPartitionsUpdateResponse(PayloadInputChannel ch) {
-        // TODO
-        return false;
+        ClientCacheAffinityMapping newMapping = ClientCacheAffinityMapping.readResponse(ch);
+
+        while (true) {
+            ClientCacheAffinityMapping oldMapping = affinityMapping.get();
+
+            if (oldMapping == null || newMapping.topologyVersion().compareTo(oldMapping.topologyVersion()) > 0) {
+                if (affinityMapping.compareAndSet(oldMapping, newMapping))
+                    // TODO update pending caches
+                    return true;
+                else
+                    continue;
+            }
+
+            if (newMapping.topologyVersion().equals(oldMapping.topologyVersion()))
+                // TODO merge
+                return true;
+
+            // Obsolete mapping.
+            return false;
+        }
     }
 
     /**
