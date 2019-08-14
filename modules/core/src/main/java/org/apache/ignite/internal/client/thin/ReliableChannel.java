@@ -27,6 +27,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -36,6 +37,7 @@ import org.apache.ignite.client.ClientConnectionException;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.configuration.ClientConnectorConfiguration;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.HostAndPortRange;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -60,6 +62,9 @@ final class ReliableChannel implements AutoCloseable {
     private final Map<UUID, ClientChannelHolder> nodeChannels = new ConcurrentHashMap<>();
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    /** Channels reinit was scheduled. */
+    private final AtomicBoolean scheduledChannelsReinit = new AtomicBoolean();
 
     /** Channel is closed. */
     private boolean closed;
@@ -165,7 +170,7 @@ final class ReliableChannel implements AutoCloseable {
         Consumer<PayloadOutputChannel> payloadWriter,
         Function<PayloadInputChannel, T> payloadReader
     ) throws ClientException {
-        if (!affinityAwarenessEnabled)
+        if (!affinityAwarenessEnabled || nodeChannels.isEmpty())
             return service(op, payloadWriter, payloadReader);
 
 /*
@@ -196,6 +201,10 @@ final class ReliableChannel implements AutoCloseable {
                     failure.addSuppressed(e);
 
                 onChannelFailure(ch);
+            }
+            finally {
+                if (affinityAwarenessEnabled && failure == null)
+                    initAllChannelsAsync();
             }
         }
 
@@ -262,20 +271,39 @@ final class ReliableChannel implements AutoCloseable {
         }
     }
 
+    /**
+     * Asynchronously try to estabelish connection to all defined servers.
+     */
     private void initAllChannelsAsync() {
-        // TODO check pending requests
-        executor.submit(
-            () -> {
-                for (ClientChannelHolder hld : channels) {
-                    try {
-                        hld.getOrCreateChannel();
-                    }
-                    catch (Exception ignore) {
-                        // No-op.
+        // Skip if there is already channel reinit scheduled.
+        if (scheduledChannelsReinit.compareAndSet(false, true)) {
+            executor.submit(
+                () -> {
+                    scheduledChannelsReinit.set(false);
+
+                    for (ClientChannelHolder hld : channels) {
+                        try {
+                            hld.getOrCreateChannel();
+                        }
+                        catch (Exception ignore) {
+                            // No-op.
+                        }
                     }
                 }
-            }
-        );
+            );
+        }
+    }
+
+    /**
+     * Topology version change detected on channel.
+     *
+     * @param ch Channel.
+     */
+    private void onTopologyChanged(ClientChannel ch) {
+        AffinityTopologyVersion topVer = ch.serverTopologyVersion();
+
+        if (topVer.compareTo(topVer) > 0) // TODO Check max topology version.
+            initAllChannelsAsync();
     }
 
     /**
@@ -302,8 +330,11 @@ final class ReliableChannel implements AutoCloseable {
             if (ch == null) {
                 ch = new TcpClientChannel(chCfg);
 
-                if (ch.serverNodeId() != null)
+                if (ch.serverNodeId() != null) {
+                    ch.addTopologyChangeListener(ReliableChannel.this::onTopologyChanged);
+
                     nodeChannels.putIfAbsent(ch.serverNodeId(), this);
+                }
             }
 
             return ch;
