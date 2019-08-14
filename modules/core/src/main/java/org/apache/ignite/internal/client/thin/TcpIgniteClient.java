@@ -77,8 +77,6 @@ public class TcpIgniteClient implements IgniteClient {
      * {@link TcpClientChannel}.
      */
     private TcpIgniteClient(ClientConfiguration cfg) throws ClientException {
-        ch = new ReliableChannel(cfg);
-
         marsh = new ClientBinaryMarshaller(new ClientBinaryMetadataHandler(), new ClientMarshallerContext());
 
         marsh.setBinaryConfiguration(cfg.getBinaryConfiguration());
@@ -86,6 +84,8 @@ public class TcpIgniteClient implements IgniteClient {
         serDes = new ClientUtils(marsh);
 
         binary = new ClientBinary(marsh);
+
+        ch = new ReliableChannel(cfg, binary);
 
         transactions = new TcpClientTransactions(ch, marsh,
             new ClientTransactionConfiguration(cfg.getTransactionConfiguration()));

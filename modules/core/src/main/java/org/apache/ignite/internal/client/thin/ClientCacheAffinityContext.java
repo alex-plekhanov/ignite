@@ -16,13 +16,140 @@
  */
 package org.apache.ignite.internal.client.thin;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.ignite.IgniteBinary;
+import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Client cache affinity awareness context.
  */
 public class ClientCacheAffinityContext {
     /** Binary data processor. */
-    private final IgniteBinary binary = null; // TODO
+    private final IgniteBinary binary;
 
+    /** Contains last topology version and known nodes of this version. */
+    private final AtomicReference<TopologyNodes> lastTop = new AtomicReference<>();
+
+    /**
+     * @param binary Binary data processor.
+     */
+    public ClientCacheAffinityContext(IgniteBinary binary) {
+        this.binary = binary;
+    }
+
+    /**
+     * Update topology version if it's greater then current version and store nodes for last topology.
+     *
+     * @param topVer Topology version.
+     * @param nodeId Node id.
+     * @return {@code True} if last topology was updated to the new version.
+     */
+    public boolean updateLastTopologyVersion(AffinityTopologyVersion topVer, UUID nodeId) {
+        while (true) {
+            TopologyNodes lastTop = this.lastTop.get();
+
+            if (lastTop == null || topVer.compareTo(lastTop.topVer) > 0) {
+                if (this.lastTop.compareAndSet(lastTop, new TopologyNodes(topVer, nodeId)))
+                    return true;
+            }
+            else if (topVer.equals(lastTop.topVer)) {
+                lastTop.nodes.add(nodeId);
+
+                return false;
+            }
+            else
+                return false;
+        }
+    }
+
+    /**
+     * Is affinity update required for given cache.
+     *
+     * @param cacheId Cache id.
+     */
+    public boolean affinityUpdateRequired(int cacheId) {
+        // TODO
+        return true;
+    }
+
+    /**
+     * @param ch Payload output channel.
+     */
+    public void writePartitionsUpdateRequest(PayloadOutputChannel ch) {
+        // TODO
+    }
+
+    /**
+     * @param ch Payload input channel.
+     */
+    public boolean readPartitionsUpdateResponse(PayloadInputChannel ch) {
+        // TODO
+        return false;
+    }
+
+    /**
+     * Gets nodes of last topology.
+     */
+    public Iterable<UUID> lastTopologyNodes() {
+        TopologyNodes top = lastTop.get();
+
+        if (top == null)
+            return Collections.emptyList();
+
+        // Create Iterable which will abort iterations when topology changed.
+        return new Iterable<UUID>() {
+            @NotNull @Override public Iterator<UUID> iterator() {
+                return new Iterator<UUID>() {
+                    Iterator<UUID> delegate = top.nodes.iterator();
+
+                    @Override public boolean hasNext() {
+                        return top == lastTop.get() && delegate.hasNext();
+                    }
+
+                    @Override public UUID next() {
+                        return delegate.next();
+                    }
+                };
+            }
+        };
+    }
+
+    /**
+     * Calculates affinity node for given cache and key.
+     *
+     * @param cacheId Cache ID.
+     * @param key Key.
+     * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and key.
+     */
+    public UUID affinityNode(int cacheId, Object key) {
+        // TODO
+        return null;
+    }
+
+    /**
+     * Holder for list of nodes for topology version.
+     */
+    private static class TopologyNodes {
+        /** Topology version. */
+        private final AffinityTopologyVersion topVer;
+
+        /** Nodes. */
+        private final Collection<UUID> nodes = new ConcurrentLinkedQueue<>();
+
+        /**
+         * @param topVer Topology version.
+         * @param nodeId Node id.
+         */
+        private TopologyNodes(AffinityTopologyVersion topVer, UUID nodeId) {
+            this.topVer = topVer;
+
+            nodes.add(nodeId);
+        }
+    }
 }

@@ -27,23 +27,25 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.ignite.IgniteBinary;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.client.ClientConnectionException;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.configuration.ClientConnectorConfiguration;
-import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.HostAndPortRange;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.jetbrains.annotations.NotNull;
 
 /**
- * Adds failover to {@link ClientChannel}.
+ * Communication channel with failover and affinity awareness.
  */
 final class ReliableChannel implements AutoCloseable {
     /** Client channel holders for each configured address. */
@@ -61,7 +63,14 @@ final class ReliableChannel implements AutoCloseable {
     /** Node channels. */
     private final Map<UUID, ClientChannelHolder> nodeChannels = new ConcurrentHashMap<>();
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    /** Channels updater executor. */
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(
+        new ThreadFactory() {
+            @Override public Thread newThread(@NotNull Runnable r) {
+                return new Thread(r, "thin-client-channels-updater");
+            }
+        }
+    );
 
     /** Channels reinit was scheduled. */
     private final AtomicBoolean scheduledChannelsReinit = new AtomicBoolean();
@@ -72,7 +81,7 @@ final class ReliableChannel implements AutoCloseable {
     /**
      * Constructor.
      */
-    ReliableChannel(ClientConfiguration clientCfg) throws ClientException {
+    ReliableChannel(ClientConfiguration clientCfg, IgniteBinary binary) throws ClientException {
         if (clientCfg == null)
             throw new NullPointerException("clientCfg");
 
@@ -87,7 +96,7 @@ final class ReliableChannel implements AutoCloseable {
 
         affinityAwarenessEnabled = clientCfg.affinityAwarenessEnabled() && channels.length > 1;
 
-        affinityCtx = null; // TODO
+        affinityCtx = new ClientCacheAffinityContext(binary);
 
         ClientConnectionException lastEx = null;
 
@@ -173,41 +182,62 @@ final class ReliableChannel implements AutoCloseable {
         Consumer<PayloadOutputChannel> payloadWriter,
         Function<PayloadInputChannel, T> payloadReader
     ) throws ClientException {
-        if (!affinityAwarenessEnabled || nodeChannels.isEmpty())
-            return service(op, payloadWriter, payloadReader);
+        if (affinityAwarenessEnabled && !nodeChannels.isEmpty() && affinityInfoIsUpToDate(cacheId)) {
+            UUID affinityNodeId = affinityCtx.affinityNode(cacheId, key);
 
-/*
-        affinityCtx.updateAffinityIfNeeded(cacheId);
+            if (affinityNodeId != null) {
+                ClientChannelHolder hld = nodeChannels.get(affinityNodeId);
 
-        if (affinityCtx.updateNeeded)
-            service(
-                ClientOperation.CACHE_PARTITIONS,
-                ch -> ClientCacheAffinityMapping.writeRequest(ch, cacheId),
-                ClientCacheAffinityMapping::readResponse
-            );
-*/
-        // TODO
-        ClientConnectionException failure = null;
+                if (hld != null) {
+                    ClientChannel ch = null;
 
-        for (int i = 0; i < channels.length; i++) {
-            ClientChannel ch = null;
+                    try {
+                        ch = hld.getOrCreateChannel();
 
-            try {
-                ch = channel();
-
-                return ch.service(op, payloadWriter, payloadReader);
-            }
-            catch (ClientConnectionException e) {
-                if (failure == null)
-                    failure = e;
-                else
-                    failure.addSuppressed(e);
-
-                onChannelFailure(ch);
+                        return ch.service(op, payloadWriter, payloadReader);
+                    }
+                    catch (ClientConnectionException ignore) {
+                        onChannelFailure(hld, ch);
+                    }
+                }
             }
         }
 
-        throw failure;
+        // Can't determine affinity node or request to affinity node failed - proceed with standart failover service.
+        return service(op, payloadWriter, payloadReader);
+    }
+
+    /**
+     * Checks if affinity information for the cache is up to date and tries to update it if not.
+     *
+     * @return {@code True} if affinity information is up to date, {@code false} if there is not affinity information
+     * available for this cache or information is obsolete and failed to update it.
+     */
+    private boolean affinityInfoIsUpToDate(int cacheId) {
+        if (affinityCtx.affinityUpdateRequired(cacheId)) {
+            for (UUID nodeId : affinityCtx.lastTopologyNodes()) {
+                ClientChannelHolder hld = nodeChannels.get(nodeId);
+
+                if (hld != null) {
+                    ClientChannel ch = null;
+
+                    try {
+                        ch = hld.getOrCreateChannel();
+
+                        return ch.service(ClientOperation.CACHE_PARTITIONS, affinityCtx::writePartitionsUpdateRequest,
+                            affinityCtx::readPartitionsUpdateResponse);
+                    }
+                    catch (ClientConnectionException ignore) {
+                        onChannelFailure(hld, ch);
+                    }
+                }
+            }
+
+            // No suitable node found to update affinity or failed to execute service on all nodes.
+            return false;
+        }
+        else
+            return true;
     }
 
     /**
@@ -266,19 +296,19 @@ final class ReliableChannel implements AutoCloseable {
      */
     private synchronized void onChannelFailure(ClientChannel ch) {
         // There is nothing wrong if curChIdx was concurrently changed, since channel was closed if current index was
-        // changed by another thread and no other channel will be closed because onChannelFailure checks channel binded
-        // to the index before closing it.
-        onChannelFailure(curChIdx, ch);
+        // changed by another thread and no other wrong channel will be closed by current thread because
+        // onChannelFailure checks channel binded to the holder before closing it.
+        onChannelFailure(channels[curChIdx], ch);
     }
 
     /**
-     * On failure of the channel with the specified index.
+     * On channel of the specified holder failure.
      */
-    private synchronized void onChannelFailure(int chIdx, ClientChannel ch) {
-        if (ch == channels[chIdx].ch && ch != null) {
-            channels[chIdx].closeChannel();
+    private synchronized void onChannelFailure(ClientChannelHolder hld, ClientChannel ch) {
+        if (ch == hld.ch && ch != null) {
+            hld.closeChannel();
 
-            if (chIdx == curChIdx)
+            if (hld == channels[curChIdx])
                 rollCurrentChannel();
         }
     }
@@ -307,14 +337,13 @@ final class ReliableChannel implements AutoCloseable {
     }
 
     /**
-     * Topology version change detected on channel.
+     * Topology version change detected on the channel.
      *
      * @param ch Channel.
      */
     private void onTopologyChanged(ClientChannel ch) {
-        AffinityTopologyVersion topVer = ch.serverTopologyVersion();
-
-        if (affinityAwarenessEnabled && topVer.compareTo(topVer) > 0) // TODO Check max topology version.
+        if (affinityAwarenessEnabled && affinityCtx.updateLastTopologyVersion(ch.serverTopologyVersion(),
+            ch.serverNodeId()))
             initAllChannelsAsync();
     }
 
