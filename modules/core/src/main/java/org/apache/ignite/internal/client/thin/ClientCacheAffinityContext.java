@@ -19,11 +19,13 @@ package org.apache.ignite.internal.client.thin;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.ignite.IgniteBinary;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.util.GridConcurrentHashSet;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -38,6 +40,9 @@ public class ClientCacheAffinityContext {
 
     /** Current affinity mapping. */
     private final AtomicReference<ClientCacheAffinityMapping> affinityMapping = new AtomicReference<>();
+
+    /** Cache IDs, which should be included to the next affinity mapping request. */
+    private final Set<Integer> pendingCacheIds = new GridConcurrentHashSet<>();
 
     /**
      * @param binary Binary data processor.
@@ -77,31 +82,42 @@ public class ClientCacheAffinityContext {
      * @param cacheId Cache id.
      */
     public boolean affinityUpdateRequired(int cacheId) {
-        // TODO store cacheId
-
         TopologyNodes top = lastTop.get();
 
-        if (top == null) // Don't know current topology.
+        if (top == null) {// Don't know current topology.
+            pendingCacheIds.add(cacheId);
+
             return false;
+        }
 
         ClientCacheAffinityMapping mapping = affinityMapping.get();
 
-        if (mapping == null)
+        if (mapping == null) {
+            pendingCacheIds.add(cacheId);
+
             return true;
+        }
 
-        if (top.topVer.compareTo(mapping.topologyVersion()) > 0)
+        if (top.topVer.compareTo(mapping.topologyVersion()) > 0) {
+            pendingCacheIds.add(cacheId);
+
             return true;
+        }
 
-        // TODO if cache not in mapping return true else return false.
+        if (mapping.cacheIds().contains(cacheId))
+            return true;
+        else {
+            pendingCacheIds.add(cacheId);
 
-        return true;
+            return false;
+        }
     }
 
     /**
      * @param ch Payload output channel.
      */
     public void writePartitionsUpdateRequest(PayloadOutputChannel ch) {
-        // TODO
+        ClientCacheAffinityMapping.writeRequest(ch, pendingCacheIds);
     }
 
     /**
@@ -114,17 +130,22 @@ public class ClientCacheAffinityContext {
             ClientCacheAffinityMapping oldMapping = affinityMapping.get();
 
             if (oldMapping == null || newMapping.topologyVersion().compareTo(oldMapping.topologyVersion()) > 0) {
-                if (affinityMapping.compareAndSet(oldMapping, newMapping))
-                    // TODO update pending caches (remove)
+                if (affinityMapping.compareAndSet(oldMapping, newMapping)) {
+                    pendingCacheIds.addAll(oldMapping.cacheIds());
+                    pendingCacheIds.removeAll(newMapping.cacheIds());
+
                     return true;
-                else
+                } else
                     continue;
             }
 
             if (newMapping.topologyVersion().equals(oldMapping.topologyVersion())) {
-                if (affinityMapping.compareAndSet(oldMapping, ClientCacheAffinityMapping.merge(oldMapping, newMapping)))
-                    // TODO update pending caches (remove)
+                ClientCacheAffinityMapping mergedMapping = ClientCacheAffinityMapping.merge(oldMapping, newMapping);
+                if (affinityMapping.compareAndSet(oldMapping, mergedMapping)) {
+                    pendingCacheIds.removeAll(newMapping.cacheIds());
+
                     return true;
+                }
                 else
                     continue;
             }
@@ -182,8 +203,7 @@ public class ClientCacheAffinityContext {
         if (top.topVer.compareTo(mapping.topologyVersion()) > 0)
             return null;
 
-        // TODO
-        return null;
+        return mapping.affinityNode(binary, cacheId, key);
     }
 
     /**

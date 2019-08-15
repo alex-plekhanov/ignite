@@ -19,6 +19,8 @@ package org.apache.ignite.internal.client.thin;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -33,7 +35,7 @@ import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 
 /**
- *
+ * Affinity mapping (partition to nodes) for each cache.
  */
 public class ClientCacheAffinityMapping {
     /** Topology version. */
@@ -42,8 +44,8 @@ public class ClientCacheAffinityMapping {
     /** Affinity information for each cache. */
     private final Map<Integer, CacheAffinityInfo> cacheAffinity = new HashMap<>();
 
-    /** Binary data processor. */
-    private final IgniteBinary binary = null; // TODO
+    /** Unmodifiable collection of cache IDs. To preserve instance immutability. */
+    private final Collection<Integer> cacheIds = Collections.unmodifiableCollection(cacheAffinity.keySet());
 
     /**
      * @param topVer Topology version.
@@ -60,13 +62,21 @@ public class ClientCacheAffinityMapping {
     }
 
     /**
+     * Gets cache IDs.
+     */
+    public Collection<Integer> cacheIds() {
+        return cacheIds;
+    }
+
+    /**
      * Calculates affinity node for given cache and key.
      *
+     * @param binary Binary data processor (needed to extract affinity field from the key).
      * @param cacheId Cache ID.
      * @param key Key.
      * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and key.
      */
-    public UUID affinityNode(int cacheId, Object key) {
+    public UUID affinityNode(IgniteBinary binary, int cacheId, Object key) {
         CacheAffinityInfo affinityInfo = cacheAffinity.get(cacheId);
 
         if (affinityInfo == null || affinityInfo.keyCfg == null || affinityInfo.partMapping == null)
@@ -103,7 +113,7 @@ public class ClientCacheAffinityMapping {
         ClientCacheAffinityMapping res = new ClientCacheAffinityMapping(mappings[0].topVer);
 
         for (ClientCacheAffinityMapping mapping : mappings) {
-            assert res.topVer.equals(mapping.topVer) : "Mappings must have identical topology version [res.topVer=" +
+            assert res.topVer.equals(mapping.topVer) : "Mappings must have identical topology versions [res.topVer=" +
                 res.topVer + ", mapping.topVer=" + mapping.topVer + ']';
 
             for (Map.Entry<Integer, CacheAffinityInfo> entry : mapping.cacheAffinity.entrySet())
@@ -119,10 +129,10 @@ public class ClientCacheAffinityMapping {
      * @param ch Output channel.
      * @param cacheIds Cache IDs.
      */
-    public static void writeRequest(PayloadOutputChannel ch, int ... cacheIds) {
+    public static void writeRequest(PayloadOutputChannel ch, Collection<Integer> cacheIds) {
         BinaryOutputStream out = ch.out();
 
-        out.writeInt(cacheIds.length);
+        out.writeInt(cacheIds.size());
 
         for (int cacheId : cacheIds)
             out.writeInt(cacheId);
