@@ -81,7 +81,7 @@ public class ClientCacheAffinityContext {
 
         TopologyNodes top = lastTop.get();
 
-        if (top == null) // Don't know current topology version.
+        if (top == null) // Don't know current topology.
             return false;
 
         ClientCacheAffinityMapping mapping = affinityMapping.get();
@@ -115,18 +115,22 @@ public class ClientCacheAffinityContext {
 
             if (oldMapping == null || newMapping.topologyVersion().compareTo(oldMapping.topologyVersion()) > 0) {
                 if (affinityMapping.compareAndSet(oldMapping, newMapping))
-                    // TODO update pending caches
+                    // TODO update pending caches (remove)
                     return true;
                 else
                     continue;
             }
 
-            if (newMapping.topologyVersion().equals(oldMapping.topologyVersion()))
-                // TODO merge
-                return true;
+            if (newMapping.topologyVersion().equals(oldMapping.topologyVersion())) {
+                if (affinityMapping.compareAndSet(oldMapping, ClientCacheAffinityMapping.merge(oldMapping, newMapping)))
+                    // TODO update pending caches (remove)
+                    return true;
+                else
+                    continue;
+            }
 
             // Obsolete mapping.
-            return false;
+            return true;
         }
     }
 
@@ -165,6 +169,19 @@ public class ClientCacheAffinityContext {
      * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and key.
      */
     public UUID affinityNode(int cacheId, Object key) {
+        TopologyNodes top = lastTop.get();
+
+        if (top == null)
+            return null;
+
+        ClientCacheAffinityMapping mapping = affinityMapping.get();
+
+        if (mapping == null)
+            return null;
+
+        if (top.topVer.compareTo(mapping.topologyVersion()) > 0)
+            return null;
+
         // TODO
         return null;
     }

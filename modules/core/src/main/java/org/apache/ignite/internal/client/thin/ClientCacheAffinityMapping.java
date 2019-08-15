@@ -29,6 +29,7 @@ import org.apache.ignite.internal.binary.BinaryObjectExImpl;
 import org.apache.ignite.internal.binary.BinaryReaderExImpl;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 
 /**
@@ -91,6 +92,25 @@ public class ClientCacheAffinityMapping {
         }
 
         return affinityInfo.nodeForKey(key);
+    }
+
+    /**
+     * Merge specified mappings into one instance.
+     */
+    public static ClientCacheAffinityMapping merge(ClientCacheAffinityMapping ... mappings) {
+        assert !F.isEmpty(mappings);
+
+        ClientCacheAffinityMapping res = new ClientCacheAffinityMapping(mappings[0].topVer);
+
+        for (ClientCacheAffinityMapping mapping : mappings) {
+            assert res.topVer.equals(mapping.topVer) : "Mappings must have identical topology version [res.topVer=" +
+                res.topVer + ", mapping.topVer=" + mapping.topVer + ']';
+
+            for (Map.Entry<Integer, CacheAffinityInfo> entry : mapping.cacheAffinity.entrySet())
+                res.cacheAffinity.put(entry.getKey(), entry.getValue());
+        }
+
+        return res;
     }
 
     /**
