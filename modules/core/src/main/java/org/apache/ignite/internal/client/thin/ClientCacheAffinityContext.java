@@ -131,7 +131,9 @@ public class ClientCacheAffinityContext {
 
             if (oldMapping == null || newMapping.topologyVersion().compareTo(oldMapping.topologyVersion()) > 0) {
                 if (affinityMapping.compareAndSet(oldMapping, newMapping)) {
-                    pendingCacheIds.addAll(oldMapping.cacheIds());
+                    if (oldMapping != null)
+                        pendingCacheIds.addAll(oldMapping.cacheIds());
+
                     pendingCacheIds.removeAll(newMapping.cacheIds());
 
                     return true;

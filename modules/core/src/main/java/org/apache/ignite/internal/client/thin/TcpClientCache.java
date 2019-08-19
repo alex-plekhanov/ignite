@@ -483,7 +483,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
 
 
     /**
-     * Execute cache operation with single key.
+     * Execute cache operation with a single key.
      */
     private <T> T cacheSingleKeyOperation(
         K key,
