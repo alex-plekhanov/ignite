@@ -220,7 +220,16 @@ final class ReliableChannel implements AutoCloseable {
         if (affinityCtx.affinityUpdateRequired(cacheId)) {
             if (affinityUpdateInProgress.compareAndSet(false, true)) {
                 try {
-                    for (UUID nodeId : affinityCtx.lastTopologyNodes()) {
+                    ClientCacheAffinityContext.TopologyNodes lastTop = affinityCtx.lastTopology();
+
+                    if (lastTop == null)
+                        return false;
+
+                    for (UUID nodeId : lastTop.nodes()) {
+                        // Abort iterations when topology changed.
+                        if (lastTop != affinityCtx.lastTopology())
+                            return false;
+
                         ClientChannelHolder hld = nodeChannels.get(nodeId);
 
                         if (hld != null) {
@@ -237,6 +246,11 @@ final class ReliableChannel implements AutoCloseable {
                             }
                         }
                     }
+
+                    // There is no one alive node found for last topology version, we should reset affinity context
+                    // to let affinity get updated in case of reconnection to the new cluster (with lower topology
+                    // version).
+                    affinityCtx.reset(lastTop);
                 }
                 finally {
                     affinityUpdateInProgress.set(false);

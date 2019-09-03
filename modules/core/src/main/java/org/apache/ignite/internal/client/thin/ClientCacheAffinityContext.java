@@ -18,7 +18,6 @@ package org.apache.ignite.internal.client.thin;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -26,7 +25,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.ignite.IgniteBinary;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.GridConcurrentHashSet;
-import org.jetbrains.annotations.NotNull;
 
 /**
  * Client cache affinity awareness context.
@@ -124,6 +122,9 @@ public class ClientCacheAffinityContext {
      * @param ch Payload input channel.
      */
     public synchronized boolean readPartitionsUpdateResponse(PayloadInputChannel ch) {
+        if (lastTop.get() == null)
+            return false;
+
         ClientCacheAffinityMapping newMapping = ClientCacheAffinityMapping.readResponse(ch);
 
         ClientCacheAffinityMapping oldMapping = affinityMapping;
@@ -152,30 +153,20 @@ public class ClientCacheAffinityContext {
     }
 
     /**
-     * Gets nodes of last topology.
+     * Gets last topology information.
      */
-    public Iterable<UUID> lastTopologyNodes() {
-        TopologyNodes top = lastTop.get();
+    public TopologyNodes lastTopology() {
+        return lastTop.get();
+    }
 
-        if (top == null)
-            return Collections.emptyList();
-
-        // Create Iterable which will abort iterations when topology changed.
-        return new Iterable<UUID>() {
-            @NotNull @Override public Iterator<UUID> iterator() {
-                return new Iterator<UUID>() {
-                    Iterator<UUID> delegate = top.nodes.iterator();
-
-                    @Override public boolean hasNext() {
-                        return top == lastTop.get() && delegate.hasNext();
-                    }
-
-                    @Override public UUID next() {
-                        return delegate.next();
-                    }
-                };
-            }
-        };
+    /**
+     * Resets affinity context.
+     *
+     * @param lastTop Last topology.
+     */
+    public synchronized void reset(TopologyNodes lastTop) {
+        if (this.lastTop.compareAndSet(lastTop, null))
+            affinityMapping = null;
     }
 
     /**
@@ -205,7 +196,7 @@ public class ClientCacheAffinityContext {
     /**
      * Holder for list of nodes for topology version.
      */
-    private static class TopologyNodes {
+    static class TopologyNodes {
         /** Topology version. */
         private final AffinityTopologyVersion topVer;
 
@@ -220,6 +211,13 @@ public class ClientCacheAffinityContext {
             this.topVer = topVer;
 
             nodes.add(nodeId);
+        }
+
+        /**
+         * Gets nodes of this topology.
+         */
+        public Iterable<UUID> nodes() {
+            return Collections.unmodifiableCollection(nodes);
         }
     }
 }
