@@ -39,7 +39,7 @@ public class ClientCacheAffinityContext {
     private final AtomicReference<TopologyNodes> lastTop = new AtomicReference<>();
 
     /** Current affinity mapping. */
-    private final AtomicReference<ClientCacheAffinityMapping> affinityMapping = new AtomicReference<>();
+    private volatile ClientCacheAffinityMapping affinityMapping;
 
     /** Cache IDs, which should be included to the next affinity mapping request. */
     private final Set<Integer> pendingCacheIds = new GridConcurrentHashSet<>();
@@ -90,7 +90,7 @@ public class ClientCacheAffinityContext {
             return false;
         }
 
-        ClientCacheAffinityMapping mapping = affinityMapping.get();
+        ClientCacheAffinityMapping mapping = affinityMapping;
 
         if (mapping == null) {
             pendingCacheIds.add(cacheId);
@@ -123,38 +123,32 @@ public class ClientCacheAffinityContext {
     /**
      * @param ch Payload input channel.
      */
-    public boolean readPartitionsUpdateResponse(PayloadInputChannel ch) {
+    public synchronized boolean readPartitionsUpdateResponse(PayloadInputChannel ch) {
         ClientCacheAffinityMapping newMapping = ClientCacheAffinityMapping.readResponse(ch);
 
-        while (true) {
-            ClientCacheAffinityMapping oldMapping = affinityMapping.get();
+        ClientCacheAffinityMapping oldMapping = affinityMapping;
 
-            if (oldMapping == null || newMapping.topologyVersion().compareTo(oldMapping.topologyVersion()) > 0) {
-                if (affinityMapping.compareAndSet(oldMapping, newMapping)) {
-                    if (oldMapping != null)
-                        pendingCacheIds.addAll(oldMapping.cacheIds());
+        if (oldMapping == null || newMapping.topologyVersion().compareTo(oldMapping.topologyVersion()) > 0) {
+            affinityMapping = newMapping;
 
-                    pendingCacheIds.removeAll(newMapping.cacheIds());
+            if (oldMapping != null)
+                pendingCacheIds.addAll(oldMapping.cacheIds());
 
-                    return true;
-                } else
-                    continue;
-            }
+            pendingCacheIds.removeAll(newMapping.cacheIds());
 
-            if (newMapping.topologyVersion().equals(oldMapping.topologyVersion())) {
-                ClientCacheAffinityMapping mergedMapping = ClientCacheAffinityMapping.merge(oldMapping, newMapping);
-                if (affinityMapping.compareAndSet(oldMapping, mergedMapping)) {
-                    pendingCacheIds.removeAll(newMapping.cacheIds());
-
-                    return true;
-                }
-                else
-                    continue;
-            }
-
-            // Obsolete mapping.
             return true;
         }
+
+        if (newMapping.topologyVersion().equals(oldMapping.topologyVersion())) {
+            affinityMapping = ClientCacheAffinityMapping.merge(oldMapping, newMapping);
+
+            pendingCacheIds.removeAll(newMapping.cacheIds());
+
+            return true;
+        }
+
+        // Obsolete mapping.
+        return true;
     }
 
     /**
@@ -197,7 +191,7 @@ public class ClientCacheAffinityContext {
         if (top == null)
             return null;
 
-        ClientCacheAffinityMapping mapping = affinityMapping.get();
+        ClientCacheAffinityMapping mapping = affinityMapping;
 
         if (mapping == null)
             return null;

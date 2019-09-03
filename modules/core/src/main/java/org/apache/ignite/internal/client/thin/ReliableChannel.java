@@ -63,17 +63,20 @@ final class ReliableChannel implements AutoCloseable {
     /** Node channels. */
     private final Map<UUID, ClientChannelHolder> nodeChannels = new ConcurrentHashMap<>();
 
-    /** Channels updater executor. */
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(
+    /** Async tasks thread pool. */
+    private final ExecutorService asyncRunner = Executors.newSingleThreadExecutor(
         new ThreadFactory() {
             @Override public Thread newThread(@NotNull Runnable r) {
-                return new Thread(r, "thin-client-channels-updater");
+                return new Thread(r, "thin-client-channel-async-runner");
             }
         }
     );
 
     /** Channels reinit was scheduled. */
     private final AtomicBoolean scheduledChannelsReinit = new AtomicBoolean();
+
+    /** Affinity map update is in progress. */
+    private final AtomicBoolean affinityUpdateInProgress = new AtomicBoolean();
 
     /** Channel is closed. */
     private boolean closed;
@@ -215,25 +218,33 @@ final class ReliableChannel implements AutoCloseable {
      */
     private boolean affinityInfoIsUpToDate(int cacheId) {
         if (affinityCtx.affinityUpdateRequired(cacheId)) {
-            for (UUID nodeId : affinityCtx.lastTopologyNodes()) {
-                ClientChannelHolder hld = nodeChannels.get(nodeId);
+            if (affinityUpdateInProgress.compareAndSet(false, true)) {
+                try {
+                    for (UUID nodeId : affinityCtx.lastTopologyNodes()) {
+                        ClientChannelHolder hld = nodeChannels.get(nodeId);
 
-                if (hld != null) {
-                    ClientChannel ch = null;
+                        if (hld != null) {
+                            ClientChannel ch = null;
 
-                    try {
-                        ch = hld.getOrCreateChannel();
+                            try {
+                                ch = hld.getOrCreateChannel();
 
-                        return ch.service(ClientOperation.CACHE_PARTITIONS, affinityCtx::writePartitionsUpdateRequest,
-                            affinityCtx::readPartitionsUpdateResponse);
+                                return ch.service(ClientOperation.CACHE_PARTITIONS,
+                                    affinityCtx::writePartitionsUpdateRequest, affinityCtx::readPartitionsUpdateResponse);
+                            }
+                            catch (ClientConnectionException ignore) {
+                                onChannelFailure(hld, ch);
+                            }
+                        }
                     }
-                    catch (ClientConnectionException ignore) {
-                        onChannelFailure(hld, ch);
-                    }
+                }
+                finally {
+                    affinityUpdateInProgress.set(false);
                 }
             }
 
-            // No suitable node found to update affinity or failed to execute service on all nodes.
+            // No suitable nodes found to update affinity, failed to execute service on all nodes or update is already
+            // in progress by another thread.
             return false;
         }
         else
@@ -288,15 +299,16 @@ final class ReliableChannel implements AutoCloseable {
 
     /** */
     private synchronized void rollCurrentChannel() {
-        curChIdx = (curChIdx + 1) % channels.length;
+        if (++curChIdx >= channels.length)
+            curChIdx = 0;
     }
 
     /**
      * On current channel failure.
      */
     private synchronized void onChannelFailure(ClientChannel ch) {
-        // There is nothing wrong if curChIdx was concurrently changed, since channel was closed if current index was
-        // changed by another thread and no other wrong channel will be closed by current thread because
+        // There is nothing wrong if curChIdx was concurrently changed, since channel was closed by another thread
+        // when current index was changed and no other wrong channel will be closed by current thread because
         // onChannelFailure checks channel binded to the holder before closing it.
         onChannelFailure(channels[curChIdx], ch);
     }
@@ -319,7 +331,7 @@ final class ReliableChannel implements AutoCloseable {
     private void initAllChannelsAsync() {
         // Skip if there is already channels reinit scheduled.
         if (scheduledChannelsReinit.compareAndSet(false, true)) {
-            executor.submit(
+            asyncRunner.submit(
                 () -> {
                     scheduledChannelsReinit.set(false);
 
