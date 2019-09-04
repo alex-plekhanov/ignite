@@ -428,7 +428,7 @@ public final class ClientConfiguration implements Serializable {
     /**
      * @return Whether affinity awareness should be enabled.
      */
-    public boolean affinityAwarenessEnabled() {
+    public boolean isAffinityAwarenessEnabled() {
         return affinityAwarenessEnabled;
     }
 
@@ -437,7 +437,7 @@ public final class ClientConfiguration implements Serializable {
      *
      * @return {@code this} for chaining.
      */
-    public ClientConfiguration affinityAwarenessEnabled(boolean affinityAwarenessEnabled) {
+    public ClientConfiguration setAffinityAwarenessEnabled(boolean affinityAwarenessEnabled) {
         this.affinityAwarenessEnabled = affinityAwarenessEnabled;
 
         return this;

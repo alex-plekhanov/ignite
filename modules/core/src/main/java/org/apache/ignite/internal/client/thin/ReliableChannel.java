@@ -48,6 +48,9 @@ import org.jetbrains.annotations.NotNull;
  * Communication channel with failover and affinity awareness.
  */
 final class ReliableChannel implements AutoCloseable {
+    /** Channel factory. */
+    private final Function<ClientChannelConfiguration, ClientChannel> chFactory;
+
     /** Client channel holders for each configured address. */
     private final ClientChannelHolder[] channels;
 
@@ -84,9 +87,18 @@ final class ReliableChannel implements AutoCloseable {
     /**
      * Constructor.
      */
-    ReliableChannel(ClientConfiguration clientCfg, IgniteBinary binary) throws ClientException {
+    ReliableChannel(
+        Function<ClientChannelConfiguration, ClientChannel> chFactory,
+        ClientConfiguration clientCfg,
+        IgniteBinary binary
+    ) throws ClientException {
+        if (chFactory == null)
+            throw new NullPointerException("chFactory");
+
         if (clientCfg == null)
             throw new NullPointerException("clientCfg");
+
+        this.chFactory = chFactory;
 
         List<InetSocketAddress> addrs = parseAddresses(clientCfg.getAddresses());
 
@@ -97,7 +109,7 @@ final class ReliableChannel implements AutoCloseable {
 
         curChIdx = new Random().nextInt(channels.length); // We already verified there is at least one address.
 
-        affinityAwarenessEnabled = clientCfg.affinityAwarenessEnabled() && channels.length > 1;
+        affinityAwarenessEnabled = clientCfg.isAffinityAwarenessEnabled() && channels.length > 1;
 
         affinityCtx = new ClientCacheAffinityContext(binary);
 
@@ -395,7 +407,7 @@ final class ReliableChannel implements AutoCloseable {
          */
         private synchronized ClientChannel getOrCreateChannel() {
             if (ch == null) {
-                ch = new TcpClientChannel(chCfg);
+                ch = chFactory.apply(chCfg);
 
                 if (ch.serverNodeId() != null) {
                     ch.addTopologyChangeListener(ReliableChannel.this::onTopologyChanged);

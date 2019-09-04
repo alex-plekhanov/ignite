@@ -103,11 +103,11 @@ public class ClientCacheAffinityContext {
         }
 
         if (mapping.cacheIds().contains(cacheId))
-            return true;
+            return false;
         else {
             pendingCacheIds.add(cacheId);
 
-            return false;
+            return true;
         }
     }
 
@@ -162,11 +162,14 @@ public class ClientCacheAffinityContext {
     /**
      * Resets affinity context.
      *
-     * @param lastTop Last topology.
+     * @param top Topology which triggers reset.
      */
-    public synchronized void reset(TopologyNodes lastTop) {
-        if (this.lastTop.compareAndSet(lastTop, null))
+    public synchronized void reset(TopologyNodes top) {
+        if (lastTop.compareAndSet(top, null)) {
             affinityMapping = null;
+
+            pendingCacheIds.clear();
+        }
     }
 
     /**
