@@ -17,15 +17,24 @@
 
 package org.apache.ignite.internal.client.thin;
 
+import java.util.Collection;
 import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.apache.ignite.IgniteCache;
+import org.apache.ignite.cache.CacheMode;
+import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.client.ClientAuthorizationException;
 import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.ClientConnectionException;
 import org.apache.ignite.client.IgniteClient;
+import org.apache.ignite.cluster.ClusterNode;
+import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.ClientConfiguration;
+import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.internal.processors.cache.IgniteInternalCache;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.junit.Test;
@@ -45,12 +54,36 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
     /** Channels. */
     private final TestTcpClintChannel channels[] = new TestTcpClintChannel[CLUSTER_SIZE];
 
+    /** {@inheritDoc} */
+    @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
+        IgniteConfiguration cfg = super.getConfiguration(igniteInstanceName);
+
+        cfg.setConsistentId(igniteInstanceName);
+
+        CacheConfiguration ccfg0 = new CacheConfiguration()
+            .setName("replicated_cache")
+            .setCacheMode(CacheMode.REPLICATED);
+
+        CacheConfiguration ccfg1 = new CacheConfiguration()
+            .setName("partitioned_custom_affinity_cache")
+            .setCacheMode(CacheMode.PARTITIONED)
+            .setAffinity(new CustomAffinityFunction());
+
+        CacheConfiguration ccfg2 = new CacheConfiguration()
+            .setName("partitioned_cache")
+            .setCacheMode(CacheMode.PARTITIONED);
+
+        return cfg.setCacheConfiguration(ccfg0, ccfg1, ccfg2);
+    }
+
     /**
      *
      */
     @Test
     public void testAffinityAwareness() throws Exception {
         startGrids(CLUSTER_SIZE - 1);
+
+        awaitPartitionMapExchange();
 
         String addrs[] = new String[CLUSTER_SIZE-1];
 
@@ -73,21 +106,80 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
         TestTcpClintChannel node2ch = channels[2];
 
         // Create cache and determine default channel.
-        ClientCache<Integer, Integer> cache = client.getOrCreateCache("cache");
+        ClientCache<Object, Object> clientCacheRepl = client.getOrCreateCache("replicated_cache");
 
         TestTcpClintChannel dfltCh = node1ch.nextOp() == ClientOperation.CACHE_GET_OR_CREATE_WITH_NAME ? node1ch :
             node2ch.nextOp() == ClientOperation.CACHE_GET_OR_CREATE_WITH_NAME ? node2ch : null;
 
         assertNotNull("Can't determine default channel", dfltCh);
 
-        cache.put(1, 1);
-        cache.put(2, 2);
-        cache.put(3, 3);
-        cache.put(4, 3);
-        cache.put(5, 3);
-        cache.put(6, 3);
-        cache.put(7, 3);
-        cache.put(8, 3);
+        // After first response we should send partitions request on default channel together with next request.
+        clientCacheRepl.put(0, 0);
+
+        assertOpOnChannel(dfltCh, ClientOperation.CACHE_PARTITIONS);
+        assertOpOnChannel(dfltCh, ClientOperation.CACHE_PUT);
+
+        for (int i = 1; i < 100; i++) {
+            clientCacheRepl.put(i, i);
+
+            assertOpOnChannel(dfltCh, ClientOperation.CACHE_PUT);
+
+            clientCacheRepl.get(i);
+
+            assertOpOnChannel(dfltCh, ClientOperation.CACHE_GET);
+        }
+
+        // Check partitioned cache with custom affinity.
+        ClientCache<Object, Object> clientCachePartCustom = client.cache("partitioned_custom_affinity_cache");
+
+        clientCachePartCustom.put(0, 0);
+
+        //assertOpOnChannel(dfltCh, ClientOperation.CACHE_PARTITIONS);
+        assertOpOnChannel(dfltCh, ClientOperation.CACHE_PUT);
+
+        for (int i = 1; i < 100; i++) {
+            clientCachePartCustom.put(i, i);
+
+            assertOpOnChannel(dfltCh, ClientOperation.CACHE_PUT);
+
+            clientCachePartCustom.get(i);
+
+            assertOpOnChannel(dfltCh, ClientOperation.CACHE_GET);
+        }
+    }
+
+    /**
+     * Checks that operation goes through specified channel.
+     */
+    private void assertOpOnChannel(TestTcpClintChannel ch, ClientOperation expectedOp) {
+        for (int i = 0; i < channels.length; i++) {
+            if (channels[i] != null) {
+                ClientOperation actualOp = channels[i].nextOp();
+
+                if (channels[i] == ch)
+                    assertEquals("Unexpected operation on channel [ch=" + ch + ']', expectedOp, actualOp);
+                else
+                    assertNull("Unexpected operation on channel [ch=" + channels[i] + ", expCh=" + ch + ']', actualOp);
+            }
+        }
+    }
+
+    /**
+     * Calculates affinity channel for cache and key.
+     */
+    private TestTcpClintChannel affinityChannel(Object key, IgniteCache cache) {
+        IgniteInternalCache<Object, Object> cache0 = (IgniteInternalCache<Object, Object>)cache;
+
+        Collection<ClusterNode> nodes = cache0.affinity().mapKeyToPrimaryAndBackups(key);
+
+        UUID nodeId = nodes.iterator().next().id();
+
+        for (int i = 0; i < channels.length; i++) {
+            if (channels[i] != null && nodeId.equals(channels[i].serverNodeId()))
+                return channels[i];
+        }
+
+        return null;
     }
 
     /**
@@ -129,18 +221,23 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
             return opsQueue.poll();
         }
 
-        /**
-         * @param op Op.
-         */
-        private void assertNextOp(ClientOperation op) {
-            assertEquals("Wrong operation on channel " + cfg.getAddress(), op, nextOp());
-        }
-
         /** {@inheritDoc} */
         @Override public void close() throws Exception {
             super.close();
 
             closed = true;
         }
+
+        /** {@inheritDoc} */
+        @Override public String toString() {
+            return cfg.getAddress().toString();
+        }
+    }
+
+    /**
+     *
+     */
+    private static class CustomAffinityFunction extends RendezvousAffinityFunction {
+        // No-op.
     }
 }
