@@ -132,11 +132,9 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
         // Check partitioned cache with custom affinity.
         ClientCache<Object, Object> clientCachePartCustom = client.cache("partitioned_custom_affinity_cache");
 
-        clientCachePartCustom.put(0, 0);
-
-        //assertOpOnChannel(dfltCh, ClientOperation.CACHE_PARTITIONS);
-        assertOpOnChannel(dfltCh, ClientOperation.CACHE_PUT);
-
+        // Server send response for all caches with the same affinity even if we don't request it, so we already know
+        // partitions information for partitioned cache with custom affinity function and doesn't send new partitions
+        // request here.
         for (int i = 1; i < 100; i++) {
             clientCachePartCustom.put(i, i);
 
@@ -145,6 +143,29 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
             clientCachePartCustom.get(i);
 
             assertOpOnChannel(dfltCh, ClientOperation.CACHE_GET);
+        }
+
+        // Check partitioned cache.
+        ClientCache<Object, Object> clientCachePart = client.cache("partitioned_cache");
+        IgniteInternalCache<Object, Object> igniteCachePart = grid(0).context().cache().cache("partitioned_cache");
+
+        clientCachePart.put(0, 0);
+
+        TestTcpClintChannel opCh = affinityChannel(0, igniteCachePart, dfltCh);
+
+        assertOpOnChannel(opCh, ClientOperation.CACHE_PARTITIONS);
+        assertOpOnChannel(opCh, ClientOperation.CACHE_PUT);
+
+        for (int i = 1; i < 100; i++) {
+            opCh = affinityChannel(i, igniteCachePart, dfltCh);
+
+            clientCachePart.put(i, i);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_PUT);
+
+            clientCachePart.get(i);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_GET);
         }
     }
 
@@ -167,10 +188,8 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
     /**
      * Calculates affinity channel for cache and key.
      */
-    private TestTcpClintChannel affinityChannel(Object key, IgniteCache cache) {
-        IgniteInternalCache<Object, Object> cache0 = (IgniteInternalCache<Object, Object>)cache;
-
-        Collection<ClusterNode> nodes = cache0.affinity().mapKeyToPrimaryAndBackups(key);
+    private TestTcpClintChannel affinityChannel(Object key, IgniteInternalCache<Object, Object> cache, TestTcpClintChannel dfltCh) {
+        Collection<ClusterNode> nodes = cache.affinity().mapKeyToPrimaryAndBackups(key);
 
         UUID nodeId = nodes.iterator().next().id();
 
@@ -179,7 +198,7 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
                 return channels[i];
         }
 
-        return null;
+        return dfltCh;
     }
 
     /**
