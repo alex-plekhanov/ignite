@@ -17,7 +17,7 @@
 
 package org.apache.ignite.client;
 
-import org.apache.ignite.internal.client.thin.ThinClientAffinityAwarenessTest;
+import org.apache.ignite.internal.client.thin.ThinClientAffinityAwarenessStableTopologyTest;
 import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 
@@ -39,7 +39,7 @@ import org.junit.runners.Suite;
     ConnectionTest.class,
     ConnectToStartingNodeTest.class,
     AsyncChannelTest.class,
-    ThinClientAffinityAwarenessTest.class
+    ThinClientAffinityAwarenessStableTopologyTest.class
 })
 public class ClientTestSuite {
     // No-op.

@@ -36,6 +36,7 @@ import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.processors.cache.IgniteInternalCache;
+import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.junit.Test;
@@ -43,9 +44,9 @@ import org.junit.Test;
 import static org.apache.ignite.configuration.ClientConnectorConfiguration.DFLT_PORT;
 
 /**
- * Test affinity awareness of thin client.
+ * Test affinity awareness of thin client on stable topology.
  */
-public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
+public class ThinClientAffinityAwarenessStableTopologyTest extends GridCommonAbstractTest {
     /** Replicated cache name. */
     private static final String REPL_CACHE_NAME = "replicated_cache";
 
@@ -66,6 +67,9 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
 
     /** Channels. */
     private final TestTcpClientChannel channels[] = new TestTcpClientChannel[CLUSTER_SIZE];
+
+    /** Operations queue. */
+    private final Queue<T2<TestTcpClientChannel, ClientOperation>> opsQueue = new ConcurrentLinkedQueue<>();
 
     /** Default channel. */
     private TestTcpClientChannel dfltCh;
@@ -128,16 +132,23 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
         assertTrue("Failed to wait for node2 channel init",
             GridTestUtils.waitForCondition(() -> channels[2] != null, WAIT_TIMEOUT));
 
-        TestTcpClientChannel node1ch = channels[1];
-        TestTcpClientChannel node2ch = channels[2];
-
         // Request cache creation to determine default channel.
         client.getOrCreateCache(REPL_CACHE_NAME);
 
-        dfltCh = node1ch.nextOp() == ClientOperation.CACHE_GET_OR_CREATE_WITH_NAME ? node1ch :
-            node2ch.nextOp() == ClientOperation.CACHE_GET_OR_CREATE_WITH_NAME ? node2ch : null;
+        T2<TestTcpClientChannel, ClientOperation> nextChOp = opsQueue.poll();
 
-        assertNotNull("Can't determine default channel", dfltCh);
+        assertNotNull(nextChOp);
+
+        assertEquals(nextChOp.get2(), ClientOperation.CACHE_GET_OR_CREATE_WITH_NAME);
+
+        dfltCh = nextChOp.get1();
+    }
+
+    /** {@inheritDoc} */
+    @Override protected void afterTest() throws Exception {
+        super.afterTest();
+
+        opsQueue.clear();
     }
 
     /**
@@ -190,6 +201,40 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
     }
 
     /**
+     * Test request to partition mapped to unknown for client node.
+     */
+    @Test
+    public void testPartitionedCacheUnknownNode() {
+        ClientCache<Object, Object> clientCache = client.cache(PART_CACHE_NAME);
+        IgniteInternalCache<Object, Object> igniteCache = grid(0).context().cache().cache(PART_CACHE_NAME);
+
+        // We don't included grid(0) address to list of addresses known for the client, so client don't have connection
+        // with grid(0)
+        UUID unknownNodeId = grid(0).localNode().id();
+
+        Integer keyForUnknownNode = null;
+
+        for (int i = 0; i < KEY_CNT; i++) {
+            Collection<ClusterNode> nodes = igniteCache.affinity().mapKeyToPrimaryAndBackups(i);
+
+            UUID keyNodeId = nodes.iterator().next().id();
+
+            if (unknownNodeId.equals(keyNodeId)) {
+                keyForUnknownNode = i;
+
+                break;
+            }
+        }
+
+        assertNotNull("Not found key for node " + unknownNodeId, keyForUnknownNode);
+
+        clientCache.put(keyForUnknownNode, 0);
+
+        assertOpOnChannel(dfltCh, ClientOperation.CACHE_PARTITIONS);
+        assertOpOnChannel(dfltCh, ClientOperation.CACHE_PUT);
+    }
+
+    /**
      * @param cacheName Cache name.
      */
     private void testNotApplicableCache(String cacheName) {
@@ -224,7 +269,9 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
 
         TestTcpClientChannel opCh = affinityChannel(keyFactory.apply(0), igniteCache, dfltCh);
 
-        assertOpOnChannel(opCh, ClientOperation.CACHE_PARTITIONS);
+        // Default channel is the first who detects topology change, so next partition request will go through
+        // the default channel.
+        assertOpOnChannel(dfltCh, ClientOperation.CACHE_PARTITIONS);
         assertOpOnChannel(opCh, ClientOperation.CACHE_PUT);
 
         for (int i = 1; i < KEY_CNT; i++) {
@@ -281,17 +328,16 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
     /**
      * Checks that operation goes through specified channel.
      */
-    private void assertOpOnChannel(TestTcpClientChannel ch, ClientOperation expOp) {
-        for (int i = 0; i < channels.length; i++) {
-            if (channels[i] != null) {
-                ClientOperation actualOp = channels[i].nextOp();
+    private void assertOpOnChannel(TestTcpClientChannel expCh, ClientOperation expOp) {
+        T2<TestTcpClientChannel, ClientOperation> nextChOp = opsQueue.poll();
 
-                if (channels[i] == ch)
-                    assertEquals("Unexpected operation on channel [ch=" + ch + ']', expOp, actualOp);
-                else
-                    assertNull("Unexpected operation on channel [ch=" + channels[i] + ", expCh=" + ch + ']', actualOp);
-            }
-        }
+        assertNotNull("Unexpected (null) next operation [expCh=" + expCh + ", expOp=" + expOp + ']', nextChOp);
+
+        assertEquals("Unexpected channel for opertation [expCh=" + expCh + ", expOp=" + expOp +
+                ", nextOpCh=" + nextChOp + ']', expCh, nextChOp.get1());
+
+        assertEquals("Unexpected operation on channel [expCh=" + expCh + ", expOp=" + expOp +
+            ", nextOpCh=" + nextChOp + ']', expOp, nextChOp.get2());
     }
 
     /**
@@ -317,9 +363,6 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
         /** Closed. */
         private volatile boolean closed;
 
-        /** Operations queue. */
-        private final Queue<ClientOperation> opsQueue = new ConcurrentLinkedQueue<>();
-
         /** Channel configuration. */
         private final ClientChannelConfiguration cfg;
 
@@ -339,16 +382,9 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
             Function<PayloadInputChannel, T> payloadReader) throws ClientConnectionException, ClientAuthorizationException {
             // Store all operations except binary type registration in queue to check later.
             if (op != ClientOperation.REGISTER_BINARY_TYPE_NAME &&  op != ClientOperation.PUT_BINARY_TYPE)
-                opsQueue.offer(op);
+                opsQueue.offer(new T2<>(this, op));
 
             return super.service(op, payloadWriter, payloadReader);
-        }
-
-        /**
-         * Gets next operation.
-         */
-        private ClientOperation nextOp() {
-            return opsQueue.poll();
         }
 
         /** {@inheritDoc} */
