@@ -23,8 +23,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import org.apache.ignite.IgniteCache;
+import org.apache.ignite.cache.CacheKeyConfiguration;
 import org.apache.ignite.cache.CacheMode;
+import org.apache.ignite.cache.affinity.AffinityKeyMapped;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.client.ClientAuthorizationException;
 import org.apache.ignite.client.ClientCache;
@@ -45,6 +46,18 @@ import static org.apache.ignite.configuration.ClientConnectorConfiguration.DFLT_
  * Test affinity awareness of thin client.
  */
 public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
+    /** Replicated cache name. */
+    private static final String REPL_CACHE_NAME = "replicated_cache";
+
+    /** Partitioned cache name. */
+    private static final String PART_CACHE_NAME = "partitioned_cache";
+
+    /** Partitioned with custom affinity cache name. */
+    private static final String PART_CUSTOM_AFFINITY_CACHE_NAME = "partitioned_custom_affinity_cache";
+
+    /** Keys count. */
+    private static final int KEY_CNT = 30;
+
     /** Cluster size. */
     private static final int CLUSTER_SIZE = 4;
 
@@ -52,7 +65,13 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
     private static final long WAIT_TIMEOUT = 1_000L;
 
     /** Channels. */
-    private final TestTcpClintChannel channels[] = new TestTcpClintChannel[CLUSTER_SIZE];
+    private final TestTcpClientChannel channels[] = new TestTcpClientChannel[CLUSTER_SIZE];
+
+    /** Default channel. */
+    private TestTcpClientChannel dfltCh;
+
+    /** Client instance. */
+    private IgniteClient client;
 
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
@@ -61,29 +80,36 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
         cfg.setConsistentId(igniteInstanceName);
 
         CacheConfiguration ccfg0 = new CacheConfiguration()
-            .setName("replicated_cache")
+            .setName(REPL_CACHE_NAME)
             .setCacheMode(CacheMode.REPLICATED);
 
         CacheConfiguration ccfg1 = new CacheConfiguration()
-            .setName("partitioned_custom_affinity_cache")
+            .setName(PART_CUSTOM_AFFINITY_CACHE_NAME)
             .setCacheMode(CacheMode.PARTITIONED)
             .setAffinity(new CustomAffinityFunction());
 
         CacheConfiguration ccfg2 = new CacheConfiguration()
-            .setName("partitioned_cache")
-            .setCacheMode(CacheMode.PARTITIONED);
+            .setName(PART_CACHE_NAME)
+            .setCacheMode(CacheMode.PARTITIONED)
+            .setKeyConfiguration(
+                new CacheKeyConfiguration(TestNotAnnotatedAffinityKey.class.getName(), "affinityKey"),
+                new CacheKeyConfiguration(TestAnnotatedAffinityKey.class));
 
         return cfg.setCacheConfiguration(ccfg0, ccfg1, ccfg2);
     }
 
-    /**
-     *
-     */
-    @Test
-    public void testAffinityAwareness() throws Exception {
+    /** {@inheritDoc} */
+    @Override protected void beforeTestsStarted() throws Exception {
+        super.beforeTestsStarted();
+
         startGrids(CLUSTER_SIZE - 1);
 
         awaitPartitionMapExchange();
+    }
+
+    /** {@inheritDoc} */
+    @Override protected void beforeTest() throws Exception {
+        super.beforeTest();
 
         String addrs[] = new String[CLUSTER_SIZE-1];
 
@@ -93,7 +119,7 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
 
         ClientConfiguration clientCfg = new ClientConfiguration().setAddresses(addrs).setAffinityAwarenessEnabled(true);
 
-        IgniteClient client = new TcpIgniteClient(TestTcpClintChannel::new, clientCfg);
+        client = new TcpIgniteClient(TestTcpClientChannel::new, clientCfg);
 
         // Wait until all channels initialized.
         assertTrue("Failed to wait for node1 channel init",
@@ -102,83 +128,166 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
         assertTrue("Failed to wait for node2 channel init",
             GridTestUtils.waitForCondition(() -> channels[2] != null, WAIT_TIMEOUT));
 
-        TestTcpClintChannel node1ch = channels[1];
-        TestTcpClintChannel node2ch = channels[2];
+        TestTcpClientChannel node1ch = channels[1];
+        TestTcpClientChannel node2ch = channels[2];
 
-        // Create cache and determine default channel.
-        ClientCache<Object, Object> clientCacheRepl = client.getOrCreateCache("replicated_cache");
+        // Request cache creation to determine default channel.
+        client.getOrCreateCache(REPL_CACHE_NAME);
 
-        TestTcpClintChannel dfltCh = node1ch.nextOp() == ClientOperation.CACHE_GET_OR_CREATE_WITH_NAME ? node1ch :
+        dfltCh = node1ch.nextOp() == ClientOperation.CACHE_GET_OR_CREATE_WITH_NAME ? node1ch :
             node2ch.nextOp() == ClientOperation.CACHE_GET_OR_CREATE_WITH_NAME ? node2ch : null;
 
         assertNotNull("Can't determine default channel", dfltCh);
+    }
+
+    /**
+     * Test that affinity awareness is not applicable for replicated cache.
+     */
+    @Test
+    public void testReplicatedCache() {
+        testNotApplicableCache(REPL_CACHE_NAME);
+    }
+
+    /**
+     * Test that affinity awareness is not applicable for partitioned cache with custom affinity function.
+     */
+    @Test
+    public void testPartitionedCustomAffinityCache() {
+        testNotApplicableCache(PART_CUSTOM_AFFINITY_CACHE_NAME);
+    }
+
+    /**
+     * Test affinity awareness for all applicable operation types for partitioned cache with primitive key.
+     */
+    @Test
+    public void testPartitionedCachePrimitiveKey() {
+        testApplicableCache(PART_CACHE_NAME, i -> i);
+    }
+
+    /**
+     * Test affinity awareness for all applicable operation types for partitioned cache with complex key.
+     */
+    @Test
+    public void testPartitionedCacheComplexKey() {
+        testApplicableCache(PART_CACHE_NAME, i -> new TestComplexKey(i, i));
+    }
+
+    /**
+     * Test affinity awareness for all applicable operation types for partitioned cache with annotated affinity mapped key.
+     */
+    @Test
+    public void testPartitionedCacheAnnotatedAffinityKey() {
+        testApplicableCache(PART_CACHE_NAME, i -> new TestAnnotatedAffinityKey(i, i));
+    }
+
+    /**
+     * Test affinity awareness for all applicable operation types for partitioned cache with not annotated affinity
+     * mapped key.
+     */
+    @Test
+    public void testPartitionedCacheNotAnnotatedAffinityKey() {
+        testApplicableCache(PART_CACHE_NAME, i -> new TestNotAnnotatedAffinityKey(new TestComplexKey(i, i), i));
+    }
+
+    /**
+     * @param cacheName Cache name.
+     */
+    private void testNotApplicableCache(String cacheName) {
+        ClientCache<Object, Object> cache = client.cache(cacheName);
 
         // After first response we should send partitions request on default channel together with next request.
-        clientCacheRepl.put(0, 0);
+        cache.put(0, 0);
 
         assertOpOnChannel(dfltCh, ClientOperation.CACHE_PARTITIONS);
         assertOpOnChannel(dfltCh, ClientOperation.CACHE_PUT);
 
-        for (int i = 1; i < 100; i++) {
-            clientCacheRepl.put(i, i);
+        for (int i = 1; i < KEY_CNT; i++) {
+            cache.put(i, i);
 
             assertOpOnChannel(dfltCh, ClientOperation.CACHE_PUT);
 
-            clientCacheRepl.get(i);
+            cache.get(i);
 
             assertOpOnChannel(dfltCh, ClientOperation.CACHE_GET);
         }
+    }
 
-        // Check partitioned cache with custom affinity.
-        ClientCache<Object, Object> clientCachePartCustom = client.cache("partitioned_custom_affinity_cache");
+    /**
+     * @param cacheName Cache name.
+     * @param keyFactory Key factory function.
+     */
+    private void testApplicableCache(String cacheName, Function<Integer, Object> keyFactory) {
+        ClientCache<Object, Object> clientCache = client.cache(cacheName);
+        IgniteInternalCache<Object, Object> igniteCache = grid(0).context().cache().cache(cacheName);
 
-        // Server send response for all caches with the same affinity even if we don't request it, so we already know
-        // partitions information for partitioned cache with custom affinity function and doesn't send new partitions
-        // request here.
-        for (int i = 1; i < 100; i++) {
-            clientCachePartCustom.put(i, i);
+        clientCache.put(keyFactory.apply(0), 0);
 
-            assertOpOnChannel(dfltCh, ClientOperation.CACHE_PUT);
-
-            clientCachePartCustom.get(i);
-
-            assertOpOnChannel(dfltCh, ClientOperation.CACHE_GET);
-        }
-
-        // Check partitioned cache.
-        ClientCache<Object, Object> clientCachePart = client.cache("partitioned_cache");
-        IgniteInternalCache<Object, Object> igniteCachePart = grid(0).context().cache().cache("partitioned_cache");
-
-        clientCachePart.put(0, 0);
-
-        TestTcpClintChannel opCh = affinityChannel(0, igniteCachePart, dfltCh);
+        TestTcpClientChannel opCh = affinityChannel(keyFactory.apply(0), igniteCache, dfltCh);
 
         assertOpOnChannel(opCh, ClientOperation.CACHE_PARTITIONS);
         assertOpOnChannel(opCh, ClientOperation.CACHE_PUT);
 
-        for (int i = 1; i < 100; i++) {
-            opCh = affinityChannel(i, igniteCachePart, dfltCh);
+        for (int i = 1; i < KEY_CNT; i++) {
+            Object key = keyFactory.apply(i);
 
-            clientCachePart.put(i, i);
+            opCh = affinityChannel(key, igniteCache, dfltCh);
+
+            clientCache.put(key, key);
 
             assertOpOnChannel(opCh, ClientOperation.CACHE_PUT);
 
-            clientCachePart.get(i);
+            clientCache.get(key);
 
             assertOpOnChannel(opCh, ClientOperation.CACHE_GET);
+
+            clientCache.containsKey(key);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_CONTAINS_KEY);
+
+            clientCache.replace(key, i);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_REPLACE);
+
+            clientCache.replace(key, i, i);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_REPLACE_IF_EQUALS);
+
+            clientCache.remove(key);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_REMOVE_KEY);
+
+            clientCache.remove(key, i);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_REMOVE_IF_EQUALS);
+
+            clientCache.getAndPut(key, i);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_GET_AND_PUT);
+
+            clientCache.getAndRemove(key);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_GET_AND_REMOVE);
+
+            clientCache.getAndReplace(key, i);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_GET_AND_REPLACE);
+
+            clientCache.putIfAbsent(key, i);
+
+            assertOpOnChannel(opCh, ClientOperation.CACHE_PUT_IF_ABSENT);
         }
     }
 
     /**
      * Checks that operation goes through specified channel.
      */
-    private void assertOpOnChannel(TestTcpClintChannel ch, ClientOperation expectedOp) {
+    private void assertOpOnChannel(TestTcpClientChannel ch, ClientOperation expOp) {
         for (int i = 0; i < channels.length; i++) {
             if (channels[i] != null) {
                 ClientOperation actualOp = channels[i].nextOp();
 
                 if (channels[i] == ch)
-                    assertEquals("Unexpected operation on channel [ch=" + ch + ']', expectedOp, actualOp);
+                    assertEquals("Unexpected operation on channel [ch=" + ch + ']', expOp, actualOp);
                 else
                     assertNull("Unexpected operation on channel [ch=" + channels[i] + ", expCh=" + ch + ']', actualOp);
             }
@@ -188,7 +297,7 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
     /**
      * Calculates affinity channel for cache and key.
      */
-    private TestTcpClintChannel affinityChannel(Object key, IgniteInternalCache<Object, Object> cache, TestTcpClintChannel dfltCh) {
+    private TestTcpClientChannel affinityChannel(Object key, IgniteInternalCache<Object, Object> cache, TestTcpClientChannel dfltCh) {
         Collection<ClusterNode> nodes = cache.affinity().mapKeyToPrimaryAndBackups(key);
 
         UUID nodeId = nodes.iterator().next().id();
@@ -204,7 +313,7 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
     /**
      * Test TCP client channel.
      */
-    private class TestTcpClintChannel extends TcpClientChannel {
+    private class TestTcpClientChannel extends TcpClientChannel {
         /** Closed. */
         private volatile boolean closed;
 
@@ -217,7 +326,7 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
         /**
          * @param cfg Config.
          */
-        public TestTcpClintChannel(ClientChannelConfiguration cfg) {
+        public TestTcpClientChannel(ClientChannelConfiguration cfg) {
             super(cfg);
 
             this.cfg = cfg;
@@ -228,7 +337,9 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
         /** {@inheritDoc} */
         @Override public <T> T service(ClientOperation op, Consumer<PayloadOutputChannel> payloadWriter,
             Function<PayloadInputChannel, T> payloadReader) throws ClientConnectionException, ClientAuthorizationException {
-            opsQueue.offer(op);
+            // Store all operations except binary type registration in queue to check later.
+            if (op != ClientOperation.REGISTER_BINARY_TYPE_NAME &&  op != ClientOperation.PUT_BINARY_TYPE)
+                opsQueue.offer(op);
 
             return super.service(op, payloadWriter, payloadReader);
         }
@@ -258,5 +369,72 @@ public class ThinClientAffinityAwarenessTest extends GridCommonAbstractTest {
      */
     private static class CustomAffinityFunction extends RendezvousAffinityFunction {
         // No-op.
+    }
+
+    /**
+     * Test class without affinity key.
+     */
+    private static class TestComplexKey {
+        /** */
+        int firstField;
+
+        /** Another field. */
+        int secondField;
+
+        /** */
+        public TestComplexKey(int firstField, int secondField) {
+            this.firstField = firstField;
+            this.secondField = secondField;
+        }
+
+        /** {@inheritDoc} */
+        @Override public int hashCode() {
+            return firstField + secondField;
+        }
+    }
+
+    /**
+     * Test class with annotated affinity key.
+     */
+    private static class TestAnnotatedAffinityKey {
+        /** */
+        @AffinityKeyMapped
+        int affinityKey;
+
+        /** */
+        int anotherField;
+
+        /** */
+        public TestAnnotatedAffinityKey(int affinityKey, int anotherField) {
+            this.affinityKey = affinityKey;
+            this.anotherField = anotherField;
+        }
+
+        /** {@inheritDoc} */
+        @Override public int hashCode() {
+            return affinityKey + anotherField;
+        }
+    }
+
+    /**
+     * Test class with affinity key without annotation.
+     */
+    private static class TestNotAnnotatedAffinityKey {
+        /** */
+        TestComplexKey affinityKey;
+
+        /** */
+        int anotherField;
+
+        /** */
+        public TestNotAnnotatedAffinityKey(TestComplexKey affinityKey, int anotherField) {
+            this.affinityKey = affinityKey;
+            this.anotherField = anotherField;
+        }
+
+        /** {@inheritDoc} */
+        @Override public int hashCode() {
+            return affinityKey.hashCode() + anotherField;
+        }
     }
 }

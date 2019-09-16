@@ -82,26 +82,22 @@ public class ClientCacheAffinityMapping {
         if (affinityInfo == null || affinityInfo.keyCfg == null || affinityInfo.partMapping == null)
             return null;
 
+        Object binaryKey = binary.toBinary(key);
+
         if (!affinityInfo.keyCfg.isEmpty()) {
             int typeId = binary.typeId(key.getClass().getName());
 
             Integer fieldId = affinityInfo.keyCfg.get(typeId);
 
             if (fieldId != null) {
-                Object obj = binary.toBinary(key);
-
-                if (obj instanceof BinaryObjectExImpl) {
-                    key = ((BinaryObjectExImpl)obj).field(fieldId);
-
-                    if (key instanceof BinaryObject)
-                        key = ((BinaryObject)key).deserialize();
-                }
+                if (binaryKey instanceof BinaryObjectExImpl)
+                    binaryKey = ((BinaryObjectExImpl)binaryKey).field(fieldId);
                 else // Can't get field value, affinity node can't be determined in this case.
                     return null;
             }
         }
 
-        return affinityInfo.nodeForKey(key);
+        return affinityInfo.nodeForKey(binaryKey);
     }
 
     /**
