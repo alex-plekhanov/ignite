@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteSystemProperties;
@@ -1640,6 +1641,58 @@ public abstract class PagesList extends DataStructure {
         }
     }
 
+    /** Class to store page-list cache onheap. */
+    public static class PagesCache {
+        /** Pages cache max size, must be power of 2. */
+        public static final int MAX_SIZE = 256;
+
+        /** Pointers to pages. */
+        public final long[] pages = new long[MAX_SIZE];
+
+        /** Pointer to head of pages cache */
+        public volatile int head;
+
+        /** Pointer to tail of pages cache */
+        public volatile int tail;
+
+        /** Size of pages cache */
+        public volatile int size;
+
+        /** */
+        public static final AtomicIntegerFieldUpdater<PagesCache> headUpdater = AtomicIntegerFieldUpdater.newUpdater(
+            PagesCache.class, "head");
+
+        /** */
+        public static final AtomicIntegerFieldUpdater<PagesCache> tailUpdater = AtomicIntegerFieldUpdater.newUpdater(
+            PagesCache.class, "tail");
+
+        /** */
+        public static final AtomicIntegerFieldUpdater<PagesCache> sizeUpdater = AtomicIntegerFieldUpdater.newUpdater(
+            PagesCache.class, "size");
+
+        public long remove(int idx) {
+            long pageId = pages[idx];
+
+            pages[idx] = 0L;
+
+            sizeUpdater.decrementAndGet(this);
+
+            return pageId;
+        }
+
+        public long poll() {
+            long pageId = pages[head];
+
+            head = (head + 1) & (MAX_SIZE - 1);
+
+            return pageId;
+        }
+
+        public void add() {
+
+        }
+    }
+
     /**
      *
      */
@@ -1649,6 +1702,9 @@ public abstract class PagesList extends DataStructure {
 
         /** */
         public volatile boolean empty;
+
+        /** Onheap pages cache for this stripe. */
+        public final PagesCache pagesCache = new PagesCache();
 
         /**
          * @param tailId Tail ID.
