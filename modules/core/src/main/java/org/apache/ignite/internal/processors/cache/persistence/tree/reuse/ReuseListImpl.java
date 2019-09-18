@@ -36,6 +36,9 @@ public class ReuseListImpl extends PagesList implements ReuseList {
     /** */
     private volatile Stripe[] bucket;
 
+    /** Onheap pages cache. */
+    private final PagesCache bucketCache = new PagesCache();
+
     /**
      * @param cacheId   Cache ID.
      * @param name Name (for debug purpose).
@@ -99,6 +102,11 @@ public class ReuseListImpl extends PagesList implements ReuseList {
     /** {@inheritDoc} */
     @Override protected boolean casBucket(int bucket, Stripe[] exp, Stripe[] upd) {
         return bucketUpdater.compareAndSet(this, exp, upd);
+    }
+
+    /** {@inheritDoc} */
+    @Override protected PagesCache getBucketCache(int bucket, boolean create) {
+        return bucketCache;
     }
 
     /** {@inheritDoc} */

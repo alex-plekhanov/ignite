@@ -21,10 +21,13 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.internal.managers.communication.GridIoPolicy;
+import org.apache.ignite.internal.metric.IoStatisticsHolder;
+import org.apache.ignite.internal.metric.IoStatisticsHolderNoOp;
 import org.apache.ignite.internal.pagemem.PageIdUtils;
 import org.apache.ignite.internal.pagemem.PageMemory;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
@@ -45,8 +48,6 @@ import org.apache.ignite.internal.processors.cache.persistence.tree.io.IOVersion
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.reuse.ReuseBag;
 import org.apache.ignite.internal.processors.cache.persistence.tree.util.PageHandler;
-import org.apache.ignite.internal.metric.IoStatisticsHolder;
-import org.apache.ignite.internal.metric.IoStatisticsHolderNoOp;
 import org.apache.ignite.internal.processors.cache.persistence.tree.util.PageLockListener;
 import org.apache.ignite.internal.util.GridArrays;
 import org.apache.ignite.internal.util.GridLongList;
@@ -77,6 +78,13 @@ public abstract class PagesList extends DataStructure {
             Math.max(8, Runtime.getRuntime().availableProcessors()));
 
     /** */
+    private static final boolean DISABLE_ONHEAP_CACHING =
+        IgniteSystemProperties.getBoolean(IgniteSystemProperties.IGNITE_PAGES_LIST_DISABLE_ONHEAP_CACHING, false);
+
+    /** PageId to mark that page is in onheap cached pages list, but not in page memory pages list. */
+    private static final long CACHED_PAGE_ID = -1L;
+
+    /** */
     protected final AtomicLong[] bucketsSize;
 
     /** */
@@ -91,8 +99,14 @@ public abstract class PagesList extends DataStructure {
     /** Name (for debug purposes). */
     protected final String name;
 
+    /** Flag to enable/disable onheap list caching. */
+    private volatile boolean onheapListCachingEnabled;
+
     /** */
     private final PageHandler<Void, Boolean> cutTail = new CutTail();
+
+    /** */
+    private final PageHandler<Void, Boolean> putBucket = new PutBucket();
 
     /**
      *
@@ -128,6 +142,27 @@ public abstract class PagesList extends DataStructure {
     }
 
     /**
+     *
+     */
+    private final class PutBucket extends PageHandler<Void, Boolean> {
+        /** {@inheritDoc} */
+        @Override public Boolean run(
+            int cacheId,
+            long pageId,
+            long page,
+            long pageAddr,
+            PageIO iox,
+            Boolean walPlc,
+            Void ignore,
+            int bucket,
+            IoStatisticsHolder statHolder) throws IgniteCheckedException {
+            put(null, pageId, page, pageAddr, bucket, statHolder);
+
+            return TRUE;
+        }
+    }
+
+    /**
      * @param cacheId Cache ID.
      * @param name Name (for debug purpose).
      * @param pageMem Page memory.
@@ -154,6 +189,8 @@ public abstract class PagesList extends DataStructure {
 
         for (int i = 0; i < buckets; i++)
             bucketsSize[i] = new AtomicLong();
+
+        onheapListCachingEnabled =  !DISABLE_ONHEAP_CACHING && (wal != null);
     }
 
     /**
@@ -262,15 +299,17 @@ public abstract class PagesList extends DataStructure {
      *
      * @throws IgniteCheckedException If failed.
      */
-    public void saveMetadata() throws IgniteCheckedException {
+    public void saveMetadata(IoStatisticsHolder statHolder) throws IgniteCheckedException {
         long nextPageId = metaPageId;
 
         assert nextPageId != 0;
 
+        flushBucketsCache(statHolder);
+
         if (!changed)
             return;
 
-        //This guaranteed that any concurrently changes of list will be detected.
+        // This guaranteed that any concurrently changes of list will be detected.
         changed = false;
 
         try {
@@ -279,9 +318,42 @@ public abstract class PagesList extends DataStructure {
             markUnusedPagesDirty(unusedPageId);
         }
         catch (Throwable e) {
-            changed = true;//Return changed flag due to exception.
+            changed = true; // Return changed flag due to exception.
 
             throw e;
+        }
+    }
+
+    /**
+     * Flush onheap cached pages lists to page memory.
+     */
+    private void flushBucketsCache(IoStatisticsHolder statHolder) throws IgniteCheckedException {
+        if (DISABLE_ONHEAP_CACHING || wal == null)
+            return;
+
+        onheapListCachingEnabled = false;
+
+        try {
+            for (int bucket = 0; bucket < buckets; bucket++) {
+                PagesCache pagesCache = getBucketCache(bucket, false);
+
+                if (pagesCache == null)
+                    continue;
+
+                long pageId;
+
+                while ((pageId = pagesCache.poll()) != 0L) {
+                    Boolean res = write(pageId, putBucket, bucket, null, statHolder);
+
+                    if (res == null) {
+                        // Return page to onheap pages list if can't lock it.
+                        pagesCache.add(pageId);
+                    }
+                }
+            }
+        }
+        finally {
+            onheapListCachingEnabled = true;
         }
     }
 
@@ -426,6 +498,12 @@ public abstract class PagesList extends DataStructure {
      * @return {@code true} If it is a reuse bucket.
      */
     protected abstract boolean isReuseBucket(int bucket);
+
+    /**
+     * @param bucket Bucket index.
+     * @return Bucket cache.
+     */
+    protected abstract PagesCache getBucketCache(int bucket, boolean create);
 
     /**
      * @param io IO.
@@ -674,6 +752,12 @@ public abstract class PagesList extends DataStructure {
         if (bag != null && bag.isEmpty()) // Skip allocating stripe for empty bag.
             return;
 
+        if (bag == null && onheapListCachingEnabled &&
+            putDataPage(getBucketCache(bucket, true), dataId, dataPage, dataAddr, bucket)) {
+            // Successfully put page to the onheap pages list cache.
+            return;
+        }
+
         for (int lockAttempt = 0; ;) {
             Stripe stripe = getPageForPut(bucket, bag);
 
@@ -791,6 +875,33 @@ public abstract class PagesList extends DataStructure {
         }
 
         return true;
+    }
+
+    /**
+     * @param dataId Data page ID.
+     * @param dataPage Data page pointer.
+     * @param dataAddr Data page address.
+     * @param bucket Bucket.
+     * @return {@code true} If succeeded.
+     * @throws IgniteCheckedException If failed.
+     */
+    private boolean putDataPage(
+        PagesCache pagesCache,
+        final long dataId,
+        final long dataPage,
+        final long dataAddr,
+        int bucket
+    ) throws IgniteCheckedException {
+        if (pagesCache.add(dataId)) {
+            incrementBucketSize(bucket);
+
+            AbstractDataPageIO dataIO = PageIO.getPageIO(dataAddr);
+            dataIO.setFreeListPageId(dataAddr, CACHED_PAGE_ID);
+
+            return true;
+        }
+        else
+            return false;
     }
 
     /**
@@ -1101,6 +1212,16 @@ public abstract class PagesList extends DataStructure {
      */
     protected long takeEmptyPage(int bucket, @Nullable IOVersions initIoVers,
         IoStatisticsHolder statHolder) throws IgniteCheckedException {
+        PagesCache pagesCache = getBucketCache(bucket, false);
+
+        long pageId;
+
+        if (pagesCache != null && (pageId = pagesCache.poll()) != 0L) {
+            decrementBucketSize(bucket);
+
+            return pageId;
+        }
+
         for (int lockAttempt = 0; ;) {
             Stripe stripe = getPageForTake(bucket);
 
@@ -1151,7 +1272,7 @@ public abstract class PagesList extends DataStructure {
                         continue;
                     }
 
-                    long pageId = io.takeAnyPage(tailAddr);
+                    pageId = io.takeAnyPage(tailAddr);
 
                     if (pageId != 0L) {
                         decrementBucketSize(bucket);
@@ -1305,7 +1426,23 @@ public abstract class PagesList extends DataStructure {
 
         assert pageId != 0;
 
+        if (pageId == CACHED_PAGE_ID) { // Page cached in onheap list.
+            PagesCache pagesCache = getBucketCache(bucket, false);
+
+            assert pagesCache != null;
+
+            if (!pagesCache.removePage(dataId))
+                return false;
+
+            decrementBucketSize(bucket);
+
+            dataIO.setFreeListPageId(dataAddr, 0L);
+
+            return true;
+        }
+
         final long page = acquirePage(pageId, statHolder);
+
         try {
             long nextId;
 
@@ -1637,6 +1774,91 @@ public abstract class PagesList extends DataStructure {
         /** {@inheritDoc} */
         @Override public String toString() {
             return S.toString(SingletonReuseBag.class, this, "pageId", U.hexLong(pageId));
+        }
+    }
+
+    /** Class to store page-list cache onheap. */
+    @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
+    public static class PagesCache {
+        /** Pages cache max size. */
+        private static final int MAX_SIZE = 256;
+
+        /** Stripes count. Must be power of 2. */
+        private static final int STRIPES_COUNT = 8;
+
+        /** Atomic updater for nextStripeIdx field. */
+        private static final AtomicIntegerFieldUpdater<PagesCache> nextStripeUpdater = AtomicIntegerFieldUpdater
+            .newUpdater(PagesCache.class, "nextStripeIdx");
+
+        /** Page lists. */
+        private final GridLongList[] stripes = new GridLongList[STRIPES_COUNT];
+
+        /** Access counter to provide round-robin stripes polling. */
+        private volatile int nextStripeIdx = 0;
+
+        /**
+         * Default constructor.
+         */
+        public PagesCache() {
+            for (int i = 0; i < STRIPES_COUNT; i++)
+                stripes[i] = new GridLongList(MAX_SIZE / STRIPES_COUNT);
+        }
+
+        /**
+         * Remove page from the list.
+         *
+         * @param pageId Page id.
+         * @return {@code True} if page was found and succesfully removed, {@code false} if page not found.
+         */
+        public boolean removePage(long pageId) {
+            int stripeIdx = (int)pageId & (STRIPES_COUNT - 1);
+
+            GridLongList stripe = stripes[stripeIdx];
+
+            synchronized (stripe) {
+                return stripe.removeValue(0, pageId) >= 0;
+            }
+        }
+
+        /**
+         * Poll next page from the list.
+         *
+         * @return pageId.
+         */
+        public long poll() {
+            for (int i = 0; i < STRIPES_COUNT; i++) {
+                GridLongList stripe = stripes[nextStripeUpdater.getAndIncrement(this) & (STRIPES_COUNT - 1)];
+
+                synchronized (stripe) {
+                    if (!stripe.isEmpty())
+                        return stripe.remove();
+                }
+            }
+
+            return 0L;
+        }
+
+        /**
+         * Add pageId to the tail of the list.
+         *
+         * @param pageId Page id.
+         * @return {@code True} if page can be added, {@code false} if list is full.
+         */
+        public synchronized boolean add(long pageId) {
+            assert pageId != 0L;
+
+            int stripeIdx = (int)pageId & (STRIPES_COUNT - 1);
+
+            GridLongList stripe = stripes[stripeIdx];
+
+            synchronized (stripe) {
+                if (stripe.size() >= MAX_SIZE / STRIPES_COUNT)
+                    return false;
+                else
+                    stripe.add(pageId);
+
+                return true;
+            }
         }
     }
 
