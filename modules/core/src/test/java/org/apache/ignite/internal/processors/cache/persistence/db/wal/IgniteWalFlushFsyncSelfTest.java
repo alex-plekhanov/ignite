@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.cache.persistence.db.wal;
 
 import org.apache.ignite.configuration.WALMode;
+import org.junit.Ignore;
 
 /**
  *
@@ -31,5 +32,10 @@ public class IgniteWalFlushFsyncSelfTest extends IgniteWalFlushMultiNodeFailover
     /** {@inheritDoc} */
     @Override protected WALMode walMode() {
         return WALMode.FSYNC;
+    }
+
+    /** {@inheritDoc} */
+    @Ignore("https://issues.apache.org/jira/browse/IGNITE-12254")
+    @Override public void testFailWhileStart() throws Exception {
     }
 }
