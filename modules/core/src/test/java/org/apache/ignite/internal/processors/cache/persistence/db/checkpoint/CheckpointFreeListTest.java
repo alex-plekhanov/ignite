@@ -37,6 +37,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
+import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.CacheWriteSynchronizationMode;
@@ -56,6 +57,7 @@ import org.apache.ignite.spi.discovery.tcp.ipfinder.TcpDiscoveryIpFinder;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.GridTestUtils.SF;
+import org.apache.ignite.testframework.junits.WithSystemProperty;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.junit.Test;
 
@@ -214,6 +216,7 @@ public class CheckpointFreeListTest extends GridCommonAbstractTest {
      * @throws Exception if fail.
      */
     @Test
+    @WithSystemProperty(key = IgniteSystemProperties.IGNITE_PAGES_LIST_DISABLE_ONHEAP_CACHING, value = "true")
     public void testRestoreFreeListCorrectlyAfterRandomStop() throws Exception {
         IgniteEx ignite0 = startGrid(0);
         ignite0.cluster().active(true);
