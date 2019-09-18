@@ -21,7 +21,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteSystemProperties;
@@ -1644,52 +1643,101 @@ public abstract class PagesList extends DataStructure {
     /** Class to store page-list cache onheap. */
     public static class PagesCache {
         /** Pages cache max size, must be power of 2. */
-        public static final int MAX_SIZE = 256;
+        private static final int MAX_SIZE = 256;
+
+        /** Mask for index. */
+        private static final int MASK = MAX_SIZE - 1;
 
         /** Pointers to pages. */
-        public final long[] pages = new long[MAX_SIZE];
+        private final long[] pages = new long[MAX_SIZE];
 
-        /** Pointer to head of pages cache */
-        public volatile int head;
+        /** Pointer to the head of the pages cache. */
+        private int head;
 
-        /** Pointer to tail of pages cache */
-        public volatile int tail;
+        /** Pointer to the tail of the pages cache. */
+        private int tail = MAX_SIZE - 1;
 
-        /** Size of pages cache */
-        public volatile int size;
+        /** Count of not empty page slots. */
+        private int cnt;
 
-        /** */
-        public static final AtomicIntegerFieldUpdater<PagesCache> headUpdater = AtomicIntegerFieldUpdater.newUpdater(
-            PagesCache.class, "head");
+        /**
+         * Remove page from the list.
+         *
+         * @param idx Index of page slot.
+         * @return pageId.
+         */
+        public synchronized long remove(int idx) {
+            if (cnt == 0)
+                return 0L;
 
-        /** */
-        public static final AtomicIntegerFieldUpdater<PagesCache> tailUpdater = AtomicIntegerFieldUpdater.newUpdater(
-            PagesCache.class, "tail");
-
-        /** */
-        public static final AtomicIntegerFieldUpdater<PagesCache> sizeUpdater = AtomicIntegerFieldUpdater.newUpdater(
-            PagesCache.class, "size");
-
-        public long remove(int idx) {
             long pageId = pages[idx];
+
+            assert pageId != 0L : "Non zero pageId expected [idx=" + idx + ", head=" + head + ", tail=" + tail +
+                ", cnt=" + cnt + ']';
 
             pages[idx] = 0L;
 
-            sizeUpdater.decrementAndGet(this);
+            cnt--;
+
+            if (cnt == 0) {
+                head = 0;
+                tail = MAX_SIZE;
+            }
+            else {
+                // Cut head.
+                if (idx == head) {
+                    // There are one or more elements in the list, so we will stop on some non zero element eventually.
+                    while (pages[head] == 0L)
+                        head = (head + 1) & MASK;
+                }
+
+                // Cut tail.
+                if (idx == tail) {
+                    while (pages[tail] == 0L)
+                        tail = (tail - 1) & MASK;
+                }
+            }
 
             return pageId;
         }
 
-        public long poll() {
-            long pageId = pages[head];
-
-            head = (head + 1) & (MAX_SIZE - 1);
-
-            return pageId;
+        /**
+         * Poll next page from the head of the list.
+         * @return pageId.
+         */
+        public synchronized long pollHead() {
+            return remove(head);
         }
 
-        public void add() {
+        /**
+         * Poll next page from the tail of the list.
+         * @return pageId.
+         */
+        public synchronized long pollTail() {
+            return remove(tail);
+        }
 
+        /**
+         * Add pageId to the tail of the list.
+         *
+         * @param pageId Page id.
+         * @return {@code True} if page can be added, {@code false} if list is full.
+         */
+        public synchronized boolean add(long pageId) {
+            assert pageId != 0L;
+
+            int nextTail = (tail + 1) & MASK;
+
+            if (cnt > 0 && head == nextTail)
+                return false;
+
+            assert pages[tail] == 0L : pages[tail];
+
+            pages[tail] = pageId;
+
+            tail = nextTail;
+
+            return true;
         }
     }
 
