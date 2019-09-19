@@ -77,6 +77,9 @@ public abstract class AbstractFreeList<T extends Storable> extends PagesList imp
     /** */
     private final AtomicReferenceArray<Stripe[]> buckets = new AtomicReferenceArray<>(BUCKETS);
 
+    /** Onheap bucket page list caches. */
+    private final AtomicReferenceArray<PagesCache> bucketCaches = new AtomicReferenceArray<>(BUCKETS);
+
     /** */
     private final int MIN_SIZE_FOR_DATA_PAGE;
 
@@ -836,6 +839,16 @@ public abstract class AbstractFreeList<T extends Storable> extends PagesList imp
     /** {@inheritDoc} */
     @Override protected boolean isReuseBucket(int bucket) {
         return bucket == REUSE_BUCKET;
+    }
+
+    /** {@inheritDoc} */
+    @Override protected PagesCache getBucketCache(int bucket) {
+        PagesCache pagesCache = bucketCaches.get(bucket);
+
+        if (pagesCache == null && !bucketCaches.compareAndSet(bucket, null, pagesCache = new PagesCache()))
+            pagesCache = bucketCaches.get(bucket);
+
+        return pagesCache;
     }
 
     /**

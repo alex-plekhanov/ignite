@@ -76,6 +76,9 @@ public abstract class PagesList extends DataStructure {
         IgniteSystemProperties.getInteger("IGNITE_PAGES_LIST_STRIPES_PER_BUCKET",
             Math.max(8, Runtime.getRuntime().availableProcessors()));
 
+    /** PageId to mark that page is in onheap cached pages list, but not in page memory pages list. */
+    private static final long ONHEAP_PAGE_ID = -1L; // TODO
+
     /** */
     protected final AtomicLong[] bucketsSize;
 
@@ -428,6 +431,12 @@ public abstract class PagesList extends DataStructure {
     protected abstract boolean isReuseBucket(int bucket);
 
     /**
+     * @param bucket Bucket index.
+     * @return Bucket cache.
+     */
+    protected abstract PagesCache getBucketCache(int bucket);
+
+    /**
      * @param io IO.
      * @param prevId Previous page ID.
      * @param prev Previous page buffer.
@@ -674,15 +683,13 @@ public abstract class PagesList extends DataStructure {
         if (bag != null && bag.isEmpty()) // Skip allocating stripe for empty bag.
             return;
 
+        if (bag == null && putDataPage(getBucketCache(bucket), dataId, dataPage, dataAddr, bucket)) {
+            // Successfully put page to the onheap pages cache.
+            return;
+        }
+
         for (int lockAttempt = 0; ;) {
             Stripe stripe = getPageForPut(bucket, bag);
-
-            if (bag == null && putDataPage(stripe.pagesCache, dataId, dataPage, dataAddr, bucket)) {
-                // Successfully put page to the onheap pages cache.
-                stripe.empty = false;
-
-                return;
-            }
 
             // No need to continue if bag has been utilized at getPageForPut (free page can be used for pagelist).
             if (bag != null && bag.isEmpty())
@@ -805,7 +812,6 @@ public abstract class PagesList extends DataStructure {
      * @param dataPage Data page pointer.
      * @param dataAddr Data page address.
      * @param bucket Bucket.
-     * @param statHolder Statistics holder to track IO operations.
      * @return {@code true} If succeeded.
      * @throws IgniteCheckedException If failed.
      */
@@ -820,7 +826,7 @@ public abstract class PagesList extends DataStructure {
             incrementBucketSize(bucket);
 
             AbstractDataPageIO dataIO = PageIO.getPageIO(dataAddr);
-            dataIO.setFreeListPageId(dataAddr, -bucket); // TODO bucket/stripe
+            dataIO.setFreeListPageId(dataAddr, ONHEAP_PAGE_ID);
 
             return true;
         }
@@ -1136,11 +1142,20 @@ public abstract class PagesList extends DataStructure {
      */
     protected long takeEmptyPage(int bucket, @Nullable IOVersions initIoVers,
         IoStatisticsHolder statHolder) throws IgniteCheckedException {
+        long pageId = getBucketCache(bucket).poll();
+
+        if (pageId != 0L) {
+            decrementBucketSize(bucket);
+
+            return pageId;
+        }
+
         for (int lockAttempt = 0; ;) {
             Stripe stripe = getPageForTake(bucket);
 
             if (stripe == null)
                 return 0L;
+
 
             final long tailId = stripe.tailId;
 
@@ -1186,7 +1201,7 @@ public abstract class PagesList extends DataStructure {
                         continue;
                     }
 
-                    long pageId = io.takeAnyPage(tailAddr);
+                    pageId = io.takeAnyPage(tailAddr);
 
                     if (pageId != 0L) {
                         decrementBucketSize(bucket);
@@ -1340,7 +1355,21 @@ public abstract class PagesList extends DataStructure {
 
         assert pageId != 0;
 
+        if (pageId == ONHEAP_PAGE_ID) { // Page cached in onheap list.
+            boolean rmvd = getBucketCache(bucket).removePage(dataId);
+
+            if (!rmvd)
+                return false;
+
+            decrementBucketSize(bucket);
+
+            dataIO.setFreeListPageId(dataAddr, 0L);
+
+            return true;
+        }
+
         final long page = acquirePage(pageId, statHolder);
+
         try {
             long nextId;
 
@@ -1677,23 +1706,13 @@ public abstract class PagesList extends DataStructure {
 
     /** Class to store page-list cache onheap. */
     public static class PagesCache {
-        /** Pages cache max size, must be power of 2. */
+        /** Pages cache max size. */
         private static final int MAX_SIZE = 256;
 
-        /** Mask for index. */
-        private static final int MASK = MAX_SIZE - 1;
+        // TODO add stripes
 
         /** Pointers to pages. */
-        private final long[] pages = new long[MAX_SIZE];
-
-        /** Pointer to the head of the pages cache. */
-        private int head;
-
-        /** Pointer to the tail of the pages cache. */
-        private int tail = MAX_SIZE - 1;
-
-        /** Count of not empty page slots. */
-        private int cnt;
+        private final GridLongList pages = new GridLongList(MAX_SIZE >> 2);
 
         /**
          * Remove page from the list.
@@ -1702,78 +1721,16 @@ public abstract class PagesList extends DataStructure {
          * @return {@code True} if page was found and succesfully removed, {@code false} if page not found.
          */
         public synchronized boolean removePage(long pageId) {
-            if (cnt == 0)
-                return false;
-
-            for (int i = head; ; i = (i + 1) & MASK) {
-                if (pages[i] == pageId) {
-                    if (tail >= i)
-                        System.arraycopy(pages, i + 1, pages, i, tail - i);
-                    else {
-                        System.arraycopy(pages, i + 1, pages, i, MAX_SIZE - 1 - i);
-
-                        pages[MAX_SIZE - 1] = pages[0];
-
-                        System.arraycopy(pages, 1, pages, 0, tail);
-                    }
-
-                    pages[tail] = 0L;
-
-                    tail = (tail - 1) & MASK;
-
-                    cnt--;
-
-                    return true;
-                }
-
-                if (i == tail)
-                    return false;
-            }
-        }
-
-        /**
-         * Remove page from the list.
-         *
-         * @param idx Index of page slot.
-         * @return pageId.
-         */
-        private synchronized long remove(int idx) {
-            assert idx == head || idx == tail : "Unexpected idx [idx=" + idx + ", head=" + head + ", tail=" + tail + ']';
-
-            if (cnt == 0)
-                return 0L;
-
-            long pageId = pages[idx];
-
-            assert pageId != 0L : "Non zero pageId expected [idx=" + idx + ", head=" + head + ", tail=" + tail +
-                ", cnt=" + cnt + ']';
-
-            pages[idx] = 0L;
-
-            cnt--;
-
-            if (idx == head) // Cut head.
-                head = (head + 1) & MASK;
-            else if (idx == tail) // Cut tail.
-                tail = (tail - 1) & MASK;
-
-            return pageId;
-        }
-
-        /**
-         * Poll next page from the head of the list.
-         * @return pageId.
-         */
-        public synchronized long pollHead() {
-            return remove(head);
+            return pages.removeValue(0, pageId) >= 0;
         }
 
         /**
          * Poll next page from the tail of the list.
+         *
          * @return pageId.
          */
-        public synchronized long pollTail() {
-            return remove(tail);
+        private synchronized long poll() {
+            return pages.isEmpty() ? 0L : pages.remove();
         }
 
         /**
@@ -1785,18 +1742,10 @@ public abstract class PagesList extends DataStructure {
         public synchronized boolean add(long pageId) {
             assert pageId != 0L;
 
-            int nextTail = (tail + 1) & MASK;
-
-            if (cnt > 0 && head == nextTail)
-                return false; // List is full.
-
-            assert pages[tail] == 0L : pages[tail];
-
-            pages[tail] = pageId;
-
-            tail = nextTail;
-
-            cnt++;
+            if (pages.size() >= MAX_SIZE)
+                return false;
+            else
+                pages.add(pageId);
 
             return true;
         }
@@ -1811,9 +1760,6 @@ public abstract class PagesList extends DataStructure {
 
         /** */
         public volatile boolean empty;
-
-        /** Onheap pages cache for this stripe. */
-        public final PagesCache pagesCache = new PagesCache();
 
         /**
          * @param tailId Tail ID.
