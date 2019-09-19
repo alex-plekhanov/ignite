@@ -25,6 +25,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.internal.managers.communication.GridIoPolicy;
+import org.apache.ignite.internal.metric.IoStatisticsHolder;
+import org.apache.ignite.internal.metric.IoStatisticsHolderNoOp;
 import org.apache.ignite.internal.pagemem.PageIdUtils;
 import org.apache.ignite.internal.pagemem.PageMemory;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
@@ -45,8 +47,6 @@ import org.apache.ignite.internal.processors.cache.persistence.tree.io.IOVersion
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.reuse.ReuseBag;
 import org.apache.ignite.internal.processors.cache.persistence.tree.util.PageHandler;
-import org.apache.ignite.internal.metric.IoStatisticsHolder;
-import org.apache.ignite.internal.metric.IoStatisticsHolderNoOp;
 import org.apache.ignite.internal.processors.cache.persistence.tree.util.PageLockListener;
 import org.apache.ignite.internal.util.GridArrays;
 import org.apache.ignite.internal.util.GridLongList;
@@ -677,6 +677,13 @@ public abstract class PagesList extends DataStructure {
         for (int lockAttempt = 0; ;) {
             Stripe stripe = getPageForPut(bucket, bag);
 
+            if (bag == null && putDataPage(stripe.pagesCache, dataId, dataPage, dataAddr, bucket)) {
+                // Successfully put page to the onheap pages cache.
+                stripe.empty = false;
+
+                return;
+            }
+
             // No need to continue if bag has been utilized at getPageForPut (free page can be used for pagelist).
             if (bag != null && bag.isEmpty())
                 return;
@@ -791,6 +798,34 @@ public abstract class PagesList extends DataStructure {
         }
 
         return true;
+    }
+
+    /**
+     * @param dataId Data page ID.
+     * @param dataPage Data page pointer.
+     * @param dataAddr Data page address.
+     * @param bucket Bucket.
+     * @param statHolder Statistics holder to track IO operations.
+     * @return {@code true} If succeeded.
+     * @throws IgniteCheckedException If failed.
+     */
+    private boolean putDataPage(
+        PagesCache pagesCache,
+        final long dataId,
+        final long dataPage,
+        final long dataAddr,
+        int bucket
+    ) throws IgniteCheckedException {
+        if (pagesCache.add(dataId)) {
+            incrementBucketSize(bucket);
+
+            AbstractDataPageIO dataIO = PageIO.getPageIO(dataAddr);
+            dataIO.setFreeListPageId(dataAddr, -bucket); // TODO bucket/stripe
+
+            return true;
+        }
+        else
+            return false;
     }
 
     /**
@@ -1663,10 +1698,48 @@ public abstract class PagesList extends DataStructure {
         /**
          * Remove page from the list.
          *
+         * @param pageId Page id.
+         * @return {@code True} if page was found and succesfully removed, {@code false} if page not found.
+         */
+        public synchronized boolean removePage(long pageId) {
+            if (cnt == 0)
+                return false;
+
+            for (int i = head; ; i = (i + 1) & MASK) {
+                if (pages[i] == pageId) {
+                    if (tail >= i)
+                        System.arraycopy(pages, i + 1, pages, i, tail - i);
+                    else {
+                        System.arraycopy(pages, i + 1, pages, i, MAX_SIZE - 1 - i);
+
+                        pages[MAX_SIZE - 1] = pages[0];
+
+                        System.arraycopy(pages, 1, pages, 0, tail);
+                    }
+
+                    pages[tail] = 0L;
+
+                    tail = (tail - 1) & MASK;
+
+                    cnt--;
+
+                    return true;
+                }
+
+                if (i == tail)
+                    return false;
+            }
+        }
+
+        /**
+         * Remove page from the list.
+         *
          * @param idx Index of page slot.
          * @return pageId.
          */
-        public synchronized long remove(int idx) {
+        private synchronized long remove(int idx) {
+            assert idx == head || idx == tail : "Unexpected idx [idx=" + idx + ", head=" + head + ", tail=" + tail + ']';
+
             if (cnt == 0)
                 return 0L;
 
@@ -1679,24 +1752,10 @@ public abstract class PagesList extends DataStructure {
 
             cnt--;
 
-            if (cnt == 0) {
-                head = 0;
-                tail = MAX_SIZE;
-            }
-            else {
-                // Cut head.
-                if (idx == head) {
-                    // There are one or more elements in the list, so we will stop on some non zero element eventually.
-                    while (pages[head] == 0L)
-                        head = (head + 1) & MASK;
-                }
-
-                // Cut tail.
-                if (idx == tail) {
-                    while (pages[tail] == 0L)
-                        tail = (tail - 1) & MASK;
-                }
-            }
+            if (idx == head) // Cut head.
+                head = (head + 1) & MASK;
+            else if (idx == tail) // Cut tail.
+                tail = (tail - 1) & MASK;
 
             return pageId;
         }
@@ -1729,13 +1788,15 @@ public abstract class PagesList extends DataStructure {
             int nextTail = (tail + 1) & MASK;
 
             if (cnt > 0 && head == nextTail)
-                return false;
+                return false; // List is full.
 
             assert pages[tail] == 0L : pages[tail];
 
             pages[tail] = pageId;
 
             tail = nextTail;
+
+            cnt++;
 
             return true;
         }
