@@ -294,6 +294,7 @@ public class GridCacheOffheapManager extends IgniteCacheOffheapManagerImpl imple
         RowStore rowStore0 = store.rowStore();
 
         if (rowStore0 != null) {
+            // TODO pass grp.statisticsHolderData() to saveMetadata()
             ((CacheFreeList)rowStore0.freeList()).saveMetadata();
 
             PartitionMetaStorage<SimpleDataRow> partStore = store.partStorage();
