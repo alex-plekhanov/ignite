@@ -78,11 +78,8 @@ public abstract class PagesList extends DataStructure {
             Math.max(8, Runtime.getRuntime().availableProcessors()));
 
     /** */
-    private final boolean DISABLE_ONHEAP_CACHING =
+    private final boolean pagesListCachingDisabledSysProp =
         IgniteSystemProperties.getBoolean(IgniteSystemProperties.IGNITE_PAGES_LIST_DISABLE_ONHEAP_CACHING, false);
-
-    /** PageId to mark that page is in onheap cached pages list, but not in page memory pages list. */
-    private static final long CACHED_PAGE_ID = -1L;
 
     /** */
     protected final AtomicLong[] bucketsSize;
@@ -190,7 +187,7 @@ public abstract class PagesList extends DataStructure {
         for (int i = 0; i < buckets; i++)
             bucketsSize[i] = new AtomicLong();
 
-        onheapListCachingEnabled =  !DISABLE_ONHEAP_CACHING && (wal != null);
+        onheapListCachingEnabled =  !pagesListCachingDisabledSysProp && (wal != null);
     }
 
     /**
@@ -328,7 +325,7 @@ public abstract class PagesList extends DataStructure {
      * Flush onheap cached pages lists to page memory.
      */
     private void flushBucketsCache(IoStatisticsHolder statHolder) throws IgniteCheckedException {
-        if (DISABLE_ONHEAP_CACHING || wal == null)
+        if (pagesListCachingDisabledSysProp || wal == null)
             return;
 
         onheapListCachingEnabled = false;
@@ -896,13 +893,16 @@ public abstract class PagesList extends DataStructure {
             incrementBucketSize(bucket);
 
             AbstractDataPageIO dataIO = PageIO.getPageIO(dataAddr);
-            dataIO.setFreeListPageId(dataAddr, CACHED_PAGE_ID);
 
-            // Actually, there is no real need for this WAL record, but it has relatively low cost and provides
-            // real-time consistency between page memory and WAL (without this record WAL is still consistent with
-            // page memory, but only at the time of checkpoint, which doesn't affect recovery guarantees).
-            if (needWalDeltaRecord(dataId, dataPage, null))
-                wal.log(new DataPageSetFreeListPageRecord(grpId, dataId, CACHED_PAGE_ID));
+            if (dataIO.getFreeListPageId(dataAddr) != 0L) {
+                dataIO.setFreeListPageId(dataAddr, 0L);
+
+                // Actually, there is no real need for this WAL record, but it has relatively low cost and provides
+                // anytime consistency between page memory and WAL (without this record WAL is consistent with
+                // page memory only at the time of checkpoint, but it doesn't affect recovery guarantees).
+                if (needWalDeltaRecord(dataId, dataPage, null))
+                    wal.log(new DataPageSetFreeListPageRecord(grpId, dataId, 0L));
+            }
 
             return true;
         }
@@ -1430,9 +1430,7 @@ public abstract class PagesList extends DataStructure {
         throws IgniteCheckedException {
         final long pageId = dataIO.getFreeListPageId(dataAddr);
 
-        assert pageId != 0;
-
-        if (pageId == CACHED_PAGE_ID) { // Page cached in onheap list.
+        if (pageId == 0L) { // Page cached in onheap list.
             PagesCache pagesCache = getBucketCache(bucket, false);
 
             assert pagesCache != null;
