@@ -21,7 +21,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteSystemProperties;
@@ -78,7 +78,7 @@ public abstract class PagesList extends DataStructure {
             Math.max(8, Runtime.getRuntime().availableProcessors()));
 
     /** */
-    private static final boolean DISABLE_ONHEAP_CACHING =
+    private final boolean DISABLE_ONHEAP_CACHING =
         IgniteSystemProperties.getBoolean(IgniteSystemProperties.IGNITE_PAGES_LIST_DISABLE_ONHEAP_CACHING, false);
 
     /** PageId to mark that page is in onheap cached pages list, but not in page memory pages list. */
@@ -898,6 +898,12 @@ public abstract class PagesList extends DataStructure {
             AbstractDataPageIO dataIO = PageIO.getPageIO(dataAddr);
             dataIO.setFreeListPageId(dataAddr, CACHED_PAGE_ID);
 
+            // Actually, there is no real need for this WAL record, but it has relatively low cost and provides
+            // real-time consistency between page memory and WAL (without this record WAL is still consistent with
+            // page memory, but only at the time of checkpoint, which doesn't affect recovery guarantees).
+            if (needWalDeltaRecord(dataId, dataPage, null))
+                wal.log(new DataPageSetFreeListPageRecord(grpId, dataId, CACHED_PAGE_ID));
+
             return true;
         }
         else
@@ -1438,6 +1444,12 @@ public abstract class PagesList extends DataStructure {
 
             dataIO.setFreeListPageId(dataAddr, 0L);
 
+            // Actually, there is no real need for this WAL record, but it has relatively low cost and provides
+            // real-time consistency between page memory and WAL (without this record WAL is still consistent with
+            // page memory, but only at the time of checkpoint, which doesn't affect recovery guarantees).
+            if (needWalDeltaRecord(dataId, dataPage, null))
+                wal.log(new DataPageSetFreeListPageRecord(grpId, dataId, 0L));
+
             return true;
         }
 
@@ -1786,15 +1798,14 @@ public abstract class PagesList extends DataStructure {
         /** Stripes count. Must be power of 2. */
         private static final int STRIPES_COUNT = 8;
 
-        /** Atomic updater for nextStripeIdx field. */
-        private static final AtomicIntegerFieldUpdater<PagesCache> nextStripeUpdater = AtomicIntegerFieldUpdater
-            .newUpdater(PagesCache.class, "nextStripeIdx");
-
         /** Page lists. */
         private final GridLongList[] stripes = new GridLongList[STRIPES_COUNT];
 
         /** Access counter to provide round-robin stripes polling. */
-        private volatile int nextStripeIdx = 0;
+        private final AtomicInteger nextStripeIdx = new AtomicInteger();
+
+        /** Cache size. */
+        private final AtomicInteger size = new AtomicInteger();
 
         /**
          * Default constructor.
@@ -1826,12 +1837,18 @@ public abstract class PagesList extends DataStructure {
          * @return pageId.
          */
         public long poll() {
+            if (size.get() == 0)
+                return 0L;
+
             for (int i = 0; i < STRIPES_COUNT; i++) {
-                GridLongList stripe = stripes[nextStripeUpdater.getAndIncrement(this) & (STRIPES_COUNT - 1)];
+                GridLongList stripe = stripes[nextStripeIdx.getAndIncrement() & (STRIPES_COUNT - 1)];
 
                 synchronized (stripe) {
-                    if (!stripe.isEmpty())
+                    if (!stripe.isEmpty()) {
+                        size.decrementAndGet();
+
                         return stripe.remove();
+                    }
                 }
             }
 
@@ -1854,10 +1871,13 @@ public abstract class PagesList extends DataStructure {
             synchronized (stripe) {
                 if (stripe.size() >= MAX_SIZE / STRIPES_COUNT)
                     return false;
-                else
+                else {
                     stripe.add(pageId);
 
-                return true;
+                    size.incrementAndGet();
+
+                    return true;
+                }
             }
         }
     }
