@@ -1440,14 +1440,6 @@ public abstract class PagesList extends DataStructure {
 
             decrementBucketSize(bucket);
 
-            dataIO.setFreeListPageId(dataAddr, 0L);
-
-            // Actually, there is no real need for this WAL record, but it has relatively low cost and provides
-            // real-time consistency between page memory and WAL (without this record WAL is still consistent with
-            // page memory, but only at the time of checkpoint, which doesn't affect recovery guarantees).
-            if (needWalDeltaRecord(dataId, dataPage, null))
-                wal.log(new DataPageSetFreeListPageRecord(grpId, dataId, 0L));
-
             return true;
         }
 
