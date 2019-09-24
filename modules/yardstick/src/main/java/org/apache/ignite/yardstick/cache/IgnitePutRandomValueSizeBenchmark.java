@@ -19,19 +19,40 @@ package org.apache.ignite.yardstick.cache;
 
 import java.util.Map;
 import org.apache.ignite.IgniteCache;
+import org.yardstickframework.BenchmarkConfiguration;
 
 /**
  *
  */
 public class IgnitePutRandomValueSizeBenchmark extends IgniteCacheAbstractBenchmark<Integer, Object> {
+    /** Min value size. */
+    private static final int MIN_VAL_SIZE = 64;
+
+    /** Max value size. */
+    private static final int MAX_VAL_SIZE = 128;
+
+    /** Different values count. */
+    private static final int VALS_COUNT = MAX_VAL_SIZE-MIN_VAL_SIZE;
+
+    /** Values. */
+    byte[][] vals = new byte[VALS_COUNT][];
+
+    /** {@inheritDoc} */
+    @Override public void setUp(BenchmarkConfiguration cfg) throws Exception {
+        super.setUp(cfg);
+
+        for (int i = 0; i < VALS_COUNT; i++)
+            vals[i] = new byte[MIN_VAL_SIZE + i];
+    }
+
     /** {@inheritDoc} */
     @Override public boolean test(Map<Object, Object> ctx) throws Exception {
         IgniteCache<Integer, Object> cache = cacheForOperation();
 
         int key = nextRandom(args.range());
-        int size = 64 + nextRandom(64);
+        byte[] val = vals[nextRandom(VALS_COUNT)];
 
-        cache.put(key, new byte[size]);
+        cache.put(key, val);
 
         return true;
     }

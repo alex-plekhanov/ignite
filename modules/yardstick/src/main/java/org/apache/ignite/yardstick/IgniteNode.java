@@ -29,6 +29,7 @@ import java.util.TreeSet;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteSpring;
+import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
 import org.apache.ignite.configuration.BinaryConfiguration;
@@ -202,9 +203,14 @@ public class IgniteNode implements BenchmarkServer {
 
             pcCfg.setWalMode(WALMode.valueOf(args.walMode()));
 
+            pcCfg.setCheckpointFrequency(args.checkpointFrequency());
+
             c.setBinaryConfiguration(new BinaryConfiguration().setCompactFooter(false));
 
             c.setDataStorageConfiguration(pcCfg);
+
+            System.setProperty(IgniteSystemProperties.IGNITE_PAGES_LIST_DISABLE_ONHEAP_CACHING,
+                Boolean.toString(args.freeListCachingDisabled()));
         }
 
         // If we use TcpDiscoverySpi try to set addresses from SERVER_HOSTS property to
