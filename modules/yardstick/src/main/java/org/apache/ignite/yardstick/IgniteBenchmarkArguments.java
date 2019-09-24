@@ -255,6 +255,14 @@ public class IgniteBenchmarkArguments {
     private String walMode = "LOG_ONLY";
 
     /** */
+    @Parameter(names = {"-cpf", "--checkpointFrequency"}, description = "Checkpoint frequency")
+    private int cpFreq = DataStorageConfiguration.DFLT_CHECKPOINT_FREQ;
+
+    /** */
+    @Parameter(names = {"-fldc", "--freeListDisableCaching"}, description = "Disable onheap caching for free lists")
+    private boolean freeListCachingDisabled;
+
+    /** */
     @Parameter(names = {"-stcp", "--streamerCachesPrefix"}, description = "Cache name prefix for streamer benchmark")
     private String streamerCachesPrefix = "streamer";
 
@@ -310,6 +318,20 @@ public class IgniteBenchmarkArguments {
      */
     public String walMode() {
         return walMode;
+    }
+
+    /**
+     * @return Checkpoint frequency.
+     */
+    public int checkpointFrequency() {
+        return cpFreq;
+    }
+
+    /**
+     * @return Free list caching disabled flag.
+     */
+    public boolean freeListCachingDisabled() {
+        return freeListCachingDisabled;
     }
 
     /**
