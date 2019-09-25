@@ -21,7 +21,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteSystemProperties;
@@ -337,14 +337,18 @@ public abstract class PagesList extends DataStructure {
                 if (pagesCache == null)
                     continue;
 
-                long pageId;
+                GridLongList pages = pagesCache.flush();
 
-                while ((pageId = pagesCache.poll()) != 0L) {
-                    Boolean res = write(pageId, putBucket, bucket, null, statHolder);
+                if (pages != null) {
+                    for (int i = 0; i < pages.size(); i++) {
+                        long pageId = pages.get(i);
 
-                    if (res == null) {
-                        // Return page to onheap pages list if can't lock it.
-                        pagesCache.add(pageId);
+                        Boolean res = write(pageId, putBucket, bucket, null, statHolder);
+
+                        if (res == null) {
+                            // Return page to onheap pages list if can't lock it.
+                            pagesCache.add(pageId);
+                        }
                     }
                 }
             }
@@ -1783,26 +1787,37 @@ public abstract class PagesList extends DataStructure {
     @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
     public static class PagesCache {
         /** Pages cache max size. */
-        private static final int MAX_SIZE = 256;
+        private static final int MAX_SIZE = 128;
 
         /** Stripes count. Must be power of 2. */
-        private static final int STRIPES_COUNT = 8;
+        private static final int STRIPES_COUNT = 4;
+
+        /** Mutexes for each stripe. */
+        private final Object[] stripeLocks = new Object[STRIPES_COUNT];
 
         /** Page lists. */
         private final GridLongList[] stripes = new GridLongList[STRIPES_COUNT];
 
+        /** Atomic updater for nextStripeIdx field. */
+        private static final AtomicIntegerFieldUpdater<PagesCache> nextStripeUpdater = AtomicIntegerFieldUpdater
+            .newUpdater(PagesCache.class, "nextStripeIdx");
+
+        /** Atomic updater for size field. */
+        private static final AtomicIntegerFieldUpdater<PagesCache> sizeUpdater = AtomicIntegerFieldUpdater
+            .newUpdater(PagesCache.class, "size");
+
         /** Access counter to provide round-robin stripes polling. */
-        private final AtomicInteger nextStripeIdx = new AtomicInteger();
+        private volatile int nextStripeIdx;
 
         /** Cache size. */
-        private final AtomicInteger size = new AtomicInteger();
+        private volatile int size;
 
         /**
          * Default constructor.
          */
         public PagesCache() {
             for (int i = 0; i < STRIPES_COUNT; i++)
-                stripes[i] = new GridLongList(MAX_SIZE / STRIPES_COUNT);
+                stripeLocks[i] = new Object();
         }
 
         /**
@@ -1816,8 +1831,13 @@ public abstract class PagesList extends DataStructure {
 
             GridLongList stripe = stripes[stripeIdx];
 
-            synchronized (stripe) {
-                return stripe.removeValue(0, pageId) >= 0;
+            synchronized (stripeLocks[stripeIdx]) {
+                boolean rmvd = stripe != null && stripe.removeValue(0, pageId) >= 0;
+
+                if (rmvd)
+                    sizeUpdater.decrementAndGet(this);
+
+                return rmvd;
             }
         }
 
@@ -1827,15 +1847,17 @@ public abstract class PagesList extends DataStructure {
          * @return pageId.
          */
         public long poll() {
-            if (size.get() == 0)
+            if (size == 0)
                 return 0L;
 
             for (int i = 0; i < STRIPES_COUNT; i++) {
-                GridLongList stripe = stripes[nextStripeIdx.getAndIncrement() & (STRIPES_COUNT - 1)];
+                int stripeIdx = nextStripeUpdater.getAndIncrement(this) & (STRIPES_COUNT - 1);
 
-                synchronized (stripe) {
-                    if (!stripe.isEmpty()) {
-                        size.decrementAndGet();
+                synchronized (stripeLocks[stripeIdx]) {
+                    GridLongList stripe = stripes[stripeIdx];
+
+                    if (stripe != null && !stripe.isEmpty()) {
+                        sizeUpdater.decrementAndGet(this);
 
                         return stripe.remove();
                     }
@@ -1843,6 +1865,32 @@ public abstract class PagesList extends DataStructure {
             }
 
             return 0L;
+        }
+
+        /**
+         * Flush all stripes to one list and clear stripes to allow garbage collection.
+         */
+        public GridLongList flush() {
+            GridLongList res = null;
+
+            for (int i = 0; i < STRIPES_COUNT; i++) {
+                synchronized (stripeLocks[i]) {
+                    GridLongList stripe = stripes[i];
+
+                    if (stripe != null && !stripe.isEmpty()) {
+                        if (res == null)
+                            res = new GridLongList(size);
+
+                        sizeUpdater.addAndGet(this, -stripe.size());
+
+                        res.addAll(stripe);
+                    }
+
+                    stripes[i] = null;
+                }
+            }
+
+            return res;
         }
 
         /**
@@ -1854,17 +1902,23 @@ public abstract class PagesList extends DataStructure {
         public synchronized boolean add(long pageId) {
             assert pageId != 0L;
 
+            if (size >= MAX_SIZE)
+                return false;
+
             int stripeIdx = (int)pageId & (STRIPES_COUNT - 1);
 
-            GridLongList stripe = stripes[stripeIdx];
+            synchronized (stripeLocks[stripeIdx]) {
+                GridLongList stripe = stripes[stripeIdx];
 
-            synchronized (stripe) {
+                if (stripe == null)
+                    stripes[stripeIdx] = stripe = new GridLongList(MAX_SIZE / STRIPES_COUNT);
+
                 if (stripe.size() >= MAX_SIZE / STRIPES_COUNT)
                     return false;
                 else {
                     stripe.add(pageId);
 
-                    size.incrementAndGet();
+                    sizeUpdater.incrementAndGet(this);
 
                     return true;
                 }
