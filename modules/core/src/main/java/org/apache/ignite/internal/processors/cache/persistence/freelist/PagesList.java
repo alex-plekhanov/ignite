@@ -24,7 +24,9 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.IgniteSystemProperties;
+import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.managers.communication.GridIoPolicy;
 import org.apache.ignite.internal.metric.IoStatisticsHolder;
 import org.apache.ignite.internal.metric.IoStatisticsHolderNoOp;
@@ -105,6 +107,9 @@ public abstract class PagesList extends DataStructure {
     /** */
     private final PageHandler<Void, Boolean> putBucket = new PutBucket();
 
+    /** Logger. */
+    protected final IgniteLogger log;
+
     /**
      *
      */
@@ -151,9 +156,21 @@ public abstract class PagesList extends DataStructure {
             PageIO iox,
             Boolean walPlc,
             Void ignore,
-            int bucket,
-            IoStatisticsHolder statHolder) throws IgniteCheckedException {
-            put(null, pageId, page, pageAddr, bucket, statHolder);
+            int oldBucket,
+            IoStatisticsHolder statHolder
+        ) throws IgniteCheckedException {
+            // Recalculate bucket because page free space can be changed concurrently.
+            int freeSpace = ((AbstractDataPageIO)iox).getFreeSpace(pageAddr);
+
+            int newBucket = getBucketIndex(freeSpace);
+
+            if (newBucket != oldBucket && log.isDebugEnabled()) {
+                log.debug("Bucket changed when moving from heap to PageMemory [list=" + name + ", oldBucket=" + oldBucket +
+                    ", newBucket=" + newBucket + ", pageId=" + pageId + ']');
+            }
+
+            if (newBucket >= 0)
+                put(null, pageId, page, pageAddr, newBucket, statHolder);
 
             return TRUE;
         }
@@ -174,7 +191,8 @@ public abstract class PagesList extends DataStructure {
         int buckets,
         IgniteWriteAheadLogManager wal,
         long metaPageId,
-        PageLockListener lockLsnr
+        PageLockListener lockLsnr,
+        GridKernalContext ctx
     ) {
         super(cacheId, null, pageMem, wal, lockLsnr);
 
@@ -188,6 +206,8 @@ public abstract class PagesList extends DataStructure {
             bucketsSize[i] = new AtomicLong();
 
         onheapListCachingEnabled =  !pagesListCachingDisabledSysProp && (wal != null);
+
+        log = ctx.log(getClass());
     }
 
     /**
@@ -343,6 +363,11 @@ public abstract class PagesList extends DataStructure {
                     for (int i = 0; i < pages.size(); i++) {
                         long pageId = pages.get(i);
 
+                        if (log.isDebugEnabled()) {
+                            log.debug("Move page from heap to PageMemory [list=" + name + ", bucket=" + bucket +
+                                ", pageId=" + pageId + ']');
+                        }
+
                         Boolean res = write(pageId, putBucket, bucket, null, statHolder);
 
                         if (res == null) {
@@ -481,6 +506,13 @@ public abstract class PagesList extends DataStructure {
     }
 
     /**
+     * Gets bucket index by page freespace.
+     *
+     * @return Bucket index or -1 if page doesn't belong to any bucket.
+     */
+    protected abstract int getBucketIndex(int freeSpace);
+
+    /**
      * @param bucket Bucket index.
      * @return Bucket.
      */
@@ -572,6 +604,11 @@ public abstract class PagesList extends DataStructure {
         try {
             for (; ; ) {
                 Stripe[] tails = getBucket(bucket);
+
+                if (log.isDebugEnabled()) {
+                    log.debug("Update tail [list=" + name + ", bucket=" + bucket + ", oldTailId=" + oldTailId +
+                        ", newTailId=" + newTailId + ", tails=" + Arrays.toString(tails));
+                }
 
                 // Tail must exist to be updated.
                 assert !F.isEmpty(tails) : "Missing tails [bucket=" + bucket + ", tails=" + Arrays.toString(tails) +
@@ -756,6 +793,11 @@ public abstract class PagesList extends DataStructure {
         if (bag == null && onheapListCachingEnabled &&
             putDataPage(getBucketCache(bucket, true), dataId, dataPage, dataAddr, bucket)) {
             // Successfully put page to the onheap pages list cache.
+            if (log.isDebugEnabled()) {
+                log.debug("Put page to pages list cache [list=" + name + ", bucket=" + bucket +
+                    ", dataId=" + dataId + ']');
+            }
+
             return;
         }
 
@@ -816,6 +858,11 @@ public abstract class PagesList extends DataStructure {
                         putDataPage(tailId, tailPage, tailAddr, io, dataId, dataPage, dataAddr, bucket, statHolder);
 
                     if (ok) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("Put page to pages list [list=" + name + ", bucket=" + bucket +
+                                ", dataId=" + dataId + ", tailId=" + tailId + ']');
+                        }
+
                         stripe.empty = false;
 
                         return;
@@ -1229,6 +1276,11 @@ public abstract class PagesList extends DataStructure {
         if (pagesCache != null && (pageId = pagesCache.poll()) != 0L) {
             decrementBucketSize(bucket);
 
+            if (log.isDebugEnabled()) {
+                log.debug("Take page from pages list cache [list=" + name + ", bucket=" + bucket +
+                    ", pageId=" + pageId + ']');
+            }
+
             return pageId;
         }
 
@@ -1360,6 +1412,11 @@ public abstract class PagesList extends DataStructure {
                     reuseList.addForRecycle(new SingletonReuseBag(recycleId));
                 }
 
+                if (log.isDebugEnabled()) {
+                    log.debug("Take page from pages list [list=" + name + ", bucket=" + bucket +
+                        ", dataPageId=" + dataPageId + ", tailId=" + tailId + ']');
+                }
+
                 return dataPageId;
             }
             finally {
@@ -1437,14 +1494,29 @@ public abstract class PagesList extends DataStructure {
         if (pageId == 0L) { // Page cached in onheap list.
             PagesCache pagesCache = getBucketCache(bucket, false);
 
-            assert pagesCache != null;
+            // Pages cache can be null here if page was taken for put from free list concurrently.
+            if (pagesCache == null || !pagesCache.removePage(dataId)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Remove page from pages list cache failed [list=" + name + ", bucket=" + bucket +
+                        ", dataId=" + dataId + "]: " + ((pagesCache == null) ? "cache is null" : "page not found"));
+                }
 
-            if (!pagesCache.removePage(dataId))
                 return false;
+            }
 
             decrementBucketSize(bucket);
 
+            if (log.isDebugEnabled()) {
+                log.debug("Remove page from pages list cache [list=" + name + ", bucket=" + bucket +
+                    ", dataId=" + dataId + ']');
+            }
+
             return true;
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debug("Remove page from pages list [list=" + name + ", bucket=" + bucket + ", dataId=" + dataId +
+                ", pageId=" + pageId + ']');
         }
 
         final long page = acquirePage(pageId, statHolder);
@@ -1961,6 +2033,11 @@ public abstract class PagesList extends DataStructure {
         /** {@inheritDoc} */
         @Override public int hashCode() {
             return Objects.hash(tailId, empty);
+        }
+
+        /** {@inheritDoc} */
+        @Override public String toString() {
+            return Long.toString(tailId);
         }
     }
 }

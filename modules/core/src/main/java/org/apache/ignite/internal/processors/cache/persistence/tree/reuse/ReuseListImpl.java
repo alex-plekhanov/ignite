@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.cache.persistence.tree.reuse;
 
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.pagemem.PageMemory;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
 import org.apache.ignite.internal.processors.cache.persistence.freelist.PagesList;
@@ -55,7 +56,8 @@ public class ReuseListImpl extends PagesList implements ReuseList {
         IgniteWriteAheadLogManager wal,
         long metaPageId,
         boolean initNew,
-        PageLockListener lockLsnr
+        PageLockListener lockLsnr,
+        GridKernalContext ctx
     ) throws IgniteCheckedException {
         super(
             cacheId,
@@ -64,7 +66,8 @@ public class ReuseListImpl extends PagesList implements ReuseList {
             1,
             wal,
             metaPageId,
-            lockLsnr
+            lockLsnr,
+            ctx
         );
 
         reuseList = this;
@@ -97,6 +100,11 @@ public class ReuseListImpl extends PagesList implements ReuseList {
     /** {@inheritDoc} */
     @Override protected Stripe[] getBucket(int bucket) {
         return this.bucket;
+    }
+
+    /** {@inheritDoc} */
+    @Override protected int getBucketIndex(int freeSpace) {
+        return 0;
     }
 
     /** {@inheritDoc} */
