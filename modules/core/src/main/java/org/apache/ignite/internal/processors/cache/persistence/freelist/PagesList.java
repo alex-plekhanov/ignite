@@ -1859,7 +1859,7 @@ public abstract class PagesList extends DataStructure {
     @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
     public static class PagesCache {
         /** Pages cache max size. */
-        private static final int MAX_SIZE = 128;
+        private static final int MAX_SIZE = 64;
 
         /** Stripes count. Must be power of 2. */
         private static final int STRIPES_COUNT = 4;
