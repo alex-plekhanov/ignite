@@ -207,7 +207,7 @@ public abstract class PagesList extends DataStructure {
 
         onheapListCachingEnabled =  !pagesListCachingDisabledSysProp && (wal != null);
 
-        log = ctx.log(getClass());
+        log = ctx.log(PagesList.class);
     }
 
     /**
