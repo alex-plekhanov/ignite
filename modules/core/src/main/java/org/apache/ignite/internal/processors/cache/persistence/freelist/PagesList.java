@@ -159,6 +159,8 @@ public abstract class PagesList extends DataStructure {
             int oldBucket,
             IoStatisticsHolder statHolder
         ) throws IgniteCheckedException {
+            decrementBucketSize(oldBucket);
+
             // Recalculate bucket because page free space can be changed concurrently.
             int freeSpace = ((AbstractDataPageIO)iox).getFreeSpace(pageAddr);
 
@@ -205,7 +207,7 @@ public abstract class PagesList extends DataStructure {
         for (int i = 0; i < buckets; i++)
             bucketsSize[i] = new AtomicLong();
 
-        onheapListCachingEnabled =  !pagesListCachingDisabledSysProp && (wal != null);
+        onheapListCachingEnabled = isCachingApplicable();
 
         log = ctx.log(PagesList.class);
     }
@@ -312,6 +314,15 @@ public abstract class PagesList extends DataStructure {
     }
 
     /**
+     * @return {@code True} if onheap caching is applicable for this pages list. {@code False} if caching is disabled
+     * explicitly by system property or if page list belongs to in-memory data region (in this case onheap caching
+     * makes no sense).
+     */
+    private boolean isCachingApplicable() {
+        return !pagesListCachingDisabledSysProp && (wal != null);
+    }
+
+    /**
      * Save metadata without exclusive lock on it.
      *
      * @throws IgniteCheckedException If failed.
@@ -345,7 +356,7 @@ public abstract class PagesList extends DataStructure {
      * Flush onheap cached pages lists to page memory.
      */
     private void flushBucketsCache(IoStatisticsHolder statHolder) throws IgniteCheckedException {
-        if (pagesListCachingDisabledSysProp || wal == null)
+        if (!isCachingApplicable())
             return;
 
         onheapListCachingEnabled = false;
@@ -1492,6 +1503,8 @@ public abstract class PagesList extends DataStructure {
         final long pageId = dataIO.getFreeListPageId(dataAddr);
 
         if (pageId == 0L) { // Page cached in onheap list.
+            assert isCachingApplicable() : "pageId==0L, but caching is not applicable for this pages list: " + name;
+
             PagesCache pagesCache = getBucketCache(bucket, false);
 
             // Pages cache can be null here if page was taken for put from free list concurrently.
@@ -1901,9 +1914,9 @@ public abstract class PagesList extends DataStructure {
         public boolean removePage(long pageId) {
             int stripeIdx = (int)pageId & (STRIPES_COUNT - 1);
 
-            GridLongList stripe = stripes[stripeIdx];
-
             synchronized (stripeLocks[stripeIdx]) {
+                GridLongList stripe = stripes[stripeIdx];
+
                 boolean rmvd = stripe != null && stripe.removeValue(0, pageId) >= 0;
 
                 if (rmvd)
