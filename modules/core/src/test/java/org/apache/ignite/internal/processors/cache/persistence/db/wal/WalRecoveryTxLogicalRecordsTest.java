@@ -588,7 +588,6 @@ public class WalRecoveryTxLogicalRecordsTest extends GridCommonAbstractTest {
      * @throws Exception If failed.
      */
     @Test
-    //@WithSystemProperty(key = IgniteSystemProperties.IGNITE_PAGES_LIST_DISABLE_ONHEAP_CACHING, value = "true") // TODO remove
     public void testRecoveryNoPageLost1() throws Exception {
         recoveryNoPageLost(false);
     }
@@ -743,32 +742,6 @@ public class WalRecoveryTxLogicalRecordsTest extends GridCommonAbstractTest {
             store.sync();
 
             res.add(store.pages());
-
-            // TODO remove
-            if (p == 0 && cacheName.equals(CACHE2_NAME)) {
-                PageMemoryImpl pageMem = (PageMemoryImpl)cacheProc.cache(CACHE2_NAME).context().dataRegion().pageMemory();
-
-                for (int i = 0; i < store.pages(); i++) {
-                    long pageId = PageIdUtils.pageId(0, PageIdAllocator.FLAG_DATA, i);
-                    int grpId = CU.cacheId(CACHE2_NAME);
-                    long page = pageMem.acquirePage(grpId, pageId);
-
-                    try {
-                        long pageAddr = pageMem.readLock(grpId, pageId, page);
-
-                        try {
-                            PageIO pageIO = PageIO.getPageIO(pageAddr);
-                            log.info("PageIdx: " + i + ", pageIO=" + pageIO);
-                        }
-                        finally {
-                            pageMem.readUnlock(grpId, pageId, page);
-                        }
-                    }
-                    finally {
-                        pageMem.releasePage(grpId, pageId, page);
-                    }
-                }
-            }
         }
 
         PageStore store = storeMgr.getStore(CU.cacheId(cacheName), PageIdAllocator.INDEX_PARTITION);
