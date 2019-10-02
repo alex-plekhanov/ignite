@@ -2009,6 +2009,13 @@ public abstract class PagesList extends DataStructure {
                 }
             }
         }
+
+        /**
+         * Cache size.
+         */
+        public int size() {
+            return size;
+        }
     }
 
     /**

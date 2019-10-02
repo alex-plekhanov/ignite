@@ -1035,7 +1035,7 @@ public class WalRecoveryTxLogicalRecordsTest extends GridCommonAbstractTest {
     /**
      * @param ignite Node.
      * @param cacheName Cache name.
-     * @return Cache free lists data.
+     * @return Cache free lists data (partition number to map of buckets to tails and buckets size).
      */
     private Map<Integer, T2<Map<Integer, long[]>, int[]>> getFreeListData(Ignite ignite, String cacheName) throws IgniteCheckedException {
         GridCacheProcessor cacheProc = ((IgniteEx)ignite).context().cache();
