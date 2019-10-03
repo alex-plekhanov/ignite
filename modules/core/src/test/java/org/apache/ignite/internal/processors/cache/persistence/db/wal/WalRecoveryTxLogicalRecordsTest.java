@@ -727,10 +727,12 @@ public class WalRecoveryTxLogicalRecordsTest extends GridCommonAbstractTest {
             try {
                 GridDhtLocalPartition part = cacheProc.cache(cacheName).context().topology().localPartition(p);
 
-                AbstractFreeList freeList = (AbstractFreeList)part.dataStore().rowStore().freeList();
+                if (part.dataStore().rowStore() != null) {
+                    AbstractFreeList freeList = (AbstractFreeList)part.dataStore().rowStore().freeList();
 
-                // Flush free-list onheap cache to page memory.
-                freeList.saveMetadata(IoStatisticsHolderNoOp.INSTANCE);
+                    // Flush free-list onheap cache to page memory.
+                    freeList.saveMetadata(IoStatisticsHolderNoOp.INSTANCE);
+                }
             }
             finally {
                 cacheProc.context().database().checkpointReadUnlock();
