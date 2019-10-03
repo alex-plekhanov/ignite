@@ -33,9 +33,4 @@ public class IgniteWalFlushFsyncSelfTest extends IgniteWalFlushMultiNodeFailover
     @Override protected WALMode walMode() {
         return WALMode.FSYNC;
     }
-
-    /** {@inheritDoc} */
-    @Ignore("https://issues.apache.org/jira/browse/IGNITE-12254")
-    @Override public void testFailWhileStart() throws Exception {
-    }
 }
