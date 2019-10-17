@@ -74,6 +74,7 @@ import org.apache.ignite.internal.cluster.DetachedClusterNode;
 import org.apache.ignite.internal.managers.communication.GridIoPolicy;
 import org.apache.ignite.internal.managers.discovery.DiscoveryCustomMessage;
 import org.apache.ignite.internal.managers.discovery.IgniteDiscoverySpi;
+import org.apache.ignite.internal.managers.systemview.walker.PagesListViewWalker;
 import org.apache.ignite.internal.pagemem.store.IgnitePageStoreManager;
 import org.apache.ignite.internal.pagemem.wal.IgniteWriteAheadLogManager;
 import org.apache.ignite.internal.processors.GridProcessorAdapter;
@@ -101,9 +102,13 @@ import org.apache.ignite.internal.processors.cache.persistence.DataRegion;
 import org.apache.ignite.internal.processors.cache.persistence.DatabaseLifecycleListener;
 import org.apache.ignite.internal.processors.cache.persistence.DbCheckpointListener;
 import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager;
+import org.apache.ignite.internal.processors.cache.persistence.GridCacheOffheapManager;
 import org.apache.ignite.internal.processors.cache.persistence.IgniteCacheDatabaseSharedManager;
+import org.apache.ignite.internal.processors.cache.persistence.RowStore;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStoreManager;
 import org.apache.ignite.internal.processors.cache.persistence.freelist.FreeList;
+import org.apache.ignite.internal.processors.cache.persistence.freelist.PagesList;
+import org.apache.ignite.internal.processors.cache.persistence.freelist.PagesListView;
 import org.apache.ignite.internal.processors.cache.persistence.metastorage.MetaStorage;
 import org.apache.ignite.internal.processors.cache.persistence.metastorage.MetastorageLifecycleListener;
 import org.apache.ignite.internal.processors.cache.persistence.metastorage.ReadOnlyMetastorage;
@@ -594,6 +599,30 @@ public class GridCacheProcessor extends GridProcessorAdapter {
 
         ctx.state().cacheProcessorStarted();
         ctx.authentication().cacheProcessorStarted();
+
+        String CACHE_GRP_PAGE_LIST_VIEW = "CACHE_GROUP_PAGE_LISTS";
+        String CACHE_GRP_PAGE_LIST_VIEW_DESC = "Cache group page lists";
+
+        ctx.systemView().registerWalker(PagesListView.class, new PagesListViewWalker());
+
+        ctx.systemView().registerInnerCollectionView(
+            CACHE_GRP_PAGE_LIST_VIEW,
+            CACHE_GRP_PAGE_LIST_VIEW_DESC,
+            PagesListView.class,
+            () -> F.concat(F.iterator(cacheGrps.values().iterator(),
+                grp -> grp.offheap().cacheDataStores().iterator(), true)),
+            dataStore -> {
+                RowStore rowStore = dataStore.rowStore();
+
+                if (rowStore == null || !(dataStore instanceof GridCacheOffheapManager.GridCacheDataStore))
+                    return Collections.emptySet();
+
+                PagesList pagesList = (PagesList)rowStore.freeList();
+
+                return pagesList.bucketsView();
+            },
+            (dataStore, view) -> view
+        );
     }
 
 

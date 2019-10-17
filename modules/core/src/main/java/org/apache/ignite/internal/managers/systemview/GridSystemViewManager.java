@@ -138,7 +138,7 @@ public class GridSystemViewManager extends GridManagerAdapter<SystemViewExporter
      * @param <D> Collection data type.
      */
     public <C, R, D> void registerInnerCollectionView(String name, String desc, Class<R> rowCls,
-        Collection<C> container, Function<C, Collection<D>> dataExtractor, BiFunction<C, D, R> rowFunc) {
+        Iterable<C> container, Function<C, Collection<D>> dataExtractor, BiFunction<C, D, R> rowFunc) {
         registerView0(name, new SystemViewInnerCollectionsAdapter<>(name,
             desc,
             rowCls,
