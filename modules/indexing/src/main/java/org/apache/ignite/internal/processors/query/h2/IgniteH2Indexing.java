@@ -2064,13 +2064,6 @@ public class IgniteH2Indexing implements GridQueryIndexing {
 
         this.ctx = ctx;
 
-        ctx.systemView().registerWalker(SqlSchemaView.class, new SqlSchemaViewWalker());
-        ctx.systemView().registerWalker(SqlTableView.class, new SqlTableViewWalker());
-        ctx.systemView().registerWalker(SqlViewView.class, new SqlViewViewWalker());
-        ctx.systemView().registerWalker(SqlIndexView.class, new SqlIndexViewWalker());
-        ctx.systemView().registerWalker(SqlTableColumnView.class, new SqlTableColumnViewWalker());
-        ctx.systemView().registerWalker(SqlViewColumnView.class, new SqlViewColumnViewWalker());
-
         partReservationMgr = new PartitionReservationManager(ctx);
 
         connMgr = new ConnectionManager(ctx);

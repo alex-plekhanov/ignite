@@ -603,12 +603,10 @@ public class GridCacheProcessor extends GridProcessorAdapter {
         String CACHE_GRP_PAGE_LIST_VIEW = "CACHE_GROUP_PAGE_LISTS";
         String CACHE_GRP_PAGE_LIST_VIEW_DESC = "Cache group page lists";
 
-        ctx.systemView().registerWalker(PagesListView.class, new PagesListViewWalker());
-
         ctx.systemView().registerInnerCollectionView(
             CACHE_GRP_PAGE_LIST_VIEW,
             CACHE_GRP_PAGE_LIST_VIEW_DESC,
-            PagesListView.class,
+            new PagesListViewWalker(),
             () -> F.concat(F.iterator(cacheGrps.values().iterator(),
                 grp -> grp.offheap().cacheDataStores().iterator(), true)),
             dataStore -> {

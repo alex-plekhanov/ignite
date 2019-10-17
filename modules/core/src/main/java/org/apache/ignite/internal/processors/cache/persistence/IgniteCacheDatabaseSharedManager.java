@@ -252,12 +252,10 @@ public class IgniteCacheDatabaseSharedManager extends GridCacheSharedManagerAdap
         String DATA_REGION_PAGE_LIST_VIEW = "DATA_REGION_PAGE_LISTS";
         String DATA_REGION_PAGE_LIST_VIEW_DESC = "Data region page lists";
 
-        cctx.kernalContext().systemView().registerWalker(PagesListView.class, new PagesListViewWalker());
-
         cctx.kernalContext().systemView().registerInnerCollectionView(
             DATA_REGION_PAGE_LIST_VIEW,
             DATA_REGION_PAGE_LIST_VIEW_DESC,
-            PagesListView.class,
+            new PagesListViewWalker(),
             freeListMap.values(),
             PagesList::bucketsView,
             (dataStore, view) -> view
