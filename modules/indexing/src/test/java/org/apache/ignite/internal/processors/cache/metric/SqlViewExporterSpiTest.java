@@ -34,6 +34,7 @@ import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteJdbcThinDriver;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.cache.CacheAtomicityMode;
+import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.cache.query.ContinuousQuery;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
@@ -573,6 +574,44 @@ public class SqlViewExporterSpiTest extends AbstractExporterSpiTest {
         assertTrue(cq.get(5).toString().startsWith(getClass().getName()));
         assertNull(cq.get(6));
         assertNull(cq.get(7));
+    }
+
+    /** */
+    @Test
+    public void testPagesList() throws Exception {
+        IgniteCache<Integer, byte[]> cache0 = ignite0.getOrCreateCache(new CacheConfiguration<Integer, byte[]>()
+            .setName("cacheFL0")
+            .setAffinity(new RendezvousAffinityFunction().setPartitions(1)));
+
+        IgniteCache<Integer, byte[]> cache1 = ignite0.getOrCreateCache(new CacheConfiguration<Integer, byte[]>()
+            .setName("cacheFL1")
+            .setAffinity(new RendezvousAffinityFunction().setPartitions(2)));
+
+        for (int i = 0; i < 3000; i++) {
+            cache0.put(i % 30, new byte[i]);
+            cache1.put(i, new byte[i]);
+        }
+
+        for (int i = 3000; i < 4000; i++) {
+            cache0.put(i, new byte[3000]);
+            cache1.put(i, new byte[3000]);
+        }
+
+        System.out.println(">>>>>>>>>>>>>>>>>");
+
+        doSleep(100_000);
+
+        List<List<?>> pagesList = execute(ignite0,
+            "SELECT " +
+                "  CACHE_GROUP_ID, " +
+                "  NAME, " +
+                "  BUCKET_NUMBER, " +
+                "  BUCKET_SIZE, " +
+                "  STRIPES_COUNT, " +
+                "  CACHED_PAGES_COUNT " +
+                "FROM SYS.CACHE_GROUP_PAGE_LISTS");
+
+        System.out.println(pagesList);
     }
 
     /**

@@ -108,7 +108,6 @@ import org.apache.ignite.internal.processors.cache.persistence.RowStore;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStoreManager;
 import org.apache.ignite.internal.processors.cache.persistence.freelist.FreeList;
 import org.apache.ignite.internal.processors.cache.persistence.freelist.PagesList;
-import org.apache.ignite.internal.processors.cache.persistence.freelist.PagesListView;
 import org.apache.ignite.internal.processors.cache.persistence.metastorage.MetaStorage;
 import org.apache.ignite.internal.processors.cache.persistence.metastorage.MetastorageLifecycleListener;
 import org.apache.ignite.internal.processors.cache.persistence.metastorage.ReadOnlyMetastorage;
@@ -600,7 +599,7 @@ public class GridCacheProcessor extends GridProcessorAdapter {
         ctx.state().cacheProcessorStarted();
         ctx.authentication().cacheProcessorStarted();
 
-        String CACHE_GRP_PAGE_LIST_VIEW = "CACHE_GROUP_PAGE_LISTS";
+        String CACHE_GRP_PAGE_LIST_VIEW = "cacheGroupPageLists";
         String CACHE_GRP_PAGE_LIST_VIEW_DESC = "Cache group page lists";
 
         ctx.systemView().registerInnerCollectionView(
