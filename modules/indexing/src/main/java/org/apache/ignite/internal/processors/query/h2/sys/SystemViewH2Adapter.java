@@ -149,7 +149,7 @@ public class SystemViewH2Adapter extends TableBase {
 
     /** {@inheritDoc} */
     @Override public long getRowCountApproximation() {
-        return view.getRowCount();
+        return view.getRowCountApproximation();
     }
 
     /** {@inheritDoc} */

@@ -348,7 +348,9 @@ public class JdbcThinMetadataSelfTest extends JdbcThinAbstractSelfTest {
                 "SYS.VIEWS",
                 "SYS.TABLE_COLUMNS",
                 "SYS.VIEW_COLUMNS",
-                "SYS.QUERY_CONTINUOUS"
+                "SYS.QUERY_CONTINUOUS",
+                "SYS.CACHE_GROUP_PAGE_LISTS",
+                "SYS.DATA_REGION_PAGE_LISTS"
             ))
         );
     }
@@ -831,7 +833,18 @@ public class JdbcThinMetadataSelfTest extends JdbcThinAbstractSelfTest {
                 "SYS.QUERY_CONTINUOUS.ROUTINE_ID.null.2147483647",
                 "SYS.QUERY_CONTINUOUS.REMOTE_FILTER.null.2147483647",
                 "SYS.QUERY_CONTINUOUS.CACHE_NAME.null.2147483647",
-                "SYS.QUERY_CONTINUOUS.LOCAL_LISTENER.null.2147483647"
+                "SYS.QUERY_CONTINUOUS.LOCAL_LISTENER.null.2147483647",
+                "SYS.CACHE_GROUP_PAGE_LISTS.CACHE_GROUP_ID.null.10",
+                "SYS.CACHE_GROUP_PAGE_LISTS.NAME.null.2147483647",
+                "SYS.CACHE_GROUP_PAGE_LISTS.BUCKET_NUMBER.null.10",
+                "SYS.CACHE_GROUP_PAGE_LISTS.BUCKET_SIZE.null.19",
+                "SYS.CACHE_GROUP_PAGE_LISTS.STRIPES_COUNT.null.10",
+                "SYS.CACHE_GROUP_PAGE_LISTS.CACHED_PAGES_COUNT.null.10",
+                "SYS.DATA_REGION_PAGE_LISTS.NAME.null.2147483647",
+                "SYS.DATA_REGION_PAGE_LISTS.BUCKET_NUMBER.null.10",
+                "SYS.DATA_REGION_PAGE_LISTS.BUCKET_SIZE.null.19",
+                "SYS.DATA_REGION_PAGE_LISTS.STRIPES_COUNT.null.10",
+                "SYS.DATA_REGION_PAGE_LISTS.CACHED_PAGES_COUNT.null.10"
             ));
 
             Assert.assertEquals(expectedCols, actualSystemCols);

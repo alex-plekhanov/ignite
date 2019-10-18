@@ -204,19 +204,17 @@ import static org.apache.ignite.internal.util.IgniteUtils.doInParallel;
  */
 @SuppressWarnings({"unchecked", "TypeMayBeWeakened", "deprecation"})
 public class GridCacheProcessor extends GridProcessorAdapter {
-    /** Invalid region configuration message. */
-    private static final String INVALID_REGION_CONFIGURATION_MESSAGE = "Failed to join node " +
-        "(Incompatible data region configuration [region=%s, locNodeId=%s, isPersistenceEnabled=%s, rmtNodeId=%s, isPersistenceEnabled=%s])";
-
-    /** Template of message of failed node join because encryption settings are different for the same cache. */
-    private static final String ENCRYPT_MISMATCH_MESSAGE = "Failed to join node to the cluster " +
-        "(encryption settings are different for cache '%s' : local=%s, remote=%s.)";
-
     /** */
     private static final String CACHE_NAME_AND_OPERATION_FORMAT = "[cacheName=%s, operation=%s]";
 
     /** */
     private static final String CACHE_NAMES_AND_OPERATION_FORMAT = "[cacheNames=%s, operation=%s]";
+
+    /** System view name. */
+    public static final String CACHE_GRP_PAGE_LIST_VIEW = "cacheGroupPageLists";
+
+    /** System view description. */
+    public static final String CACHE_GRP_PAGE_LIST_VIEW_DESC = "Cache group page lists";
 
     /** Enables start caches in parallel. */
     private final boolean IGNITE_ALLOW_START_CACHES_IN_PARALLEL =
@@ -598,9 +596,6 @@ public class GridCacheProcessor extends GridProcessorAdapter {
 
         ctx.state().cacheProcessorStarted();
         ctx.authentication().cacheProcessorStarted();
-
-        String CACHE_GRP_PAGE_LIST_VIEW = "cacheGroupPageLists";
-        String CACHE_GRP_PAGE_LIST_VIEW_DESC = "Cache group page lists";
 
         ctx.systemView().registerInnerCollectionView(
             CACHE_GRP_PAGE_LIST_VIEW,

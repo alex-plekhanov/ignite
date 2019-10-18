@@ -82,6 +82,8 @@ public class SqlViewExporterSpiTest extends AbstractExporterSpiTest {
     @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
         IgniteConfiguration cfg = super.getConfiguration(igniteInstanceName);
 
+        cfg.setConsistentId(igniteInstanceName);
+
         cfg.setDataStorageConfiguration(new DataStorageConfiguration()
             .setDefaultDataRegionConfiguration(
                 new DataRegionConfiguration()
@@ -597,10 +599,6 @@ public class SqlViewExporterSpiTest extends AbstractExporterSpiTest {
             cache1.put(i, new byte[3000]);
         }
 
-        System.out.println(">>>>>>>>>>>>>>>>>");
-
-        doSleep(100_000);
-
         List<List<?>> pagesList = execute(ignite0,
             "SELECT " +
                 "  CACHE_GROUP_ID, " +
@@ -611,7 +609,9 @@ public class SqlViewExporterSpiTest extends AbstractExporterSpiTest {
                 "  CACHED_PAGES_COUNT " +
                 "FROM SYS.CACHE_GROUP_PAGE_LISTS");
 
-        System.out.println(pagesList);
+        System.out.println(">>>>>>>>>>>>>>>>>");
+
+        doSleep(300_000);
     }
 
     /**

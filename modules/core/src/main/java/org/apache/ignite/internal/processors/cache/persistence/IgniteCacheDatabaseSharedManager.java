@@ -96,6 +96,12 @@ public class IgniteCacheDatabaseSharedManager extends GridCacheSharedManagerAdap
     /** DataRegionConfiguration name reserved for internal caches. */
     public static final String SYSTEM_DATA_REGION_NAME = "sysMemPlc";
 
+    /** System view name. */
+    public static final String DATA_REGION_PAGE_LIST_VIEW = "dataRegionPageLists";
+
+    /** System view description. */
+    public static final String DATA_REGION_PAGE_LIST_VIEW_DESC = "Data region page lists";
+
     /** Minimum size of memory chunk */
     private static final long MIN_PAGE_MEMORY_SIZE = 10L * 1024 * 1024;
 
@@ -247,9 +253,6 @@ public class IgniteCacheDatabaseSharedManager extends GridCacheSharedManagerAdap
      */
     protected void initPageMemoryDataStructures(DataStorageConfiguration dbCfg) throws IgniteCheckedException {
         freeListMap = U.newHashMap(dataRegionMap.size());
-
-        String DATA_REGION_PAGE_LIST_VIEW = "dataRegionPageLists";
-        String DATA_REGION_PAGE_LIST_VIEW_DESC = "Data region page lists";
 
         cctx.kernalContext().systemView().registerInnerCollectionView(
             DATA_REGION_PAGE_LIST_VIEW,

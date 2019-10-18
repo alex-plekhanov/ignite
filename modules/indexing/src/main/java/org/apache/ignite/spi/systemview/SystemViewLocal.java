@@ -162,7 +162,6 @@ public class SystemViewLocal<R> extends SqlAbstractLocalSystemView {
      * @param sysView System view.
      * @param <R> Row type.
      * @return SQL column array for {@code rowClass}.
-     * @see SystemView#rowClass()
      */
     private static <R> Column[] columnsList(SystemView<R> sysView) {
         Column[] cols = new Column[sysView.walker().count()];
@@ -212,6 +211,13 @@ public class SystemViewLocal<R> extends SqlAbstractLocalSystemView {
     /** {@inheritDoc} */
     @Override public long getRowCount() {
         return sysView.size();
+    }
+
+    /** {@inheritDoc} */
+    @Override public long getRowCountApproximation() {
+        // getRowCount() method is not really fast, for some system views it's required to iterate over elements to
+        // calculate size, so it's more safe to use constant here.
+        return DEFAULT_ROW_COUNT_APPROXIMATION;
     }
 
     /** {@inheritDoc} */
