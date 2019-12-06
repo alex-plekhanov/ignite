@@ -17,6 +17,8 @@
 
 package org.apache.ignite.internal.benchmarks.jmh.misc;
 
+import com.sun.management.ThreadMXBean;
+import java.lang.management.ManagementFactory;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -37,6 +39,7 @@ import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
+import org.openjdk.jol.info.GraphLayout;
 
 /**
  * Benchmarks {@link PartitionTxUpdateCounterImpl} class.
@@ -103,6 +106,22 @@ public class JmhPartitionUpdateCounterBenchmark {
      * @throws Exception Exception.
      */
     public static void main(String[] args) throws Exception {
+        JmhPartitionUpdateCounterBenchmark benchmark = new JmhPartitionUpdateCounterBenchmark();
+
+        benchmark.setup();
+
+        ThreadMXBean bean = (ThreadMXBean)ManagementFactory.getThreadMXBean();
+
+        long allocated0 = bean.getThreadAllocatedBytes(Thread.currentThread().getId());
+
+        for (int i = 0; i < 100_000; i++)
+            benchmark.updateWithGap();
+
+        long allocated1 = bean.getThreadAllocatedBytes(Thread.currentThread().getId());
+
+        System.out.println("Memory allocated: " + (allocated1 - allocated0));
+        System.out.println("Size: " + GraphLayout.parseInstance(benchmark.partCntr).totalSize());
+
         final Options options = new OptionsBuilder()
             .include(JmhPartitionUpdateCounterBenchmark.class.getSimpleName())
             .build();

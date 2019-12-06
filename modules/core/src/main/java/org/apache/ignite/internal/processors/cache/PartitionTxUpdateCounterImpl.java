@@ -56,6 +56,7 @@ import org.jetbrains.annotations.Nullable;
  *     logged to WAL using {@link RollbackRecord} for further recovery purposes.</li>
  * </ol>
  */
+@SuppressWarnings("FieldAccessedSynchronizedAndUnsynchronized")
 public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     /**
      * Max allowed missed updates. Overflow will trigger critical failure handler to prevent OOM.
@@ -66,7 +67,7 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     private static final byte VERSION = 1;
 
     /** Queue of applied out of order counter updates. */
-    private NavigableMap<Long, Item> queue = new TreeMap<>();
+    private NavigableMap<Long, Integer> queue = new TreeMap<>();
 
     /** LWM. */
     private final AtomicLong cntr = new AtomicLong();
@@ -104,7 +105,8 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
     /** */
     protected synchronized long highestAppliedCounter() {
-        return queue.isEmpty() ? cntr.get() : queue.lastEntry().getValue().absolute();
+        Map.Entry<Long, Integer> lastEntry = queue.lastEntry();
+        return lastEntry == null ? cntr.get() : lastEntry.getKey() + lastEntry.getValue();
     }
 
     /**
@@ -162,39 +164,39 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
             long next = start + delta;
 
             // Merge with next.
-            Item nextItem = queue.remove(next);
+            Integer nextDelta = queue.remove(next);
 
-            if (nextItem != null)
-                delta += nextItem.delta;
+            if (nextDelta != null)
+                delta += nextDelta;
 
             // Merge with previous, possibly modifying previous.
-            Map.Entry<Long, Item> prev = queue.lowerEntry(start);
+            Long startKey = start;
+            Map.Entry<Long, Integer> prev = queue.lowerEntry(startKey);
 
             if (prev != null) {
-                Item prevItem = prev.getValue();
-
-                if (prevItem.absolute() == start) {
-                    prevItem.delta += delta;
+                if (prev.getKey() + prev.getValue() == start) {
+                    queue.put(prev.getKey(), prev.getValue() + (int)delta);
+                    //prev.setValue(prev.getValue() + (int)delta);
 
                     return true;
                 }
-                else if (prevItem.within(next - 1))
+                else if (next <= prev.getKey() + prev.getValue())
                     return false;
             }
 
             if (queue.size() >= MAX_MISSED_UPDATES) // Should trigger failure handler.
                 throw new IgniteException("Too many gaps [cntr=" + this + ']');
 
-            return queue.putIfAbsent(start, new Item(start, delta)) == null;
+            return queue.putIfAbsent(start, (int)delta) == null;
         }
         else { // cur == start
             long next = start + delta;
 
             // There is only one next sequential item possible, all other items will be merged.
-            Item nextItem = queue.remove(next);
+            Integer nextDelta = queue.remove(next);
 
-            if (nextItem != null)
-                next += nextItem.delta;
+            if (nextDelta != null)
+                next += nextDelta;
 
             boolean res = cntr.compareAndSet(cur, next);
 
@@ -216,7 +218,7 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
     /** {@inheritDoc} */
     @Override public synchronized GridLongList finalizeUpdateCounters() {
-        Map.Entry<Long, Item> item = queue.pollFirstEntry();
+        Map.Entry<Long, Integer> item = queue.pollFirstEntry();
 
         GridLongList gaps = null;
 
@@ -225,13 +227,13 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
                 gaps = new GridLongList((queue.size() + 1) * 2);
 
             long start = cntr.get() + 1;
-            long end = item.getValue().start;
+            long end = item.getKey();
 
             gaps.add(start);
             gaps.add(end);
 
             // Close pending ranges.
-            cntr.set(item.getValue().absolute());
+            cntr.set(item.getKey() + item.getValue());
 
             item = queue.pollFirstEntry();
         }
@@ -278,9 +280,9 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
             dos.writeInt(size);
 
-            for (Item item : queue.values()) {
-                dos.writeLong(item.start);
-                dos.writeLong(item.delta);
+            for (Map.Entry<Long, Integer> item : queue.entrySet()) {
+                dos.writeLong(item.getKey());
+                dos.writeLong(item.getValue());
             }
 
             bos.close();
@@ -295,8 +297,8 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
     /**
      * @param raw Raw bytes.
      */
-    private @Nullable NavigableMap<Long, Item> fromBytes(@Nullable byte[] raw) {
-        NavigableMap<Long, Item> ret = new TreeMap<>();
+    private @Nullable NavigableMap<Long, Integer> fromBytes(@Nullable byte[] raw) {
+        NavigableMap<Long, Integer> ret = new TreeMap<>();
 
         if (raw == null)
             return ret;
@@ -311,9 +313,10 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
             int cnt = dis.readInt(); // Holes count.
 
             while (cnt-- > 0) {
-                Item item = new Item(dis.readLong(), dis.readLong());
+                long start = dis.readLong();
+                int delta = (int)dis.readLong();
 
-                ret.put(item.start, item);
+                ret.put(start, delta);
             }
 
             return ret;
@@ -330,69 +333,6 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
         reserveCntr.set(0);
 
         queue.clear();
-    }
-
-    /**
-     * Update counter task. Update from start value by delta value.
-     */
-    private static class Item {
-        /** */
-        private long start;
-
-        /** */
-        private long delta;
-
-        /**
-         * @param start Start value.
-         * @param delta Delta value.
-         */
-        private Item(long start, long delta) {
-            this.start = start;
-            this.delta = delta;
-        }
-
-        /** {@inheritDoc} */
-        @Override public String toString() {
-            return "Item [" +
-                "start=" + start +
-                ", delta=" + delta +
-                ']';
-        }
-
-        /** */
-        public long start() {
-            return start;
-        }
-
-        /** */
-        public long delta() {
-            return delta;
-        }
-
-        /** */
-        public long absolute() {
-            return start + delta;
-        }
-
-        /** */
-        public boolean within(long cntr) {
-            return cntr - start < delta;
-        }
-
-        /** {@inheritDoc} */
-        @Override public boolean equals(Object o) {
-            if (this == o)
-                return true;
-            if (o == null || getClass() != o.getClass())
-                return false;
-
-            Item item = (Item)o;
-
-            if (start != item.start)
-                return false;
-
-            return  (delta != item.delta);
-        }
     }
 
     /** {@inheritDoc} */
@@ -422,7 +362,7 @@ public class PartitionTxUpdateCounterImpl implements PartitionUpdateCounter {
 
     /** {@inheritDoc} */
     @Override public Iterator<long[]> iterator() {
-        return F.iterator(queue.values().iterator(), item -> new long[] {item.start, item.delta}, true);
+        return F.iterator(queue.entrySet().iterator(), item -> new long[] {item.getKey(), item.getValue()}, true);
     }
 
     /** {@inheritDoc} */
