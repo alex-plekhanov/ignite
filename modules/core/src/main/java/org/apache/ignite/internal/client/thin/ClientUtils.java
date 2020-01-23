@@ -53,10 +53,13 @@ import org.apache.ignite.internal.binary.BinaryMetadata;
 import org.apache.ignite.internal.binary.BinaryRawWriterEx;
 import org.apache.ignite.internal.binary.BinaryReaderExImpl;
 import org.apache.ignite.internal.binary.BinarySchema;
+import org.apache.ignite.internal.binary.BinaryUtils;
 import org.apache.ignite.internal.binary.BinaryWriterExImpl;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.processors.platform.cache.expiry.PlatformExpiryPolicy;
+import org.apache.ignite.internal.util.MutableSingletonList;
+import org.apache.ignite.internal.util.typedef.internal.U;
 
 import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_2_0;
 import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_6_0;
@@ -524,10 +527,62 @@ final class ClientUtils {
     <T> T readObject(BinaryInputStream in, boolean keepBinary) {
         Object val = marsh.unmarshal(in);
 
-        if (val instanceof BinaryObject && !keepBinary)
-            val = ((BinaryObject)val).deserialize();
+        return keepBinary ? (T)val : (T)unwrapBinary(val);
+    }
 
-        return (T)val;
+    /**
+     * Unwrap binary object.
+     */
+    private static Object unwrapBinary(Object obj) {
+        if (obj instanceof BinaryObject )
+            return ((BinaryObject)obj).deserialize();
+        else if (BinaryUtils.knownCollection(obj))
+            return unwrapCollection((Collection<Objects>)obj);
+        else if (BinaryUtils.knownMap(obj))
+            return unwrapMap((Map<Object, Object>)obj);
+        else if (obj instanceof Object[])
+            return unwrapArray((Object[])obj);
+        else
+            return obj;
+    }
+
+    /**
+     * Unwrap collection with binary objects.
+     */
+    private static Collection<Object> unwrapCollection(Collection<Objects> col) {
+        Collection<Object> col0 = BinaryUtils.newKnownCollection(col);
+
+        for (Object obj0 : col)
+            col0.add(unwrapBinary(obj0));
+
+        return (col0 instanceof MutableSingletonList) ? U.convertToSingletonList(col0) : col0;
+    }
+
+    /**
+     * Unwrap map with binary objects.
+     */
+    private static Map<Object, Object> unwrapMap(Map<Object, Object> map) {
+        Map<Object, Object> map0 = BinaryUtils.newMap(map);
+
+        for (Map.Entry<Object, Object> e : map.entrySet())
+            map0.put(unwrapBinary(e.getKey()), unwrapBinary(e.getValue()));
+
+        return map0;
+    }
+
+    /**
+     * Unwrap array with binary objects.
+     */
+    private static Object[] unwrapArray(Object[] arr) {
+        if (BinaryUtils.knownArray(arr))
+            return arr;
+
+        Object[] res = new Object[arr.length];
+
+        for (int i = 0; i < arr.length; i++)
+            res[i] = unwrapBinary(arr[i]);
+
+        return res;
     }
 
     /** A helper class to translate query fields. */
