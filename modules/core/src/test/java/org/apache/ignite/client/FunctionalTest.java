@@ -344,6 +344,7 @@ public class FunctionalTest {
             // Sets.
             checkDataType(cache, new HashSet<>(Arrays.asList(1, 2)));
             checkDataType(cache, new HashSet<>(Arrays.asList(Arrays.asList(person, person), person)));
+            checkDataType(cache, new HashSet<>(new ArrayList<>(Arrays.asList(Arrays.asList(person, person), person))));
             checkDataType(cache, Collections.singleton(new Person(1, "name")));
             checkDataType(cache, Collections.emptySet());
 
@@ -352,6 +353,34 @@ public class FunctionalTest {
             checkDataType(cache, new HashMap<>(F.asMap(1, person)));
             checkDataType(cache, Collections.emptyMap());
             checkDataType(cache, Collections.singletonMap(1, person));
+        }
+    }
+
+    @Test
+    public void testHash() throws Exception {
+        try (Ignite ignite = Ignition.start(Config.getServerConfiguration());
+             IgniteClient client = Ignition.startClient(getClientConfiguration())
+        ) {
+            //IgniteCache cache = ignite.getOrCreateCache(Config.DEFAULT_CACHE_NAME);
+            ClientCache cache = client.getOrCreateCache(Config.DEFAULT_CACHE_NAME);
+
+            Person person = new Person(1, "name");
+            Object obj = new HashSet<>(Arrays.asList(Arrays.asList(person), person));
+
+            cache.put(1, obj);
+            Object obj1Binary = cache.withKeepBinary().get(1);
+            Object obj1Restored = cache.get(1);
+            cache.put(2, obj1Restored);
+            Object obj2Binary = cache.withKeepBinary().get(2);
+            Object obj2Restored = cache.get(2);
+            assertTrue(cache.remove(1, obj1Restored));
+/*
+            Object key = new ArrayList<>(Arrays.asList(person, person));
+
+            cache.put(key, 1);
+
+            assertEquals(1, cache.get(key));
+*/
         }
     }
 
@@ -381,14 +410,16 @@ public class FunctionalTest {
             assertTrue(cache.replace(key, obj, obj));
 
             assertTrue(cache.remove(key, cachedObj));
+
+            // Check data type as key.
+/*
+            cache.put(obj, key);
+
+            assertEquals(key, cache.get(obj));
+
+            assertTrue(cache.remove(obj));
+*/
         }
-
-        // Check data type as key.
-        //cache.put(obj, key);
-
-        //assertEquals(key, cache.get(obj));
-
-        //assertTrue(cache.remove(obj));
     }
 
     /**

@@ -50,11 +50,14 @@ import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.client.ClientCacheConfiguration;
 import org.apache.ignite.internal.binary.BinaryFieldMetadata;
 import org.apache.ignite.internal.binary.BinaryMetadata;
+import org.apache.ignite.internal.binary.BinaryObjectImpl;
 import org.apache.ignite.internal.binary.BinaryRawWriterEx;
 import org.apache.ignite.internal.binary.BinaryReaderExImpl;
+import org.apache.ignite.internal.binary.BinaryReaderHandles;
 import org.apache.ignite.internal.binary.BinarySchema;
 import org.apache.ignite.internal.binary.BinaryUtils;
 import org.apache.ignite.internal.binary.BinaryWriterExImpl;
+import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.processors.platform.cache.expiry.PlatformExpiryPolicy;
@@ -525,23 +528,40 @@ final class ClientUtils {
 
     /** Read Ignite binary object from input stream. */
     <T> T readObject(BinaryInputStream in, boolean keepBinary) {
+        if (keepBinary)
+            return (T)marsh.unmarshal(in);
+        else {
+            BinaryReaderHandles hnds = new BinaryReaderHandles();
+
+            //return (T)unwrapBinary(marsh.deserialize(in, hnds), hnds);
+
+            return (T)marsh.deserialize(in, hnds);
+        }
+        //return keepBinary ? (T)marsh.unmarshal(in) : (T)marsh.deserialize(in);
+/*
         Object val = marsh.unmarshal(in);
 
-        return keepBinary ? (T)val : (T)unwrapBinary(val);
+        return keepBinary ? (T)val : (T)unwrapBinary(val, new BinaryReaderHandles());
+*/
     }
 
     /**
      * Unwrap binary object.
      */
-    private static Object unwrapBinary(Object obj) {
-        if (obj instanceof BinaryObject )
+    private Object unwrapBinary(Object obj, BinaryReaderHandles hnds) {
+        if (obj instanceof BinaryObjectImpl) {
+            BinaryObjectImpl obj0 = (BinaryObjectImpl)obj;
+
+            return marsh.deserialize(BinaryHeapInputStream.create(obj0.array(), obj0.start()), hnds);
+        }
+        else if (obj instanceof BinaryObject )
             return ((BinaryObject)obj).deserialize();
         else if (BinaryUtils.knownCollection(obj))
-            return unwrapCollection((Collection<Objects>)obj);
+            return unwrapCollection((Collection<Objects>)obj, hnds);
         else if (BinaryUtils.knownMap(obj))
-            return unwrapMap((Map<Object, Object>)obj);
+            return unwrapMap((Map<Object, Object>)obj, hnds);
         else if (obj instanceof Object[])
-            return unwrapArray((Object[])obj);
+            return unwrapArray((Object[])obj, hnds);
         else
             return obj;
     }
@@ -549,11 +569,11 @@ final class ClientUtils {
     /**
      * Unwrap collection with binary objects.
      */
-    private static Collection<Object> unwrapCollection(Collection<Objects> col) {
+    private Collection<Object> unwrapCollection(Collection<Objects> col, BinaryReaderHandles hnds) {
         Collection<Object> col0 = BinaryUtils.newKnownCollection(col);
 
         for (Object obj0 : col)
-            col0.add(unwrapBinary(obj0));
+            col0.add(unwrapBinary(obj0, hnds));
 
         return (col0 instanceof MutableSingletonList) ? U.convertToSingletonList(col0) : col0;
     }
@@ -561,11 +581,11 @@ final class ClientUtils {
     /**
      * Unwrap map with binary objects.
      */
-    private static Map<Object, Object> unwrapMap(Map<Object, Object> map) {
+    private Map<Object, Object> unwrapMap(Map<Object, Object> map, BinaryReaderHandles hnds) {
         Map<Object, Object> map0 = BinaryUtils.newMap(map);
 
         for (Map.Entry<Object, Object> e : map.entrySet())
-            map0.put(unwrapBinary(e.getKey()), unwrapBinary(e.getValue()));
+            map0.put(unwrapBinary(e.getKey(), hnds), unwrapBinary(e.getValue(), hnds));
 
         return map0;
     }
@@ -573,14 +593,14 @@ final class ClientUtils {
     /**
      * Unwrap array with binary objects.
      */
-    private static Object[] unwrapArray(Object[] arr) {
+    private Object[] unwrapArray(Object[] arr, BinaryReaderHandles hnds) {
         if (BinaryUtils.knownArray(arr))
             return arr;
 
         Object[] res = new Object[arr.length];
 
         for (int i = 0; i < arr.length; i++)
-            res[i] = unwrapBinary(arr[i]);
+            res[i] = unwrapBinary(arr[i], hnds);
 
         return res;
     }
