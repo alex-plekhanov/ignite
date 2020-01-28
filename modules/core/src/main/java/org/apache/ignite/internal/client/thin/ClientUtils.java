@@ -533,16 +533,8 @@ final class ClientUtils {
         else {
             BinaryReaderHandles hnds = new BinaryReaderHandles();
 
-            //return (T)unwrapBinary(marsh.deserialize(in, hnds), hnds);
-
-            return (T)marsh.deserialize(in, hnds);
+            return (T)unwrapBinary(marsh.deserialize(in, hnds), hnds);
         }
-        //return keepBinary ? (T)marsh.unmarshal(in) : (T)marsh.deserialize(in);
-/*
-        Object val = marsh.unmarshal(in);
-
-        return keepBinary ? (T)val : (T)unwrapBinary(val, new BinaryReaderHandles());
-*/
     }
 
     /**

@@ -36,7 +36,6 @@ import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.binary.BinaryReader;
-import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -1926,15 +1925,10 @@ public class BinaryReaderExImpl implements BinaryReader, BinaryRawReaderEx, Bina
             case BINARY_OBJ:
                 obj = BinaryUtils.doReadBinaryObject(in, ctx, false);
 
-                BinaryObjectImpl obj0 = (BinaryObjectImpl)obj;
+                ((BinaryObjectImpl)obj).context(ctx);
 
-                obj0.context(ctx);
-
-                if (!GridBinaryMarshaller.KEEP_BINARIES.get()) {
-                    obj = new BinaryReaderExImpl(ctx, BinaryHeapInputStream.create(obj0.array(), obj0.start()), ldr,
-                        hnds, true).deserialize();
-                    //obj = ((BinaryObject)obj).deserialize();
-                }
+                if (!GridBinaryMarshaller.KEEP_BINARIES.get())
+                    obj = ((BinaryObject)obj).deserialize();
 
                 break;
 

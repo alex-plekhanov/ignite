@@ -55,7 +55,7 @@ class ClientBinaryMarshaller {
     }
 
     /**
-     * Deserializes Ignite binary object from input stream.
+     * Unmarshal Ignite binary object from input stream.
      *
      * @return Binary object.
      */
@@ -64,19 +64,13 @@ class ClientBinaryMarshaller {
     }
 
     /**
-     * @param in In.
+     * Deserializes object from input stream.
+     *
+     * @param in Input stream.
+     * @param hnds Object handles.
      */
     public <T> T deserialize(BinaryInputStream in, BinaryReaderHandles hnds) {
-        boolean oldKeepBinaries = GridBinaryMarshaller.KEEP_BINARIES.get();
-
-        try {
-            GridBinaryMarshaller.KEEP_BINARIES.set(false);
-
-            return impl.deserialize(in, null, hnds);
-        }
-        finally {
-            GridBinaryMarshaller.KEEP_BINARIES.set(oldKeepBinaries);
-        }
+        return impl.deserialize(in, null, hnds);
     }
 
     /**
