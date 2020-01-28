@@ -365,7 +365,9 @@ public class FunctionalTest {
             ClientCache cache = client.getOrCreateCache(Config.DEFAULT_CACHE_NAME);
 
             Person person = new Person(1, "name");
-            Object obj = new HashSet<>(Arrays.asList(Arrays.asList(person), person));
+            //Object obj = new HashSet<>(Arrays.asList(Arrays.asList(person), person));
+            //Object obj = Collections.singletonList(person);
+            Object obj = new ArrayList<>(Arrays.asList(person, person));
 
             cache.put(1, obj);
             Object obj1Binary = cache.withKeepBinary().get(1);
@@ -374,13 +376,12 @@ public class FunctionalTest {
             Object obj2Binary = cache.withKeepBinary().get(2);
             Object obj2Restored = cache.get(2);
             assertTrue(cache.remove(1, obj1Restored));
-/*
+
             Object key = new ArrayList<>(Arrays.asList(person, person));
 
             cache.put(key, 1);
 
             assertEquals(1, cache.get(key));
-*/
         }
     }
 
