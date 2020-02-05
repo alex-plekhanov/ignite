@@ -357,22 +357,8 @@ public class FunctionalTest {
             checkDataType(thinCache, thickCache, Collections.singletonMap(1, person));
             checkDataType(thinCache, thickCache, F.asMap(1, person));
             checkDataType(thinCache, thickCache, new HashMap<>(F.asMap(1, person)));
-        }
-    }
-
-    @Test
-    public void testEnum() throws Exception {
-        try (Ignite ignite = Ignition.start(Config.getServerConfiguration());
-             IgniteClient client = Ignition.startClient(getClientConfiguration())
-        ) {
-/*
-            client.getOrCreateCache(Config.DEFAULT_CACHE_NAME).put(1, CacheAtomicityMode.ATOMIC);
-            ignite.getOrCreateCache(Config.DEFAULT_CACHE_NAME).get(1);
-*/
-
-            ignite.getOrCreateCache(Config.DEFAULT_CACHE_NAME).put(3, Collections.emptyList());
-            client.getOrCreateCache(Config.DEFAULT_CACHE_NAME).put(2, Collections.emptyList());
-            ignite.getOrCreateCache(Config.DEFAULT_CACHE_NAME).get(2);
+            checkDataType(thinCache, thickCache, new HashMap<>(F.asMap(new HashSet<>(Arrays.asList(1, 2)),
+                Arrays.asList(person, person))));
         }
     }
 
@@ -394,10 +380,10 @@ public class FunctionalTest {
 
         assertEqualsArraysAware(obj, cachedObj);
 
-        // TODO IGNITE-xxxxx Put object to thick cache to register binary type (workaround for system types registration)
+        // TODO IGNITE-12624 Put object to thick cache to register binary type (workaround for system types registration)
         thickCache.put(2, obj);
 
-        // TODO IGNITE-xxxxx Skip check for system types marshalled by optimized marshaller.
+        // TODO IGNITE-12624 Skip check for system types marshalled by optimized marshaller.
         if (!hasSystemOptimizedMarshallerType(obj))
             assertEqualsArraysAware(obj, thickCache.get(key));
 
@@ -408,11 +394,12 @@ public class FunctionalTest {
             // Server-side comparison with the restored object.
             assertTrue(thinCache.remove(key, cachedObj));
         }
-
     }
 
     /**
-     * Check recursively if the object has system types which should be marshalled by optimized marshaller.
+     * Check recursively if the object has system types which marshalled by optimized marshaller.
+     *
+     * Note: This is temporary method needed to workaround IGNITE-12624.
      */
     private boolean hasSystemOptimizedMarshallerType(Object obj) {
         if (obj.getClass().getName().startsWith("java.util.Collections") ||
