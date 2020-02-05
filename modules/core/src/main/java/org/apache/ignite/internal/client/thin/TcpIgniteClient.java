@@ -17,9 +17,14 @@
 
 package org.apache.ignite.internal.client.thin;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URL;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,6 +32,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.ignite.IgniteBinary;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.binary.BinaryObjectException;
 import org.apache.ignite.binary.BinaryType;
 import org.apache.ignite.cache.query.FieldsQueryCursor;
@@ -53,6 +59,9 @@ import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.marshaller.MarshallerContext;
 import org.apache.ignite.marshaller.jdk.JdkMarshaller;
+
+import static org.apache.ignite.marshaller.MarshallerUtils.CLS_NAMES_FILE;
+import static org.apache.ignite.marshaller.MarshallerUtils.JDK_CLS_NAMES_FILE;
 
 /**
  * Implementation of {@link IgniteClient} over TCP protocol.
@@ -335,6 +344,55 @@ public class TcpIgniteClient implements IgniteClient {
         /** Type ID -> class name map. */
         private Map<Integer, String> cache = new ConcurrentHashMap<>();
 
+        private final Collection<String> sysTypesSet = new HashSet<>();
+
+        public ClientMarshallerContext() {
+            try {
+                ClassLoader ldr = U.gridClassLoader();
+
+                Enumeration<URL> urls = ldr.getResources(CLS_NAMES_FILE);
+
+                boolean foundClsNames = false;
+
+                while (urls.hasMoreElements()) {
+                    processResource(urls.nextElement());
+
+                    foundClsNames = true;
+                }
+
+                if (!foundClsNames)
+                    throw new IgniteException("Failed to load class names properties file packaged with ignite binaries " +
+                        "[file=" + CLS_NAMES_FILE + ", ldr=" + ldr + ']');
+
+                URL jdkClsNames = ldr.getResource(JDK_CLS_NAMES_FILE);
+
+                if (jdkClsNames == null)
+                    throw new IgniteException("Failed to load class names properties file packaged with ignite binaries " +
+                        "[file=" + JDK_CLS_NAMES_FILE + ", ldr=" + ldr + ']');
+
+                processResource(jdkClsNames);
+            }
+            catch (IOException e) {
+                throw new IllegalStateException("Failed to initialize marshaller context.", e);
+            }
+
+        }
+
+        private void processResource(URL url) throws IOException {
+            try (BufferedReader rdr = new BufferedReader(new InputStreamReader(url.openStream()))) {
+                String line;
+
+                while ((line = rdr.readLine()) != null) {
+                    if (line.isEmpty() || line.startsWith("#"))
+                        continue;
+
+                    String clsName = line.trim();
+
+                    sysTypesSet.add(clsName);
+                }
+            }
+        }
+
         /** {@inheritDoc} */
         @Override public boolean registerClassName(
             byte platformId,
@@ -432,6 +490,7 @@ public class TcpIgniteClient implements IgniteClient {
         /** {@inheritDoc} */
         @Override public boolean isSystemType(String typeName) {
             return false;
+            //return sysTypesSet.contains(typeName);
         }
 
         /** {@inheritDoc} */
