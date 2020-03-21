@@ -143,6 +143,9 @@ class TcpClientChannel implements ClientChannel {
     /** Topology change listeners. */
     private final Collection<Consumer<ClientChannel>> topChangeLsnrs = new CopyOnWriteArrayList<>();
 
+    /** Notification listeners. */
+    private final Collection<NotificationListener> notificationLsnrs = new CopyOnWriteArrayList<>();
+
     /** Constructor. */
     TcpClientChannel(ClientChannelConfiguration cfg) throws ClientConnectionException, ClientAuthenticationException {
         validateConfiguration(cfg);
@@ -238,7 +241,7 @@ class TcpClientChannel implements ClientChannel {
                 if (rcvLock.tryLock()) {
                     try {
                         if (!pendingReq.isDone())
-                            processNextResponse();
+                            processNextMessage();
                     }
                     finally {
                         rcvLock.unlock();
@@ -273,24 +276,21 @@ class TcpClientChannel implements ClientChannel {
     }
 
     /**
-     * Process next response from the input stream and complete corresponding future.
+     * Process next message from the input stream and complete corresponding future.
      */
-    private void processNextResponse() throws ClientProtocolError, ClientConnectionException {
-        int resSize = dataInput.readInt();
+    private void processNextMessage() throws ClientProtocolError, ClientConnectionException {
+        int msgSize = dataInput.readInt();
 
-        if (resSize <= 0)
-            throw new ClientProtocolError(String.format("Invalid response size: %s", resSize));
+        if (msgSize <= 0)
+            throw new ClientProtocolError(String.format("Invalid message size: %s", msgSize));
 
-        long bytesReadOnStartReq = dataInput.totalBytesRead();
+        long bytesReadOnStartMsg = dataInput.totalBytesRead();
 
         long resId = dataInput.readLong();
 
-        ClientRequestFuture pendingReq = pendingReqs.get(resId);
-
-        if (pendingReq == null)
-            throw new ClientProtocolError(String.format("Unexpected response ID [%s]", resId));
-
         int status = 0;
+
+        ClientOperation notificationOp = null;
 
         BinaryInputStream resIn;
 
@@ -309,28 +309,52 @@ class TcpClientChannel implements ClientChannel {
 
             if ((flags & ClientFlag.ERROR) != 0)
                 status = dataInput.readInt();
+
+            if ((flags & ClientFlag.NOTIFICATION) != 0) {
+                int notificationCode = dataInput.readInt();
+
+                notificationOp = ClientOperation.fromCode(notificationCode);
+
+                if (notificationOp == null || !notificationOp.isNotification())
+                    throw new ClientProtocolError(String.format("Unexpected notification code [%d]", notificationCode));
+            }
         }
         else
             status = dataInput.readInt();
 
-        int hdrSize = (int)(dataInput.totalBytesRead() - bytesReadOnStartReq);
+        int hdrSize = (int)(dataInput.totalBytesRead() - bytesReadOnStartMsg);
+
+        byte[] res = null;
+        Throwable err = null;
 
         if (status == 0) {
-            if (resSize <= hdrSize)
-                pendingReq.onDone();
-            else
-                pendingReq.onDone(dataInput.read(resSize - hdrSize));
+            if (msgSize > hdrSize)
+                res = dataInput.read(msgSize - hdrSize);
         }
+        else if (status == ClientStatus.SECURITY_VIOLATION)
+            err = new ClientAuthorizationException();
         else {
-            resIn = new BinaryHeapInputStream(dataInput.read(resSize - hdrSize));
+            resIn = new BinaryHeapInputStream(dataInput.read(msgSize - hdrSize));
 
-            String err = new BinaryReaderExImpl(null, resIn, null, true).readString();
+            String errMsg = new BinaryReaderExImpl(null, resIn, null, true).readString();
 
-            switch (status) {
-                case ClientStatus.SECURITY_VIOLATION:
-                    pendingReq.onDone(new ClientAuthorizationException());
-                default:
-                    pendingReq.onDone(new ClientServerError(err, status, resId));
+            err = new ClientServerError(errMsg, status, resId);
+        }
+
+        if (notificationOp == null) { // Respone received.
+            ClientRequestFuture pendingReq = pendingReqs.get(resId);
+
+            if (pendingReq == null)
+                throw new ClientProtocolError(String.format("Unexpected response ID [%s]", resId));
+
+            pendingReq.onDone(res, err);
+        }
+        else { // Notification received.
+            for (NotificationListener lsnr : notificationLsnrs) {
+                if (err == null)
+                    lsnr.acceptNotification(this, notificationOp, resId, res);
+                else
+                    lsnr.acceptError(this, notificationOp, resId, err);
             }
         }
     }
@@ -353,6 +377,11 @@ class TcpClientChannel implements ClientChannel {
     /** {@inheritDoc} */
     @Override public void addTopologyChangeListener(Consumer<ClientChannel> lsnr) {
         topChangeLsnrs.add(lsnr);
+    }
+
+    /** {@inheritDoc} */
+    @Override public void addNotificationListener(NotificationListener lsnr) {
+        notificationLsnrs.add(lsnr);
     }
 
     /** Validate {@link ClientConfiguration}. */

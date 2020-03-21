@@ -34,6 +34,7 @@ import org.apache.ignite.cache.query.FieldsQueryCursor;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.ClientCacheConfiguration;
+import org.apache.ignite.client.ClientCompute;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.ClientTransactions;
 import org.apache.ignite.client.IgniteClient;
@@ -69,6 +70,9 @@ public class TcpIgniteClient implements IgniteClient {
     /** Transactions facade. */
     private final TcpClientTransactions transactions;
 
+    /** Compute facade. */
+    private final TcpClientCompute compute;
+
     /** Marshaller. */
     private final ClientBinaryMarshaller marsh;
 
@@ -102,6 +106,8 @@ public class TcpIgniteClient implements IgniteClient {
 
         transactions = new TcpClientTransactions(ch, marsh,
             new ClientTransactionConfiguration(cfg.getTransactionConfiguration()));
+
+        compute = new TcpClientCompute(ch, marsh);
     }
 
     /** {@inheritDoc} */
@@ -198,6 +204,11 @@ public class TcpIgniteClient implements IgniteClient {
     /** {@inheritDoc} */
     @Override public ClientTransactions transactions() {
         return transactions;
+    }
+
+    /** {@inheritDoc} */
+    @Override public ClientCompute compute() {
+        return compute;
     }
 
     /**

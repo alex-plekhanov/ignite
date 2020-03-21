@@ -66,11 +66,15 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
     /** Version 1.7.0. Added: User attributes support. */
     public static final ClientListenerProtocolVersion VER_1_7_0 = ClientListenerProtocolVersion.create(1, 7, 0);
 
+    /** Version 1.8.0. Added: Execute compute tasks. */
+    public static final ClientListenerProtocolVersion VER_1_8_0 = ClientListenerProtocolVersion.create(1, 8, 0);
+
     /** Default version. */
-    public static final ClientListenerProtocolVersion DEFAULT_VER = VER_1_7_0;
+    public static final ClientListenerProtocolVersion DEFAULT_VER = VER_1_8_0;
 
     /** Supported versions. */
     private static final Collection<ClientListenerProtocolVersion> SUPPORTED_VERS = Arrays.asList(
+        VER_1_8_0,
         VER_1_7_0,
         VER_1_6_0,
         VER_1_5_0,
@@ -98,6 +102,9 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
 
     /** Last reported affinity topology version. */
     private AtomicReference<AffinityTopologyVersion> lastAffinityTopologyVersion = new AtomicReference<>();
+
+    /** Client session. */
+    private GridNioSession ses;
 
     /** Cursor counter. */
     private final AtomicLong curCnt = new AtomicLong();
@@ -188,6 +195,8 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
         handler = new ClientRequestHandler(this, authCtx, ver);
 
         parser = new ClientMessageParser(this, ver);
+
+        this.ses = ses;
     }
 
     /** {@inheritDoc} */
@@ -309,5 +318,14 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
             txCtx.close();
 
         txs.clear();
+    }
+
+    /**
+     * Send notification to the client.
+     *
+     * @param notification Notification.
+     */
+    public void notifyClient(ClientNotification notification) {
+        ses.send(parser.encode(notification));
     }
 }

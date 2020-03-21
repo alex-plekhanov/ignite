@@ -95,4 +95,11 @@ public interface IgniteClient extends AutoCloseable {
      * @return Client transactions facade.
      */
     public ClientTransactions transactions();
+
+    /**
+     * Gets client compute facade.
+     *
+     * @return Client compute facade.
+     */
+    public ClientCompute compute();
 }
