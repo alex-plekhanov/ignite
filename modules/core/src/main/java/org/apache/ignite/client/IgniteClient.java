@@ -97,9 +97,26 @@ public interface IgniteClient extends AutoCloseable {
     public ClientTransactions transactions();
 
     /**
-     * Gets client compute facade.
+     * Gets compute facade over all cluster nodes started in server mode.
      *
-     * @return Client compute facade.
+     * @return Compute instance over all cluster nodes started in server mode.
      */
     public ClientCompute compute();
+
+    /**
+     * Gets compute facade over the specified cluster group. All operations
+     * on the returned {@link ClientCompute} instance will only include nodes from
+     * this cluster group.
+     *
+     * @param grp Cluster group.
+     * @return Compute instance over given cluster group.
+     */
+    public ClientCompute compute(ClientClusterGroup grp);
+
+    /**
+     * Gets client cluster facade.
+     *
+     * @return Client cluster facade.
+     */
+    public ClientCluster cluster();
 }

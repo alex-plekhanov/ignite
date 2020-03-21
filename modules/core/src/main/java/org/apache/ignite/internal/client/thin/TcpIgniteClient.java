@@ -34,6 +34,8 @@ import org.apache.ignite.cache.query.FieldsQueryCursor;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.ClientCacheConfiguration;
+import org.apache.ignite.client.ClientCluster;
+import org.apache.ignite.client.ClientClusterGroup;
 import org.apache.ignite.client.ClientCompute;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.ClientTransactions;
@@ -71,7 +73,10 @@ public class TcpIgniteClient implements IgniteClient {
     private final TcpClientTransactions transactions;
 
     /** Compute facade. */
-    private final TcpClientCompute compute;
+    private final ClientComputeImpl compute;
+
+    /** Cluster facade. */
+    private final ClientClusterImpl cluster;
 
     /** Marshaller. */
     private final ClientBinaryMarshaller marsh;
@@ -107,7 +112,9 @@ public class TcpIgniteClient implements IgniteClient {
         transactions = new TcpClientTransactions(ch, marsh,
             new ClientTransactionConfiguration(cfg.getTransactionConfiguration()));
 
-        compute = new TcpClientCompute(ch, marsh);
+        compute = new ClientComputeImpl(ch, marsh);
+
+        cluster = new ClientClusterImpl();
     }
 
     /** {@inheritDoc} */
@@ -209,6 +216,16 @@ public class TcpIgniteClient implements IgniteClient {
     /** {@inheritDoc} */
     @Override public ClientCompute compute() {
         return compute;
+    }
+
+    /** {@inheritDoc} */
+    @Override public ClientCompute compute(ClientClusterGroup grp) {
+        return compute.withClusterGroup((ClientClusterGroupImpl)grp);
+    }
+
+    /** {@inheritDoc} */
+    @Override public ClientCluster cluster() {
+        return cluster;
     }
 
     /**

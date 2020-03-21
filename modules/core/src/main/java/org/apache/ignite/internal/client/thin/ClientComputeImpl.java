@@ -17,7 +17,9 @@
 
 package org.apache.ignite.internal.client.thin;
 
+import java.util.Collection;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -36,7 +38,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Implementation of {@link ClientCompute}.
  */
-class TcpClientCompute implements ClientCompute, NotificationListener {
+class ClientComputeImpl implements ClientCompute, NotificationListener {
     /** No failover flag mask. */
     private static final byte NO_FAILOVER_FLAG_MASK = 0x01;
 
@@ -52,15 +54,6 @@ class TcpClientCompute implements ClientCompute, NotificationListener {
     /** Utils for serialization/deserialization. */
     private final ClientUtils utils;
 
-    /** Task timeout. */
-    private volatile long timeout = 0;
-
-    /** No failover flag. */
-    private volatile boolean noFailover;
-
-    /** No result cache flag. */
-    private volatile boolean noResultCache;
-
     /** Active tasks. */
     private final Map<ClientChannel, Map<Long, ClientComputeTask<Object>>> activeTasks = new ConcurrentHashMap<>();
 
@@ -68,7 +61,7 @@ class TcpClientCompute implements ClientCompute, NotificationListener {
     private final ReadWriteLock guard = new ReentrantReadWriteLock();
 
     /** Constructor. */
-    TcpClientCompute(ReliableChannel ch, ClientBinaryMarshaller marsh) {
+    ClientComputeImpl(ReliableChannel ch, ClientBinaryMarshaller marsh) {
         this.ch = ch;
         this.marsh = marsh;
 
@@ -95,52 +88,66 @@ class TcpClientCompute implements ClientCompute, NotificationListener {
 
     /** {@inheritDoc} */
     @Override public <T, R> R execute(String taskName, @Nullable T arg) throws ClientException {
-        IgniteFuture<R> fut = executeAsync0(taskName, arg);
-
-        return fut.get();
+        return (R)executeAsync(taskName, arg).get();
     }
 
     /** {@inheritDoc} */
     @Override public <T, R> IgniteFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException {
-        return executeAsync0(taskName, arg);
+        return executeAsync0(taskName, arg, null, (byte)0, 0L);
     }
 
     /** {@inheritDoc} */
     @Override public ClientCompute withTimeout(long timeout) {
-        this.timeout = timeout;
-
-        return this;
+        return timeout == 0L ? this : new ClientComputeModificator(this, null, (byte)0, timeout);
     }
 
     /** {@inheritDoc} */
     @Override public ClientCompute withNoFailover() {
-        noFailover = true;
-
-        return this;
+        return new ClientComputeModificator(this, null, NO_FAILOVER_FLAG_MASK, 0L);
     }
 
     /** {@inheritDoc} */
     @Override public ClientCompute withNoResultCache() {
-        noResultCache = true;
+        return new ClientComputeModificator(this, null, NO_RESULT_CACHE_FLAG_MASK, 0L);
+    }
 
-        return this;
+    /**
+     * Gets compute facade over the specified cluster group.
+     *
+     * @param grp Cluster group.
+     */
+    public ClientCompute withClusterGroup(ClientClusterGroupImpl grp) {
+        return new ClientComputeModificator(this, grp, (byte)0, 0L);
     }
 
     /**
      * @param taskName Task name.
      * @param arg Argument.
      */
-    private <T, R> IgniteFuture<R> executeAsync0(String taskName, @Nullable T arg) throws ClientException {
+    private <T, R> IgniteFuture<R> executeAsync0(
+        String taskName,
+        @Nullable T arg,
+        ClientClusterGroupImpl clusterGrp,
+        byte flags,
+        long timeout
+    ) throws ClientException {
         guard.readLock().lock();
 
         try {
+            Collection<UUID> nodeIds = clusterGrp == null ? null : clusterGrp.nodeIds();
+
             ClientComputeTask<Object> task = ch.service(ClientOperation.COMPUTE_TASK_EXECUTE,
                 ch -> {
                     try (BinaryRawWriterEx w = new BinaryWriterExImpl(marsh.context(), ch.out(), null, null)) {
-                        byte flags = (byte) ((noFailover ? NO_FAILOVER_FLAG_MASK : 0) |
-                            (noResultCache ? NO_RESULT_CACHE_FLAG_MASK : 0));
+                        if (F.isEmpty(nodeIds))
+                            w.writeInt(0); // Nodes count.
+                        else {
+                            w.writeInt(nodeIds.size());
 
-                        w.writeInt(0); // Nodes cnt.
+                            for (UUID nodeId : nodeIds)
+                                w.writeUuid(nodeId);
+                        }
+
                         w.writeByte(flags);
                         w.writeLong(timeout);
                         w.writeString(taskName);
@@ -148,10 +155,6 @@ class TcpClientCompute implements ClientCompute, NotificationListener {
                     }
                 },
                 ch -> new ClientComputeTask<>(ch.clientChannel(), ch.in().readLong()));
-
-            timeout = 0;
-            noFailover = false;
-            noResultCache = false;
 
             Map<Long, ClientComputeTask<Object>> chTasks = activeTasks.computeIfAbsent(task.ch, ch -> new ConcurrentHashMap<>());
 
@@ -199,6 +202,60 @@ class TcpClientCompute implements ClientCompute, NotificationListener {
             return chTasks.remove(taskId);
 
         return null;
+    }
+
+    /**
+     * TODO
+     */
+    private static class ClientComputeModificator implements ClientCompute {
+        /** Delegate. */
+        private final ClientComputeImpl delegate;
+
+        /** Cluster group. */
+        private final ClientClusterGroupImpl clusterGrp;
+
+        /** Task flags. */
+        private final byte flags;
+
+        /** Task timeout. */
+        private final long timeout;
+
+        /**
+         * Constructor.
+         */
+        private ClientComputeModificator(ClientComputeImpl delegate, ClientClusterGroupImpl grp, byte flags, long timeout) {
+            this.delegate = delegate;
+            clusterGrp = grp;
+            this.flags = flags;
+            this.timeout = timeout;
+        }
+
+        /** {@inheritDoc} */
+        @Override public <T, R> R execute(String taskName, @Nullable T arg) throws ClientException {
+            return (R)executeAsync(taskName, arg).get();
+        }
+
+        /** {@inheritDoc} */
+        @Override public <T, R> IgniteFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException {
+            return delegate.executeAsync0(taskName, arg, clusterGrp, flags, timeout);
+        }
+
+        /** {@inheritDoc} */
+        @Override public ClientCompute withTimeout(long timeout) {
+            return timeout == this.timeout ? this : new ClientComputeModificator(delegate, clusterGrp, flags, timeout);
+        }
+
+        /** {@inheritDoc} */
+        @Override public ClientCompute withNoFailover() {
+            return (flags & NO_FAILOVER_FLAG_MASK) != 0 ? this :
+                new ClientComputeModificator(delegate, clusterGrp, (byte) (flags | NO_FAILOVER_FLAG_MASK), timeout);
+        }
+
+        /** {@inheritDoc} */
+        @Override public ClientCompute withNoResultCache() {
+            return (flags & NO_RESULT_CACHE_FLAG_MASK) != 0 ? this :
+                new ClientComputeModificator(delegate, clusterGrp, (byte) (flags | NO_RESULT_CACHE_FLAG_MASK), timeout);
+        }
     }
 
     /**
