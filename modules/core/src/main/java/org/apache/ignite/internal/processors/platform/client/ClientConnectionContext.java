@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.platform.client;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,15 +67,15 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
     /** Version 1.7.0. Added: User attributes support. */
     public static final ClientListenerProtocolVersion VER_1_7_0 = ClientListenerProtocolVersion.create(1, 7, 0);
 
-    /** Version 1.8.0. Added: Execute compute tasks. */
-    public static final ClientListenerProtocolVersion VER_1_8_0 = ClientListenerProtocolVersion.create(1, 8, 0);
+    /** Version 2.0.0. Added: Client features, notifications. */
+    public static final ClientListenerProtocolVersion VER_2_0_0 = ClientListenerProtocolVersion.create(2, 0, 0);
 
     /** Default version. */
-    public static final ClientListenerProtocolVersion DEFAULT_VER = VER_1_8_0;
+    public static final ClientListenerProtocolVersion DEFAULT_VER = VER_2_0_0;
 
     /** Supported versions. */
     private static final Collection<ClientListenerProtocolVersion> SUPPORTED_VERS = Arrays.asList(
-        VER_1_8_0,
+        VER_2_0_0,
         VER_1_7_0,
         VER_1_6_0,
         VER_1_5_0,
@@ -105,6 +106,9 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
 
     /** Client session. */
     private GridNioSession ses;
+
+    /** Features, supported by the client. */
+    private BitSet supportedFeatures;
 
     /** Cursor counter. */
     private final AtomicLong curCnt = new AtomicLong();
@@ -171,6 +175,9 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
         String user = null;
         String pwd = null;
 
+        if (ver.compareTo(VER_2_0_0) >= 0)
+            supportedFeatures = BitSet.valueOf(reader.readByteArray());
+
         if (ver.compareTo(VER_1_7_0) >= 0)
             userAttrs = reader.readMap();
 
@@ -216,6 +223,16 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
         cleanupTxs();
 
         super.onDisconnected();
+    }
+
+    /**
+     * Check if feature is supported by the client.
+     *
+     * @param feature Feature to check.
+     * @return {@code True} if feature is supported by the client.
+     */
+    public boolean isFeatureSupported(ClientFeature feature) {
+        return supportedFeatures != null && supportedFeatures.get(feature.getFeatureId());
     }
 
     /**

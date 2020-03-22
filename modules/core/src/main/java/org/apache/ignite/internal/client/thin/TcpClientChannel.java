@@ -33,6 +33,7 @@ import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
@@ -78,6 +79,7 @@ import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.odbc.ClientListenerNioListener;
 import org.apache.ignite.internal.processors.odbc.ClientListenerRequest;
+import org.apache.ignite.internal.processors.platform.client.ClientFeature;
 import org.apache.ignite.internal.processors.platform.client.ClientFlag;
 import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
@@ -91,13 +93,15 @@ import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_4_0;
 import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_5_0;
 import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_6_0;
 import static org.apache.ignite.internal.client.thin.ProtocolVersion.V1_7_0;
+import static org.apache.ignite.internal.client.thin.ProtocolVersion.V2_0_0;
 
 /**
  * Implements {@link ClientChannel} over TCP.
  */
 class TcpClientChannel implements ClientChannel {
     /** Supported protocol versions. */
-    private static final Collection<ProtocolVersion> supportedVers = Arrays.asList(
+    private static final Collection<ProtocolVersion> SUPPORTED_VERS = Arrays.asList(
+        V2_0_0,
         V1_7_0,
         V1_6_0,
         V1_5_0,
@@ -107,11 +111,19 @@ class TcpClientChannel implements ClientChannel {
         V1_0_0
     );
 
+    /** Features supported by this client. */
+    private static final ClientFeature[] SUPPORTED_FEATURES = new ClientFeature[] {
+        ClientFeature.COMPUTE_TASK
+    };
+
     /** Timeout before next attempt to lock channel and process next response by current thread. */
     private static final long PAYLOAD_WAIT_TIMEOUT = 10L;
 
     /** Protocol version agreed with the server. */
     private ProtocolVersion ver = CURRENT_VER;
+
+    /** Features supported by the server. */
+    private BitSet srvFeatures;
 
     /** Server node ID. */
     private UUID srvNodeId;
@@ -375,6 +387,11 @@ class TcpClientChannel implements ClientChannel {
     }
 
     /** {@inheritDoc} */
+    @Override public boolean isFeatureSupported(ClientFeature feature) {
+        return srvFeatures != null && srvFeatures.get(feature.getFeatureId());
+    }
+
+    /** {@inheritDoc} */
     @Override public void addTopologyChangeListener(Consumer<ClientChannel> lsnr) {
         topChangeLsnrs.add(lsnr);
     }
@@ -452,6 +469,9 @@ class TcpClientChannel implements ClientChannel {
 
         writer.writeByte(ClientListenerNioListener.THIN_CLIENT);
 
+        if (ver.compareTo(V2_0_0) >= 0)
+            writer.writeByteArray(ClientFeature.marshallFeatures(SUPPORTED_FEATURES));
+
         if (ver.compareTo(V1_7_0) >= 0)
             writer.writeMap(userAttrs);
 
@@ -477,6 +497,9 @@ class TcpClientChannel implements ClientChannel {
 
         try (BinaryReaderExImpl r = new BinaryReaderExImpl(null, res, null, true)) {
             if (res.readBoolean()) { // Success flag.
+                if (ver.compareTo(V2_0_0) >= 0)
+                    srvFeatures = BitSet.valueOf(r.readByteArray());
+
                 if (ver.compareTo(V1_4_0) >= 0)
                     srvNodeId = r.readUuid(); // Server node UUID.
             }
@@ -494,7 +517,7 @@ class TcpClientChannel implements ClientChannel {
                     throw new ClientAuthenticationException(err);
                 else if (ver.equals(srvVer))
                     throw new ClientProtocolError(err);
-                else if (!supportedVers.contains(srvVer) ||
+                else if (!SUPPORTED_VERS.contains(srvVer) ||
                     (srvVer.compareTo(V1_1_0) < 0 && user != null && !user.isEmpty()))
                     // Server version is not supported by this client OR server version is less than 1.1.0 supporting
                     // authentication and authentication is required.

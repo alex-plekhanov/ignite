@@ -23,6 +23,7 @@ import java.util.function.Function;
 import org.apache.ignite.client.ClientAuthorizationException;
 import org.apache.ignite.client.ClientConnectionException;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.platform.client.ClientFeature;
 
 /**
  * Processing thin client requests and responses.
@@ -53,6 +54,11 @@ interface ClientChannel extends AutoCloseable {
      * @return Server topology version.
      */
     public AffinityTopologyVersion serverTopologyVersion();
+
+    /**
+     * @return {@code True} if feature is suppored by the server.
+     */
+    public boolean isFeatureSupported(ClientFeature feature);
 
     /**
      * Add topology change listener.
