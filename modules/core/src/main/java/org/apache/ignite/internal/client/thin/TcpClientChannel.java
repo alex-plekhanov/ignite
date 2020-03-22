@@ -39,6 +39,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -65,11 +66,9 @@ import org.apache.ignite.client.SslMode;
 import org.apache.ignite.client.SslProtocol;
 import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
-import org.apache.ignite.internal.IgniteFutureTimeoutCheckedException;
 import org.apache.ignite.internal.binary.BinaryCachingMetadataHandler;
 import org.apache.ignite.internal.binary.BinaryContext;
 import org.apache.ignite.internal.binary.BinaryPrimitives;
-import org.apache.ignite.internal.binary.BinaryRawWriterEx;
 import org.apache.ignite.internal.binary.BinaryReaderExImpl;
 import org.apache.ignite.internal.binary.BinaryWriterExImpl;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
@@ -83,6 +82,7 @@ import org.apache.ignite.internal.processors.platform.client.ClientFeature;
 import org.apache.ignite.internal.processors.platform.client.ClientFlag;
 import org.apache.ignite.internal.processors.platform.client.ClientStatus;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
+import org.apache.ignite.internal.util.typedef.internal.U;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.internal.client.thin.ProtocolVersion.CURRENT_VER;
@@ -116,9 +116,6 @@ class TcpClientChannel implements ClientChannel {
         ClientFeature.COMPUTE_TASK
     };
 
-    /** Timeout before next attempt to lock channel and process next response by current thread. */
-    private static final long PAYLOAD_WAIT_TIMEOUT = 10L;
-
     /** Protocol version agreed with the server. */
     private ProtocolVersion ver = CURRENT_VER;
 
@@ -146,9 +143,6 @@ class TcpClientChannel implements ClientChannel {
     /** Send lock. */
     private final Lock sndLock = new ReentrantLock();
 
-    /** Receive lock. */
-    private final Lock rcvLock = new ReentrantLock();
-
     /** Pending requests. */
     private final Map<Long, ClientRequestFuture> pendingReqs = new ConcurrentHashMap<>();
 
@@ -157,6 +151,12 @@ class TcpClientChannel implements ClientChannel {
 
     /** Notification listeners. */
     private final Collection<NotificationListener> notificationLsnrs = new CopyOnWriteArrayList<>();
+
+    /** Closed flag. */
+    private final AtomicBoolean closed = new AtomicBoolean();
+
+    /** Receiver thread (processes incoming messages). */
+    private Thread receiverThread;
 
     /** Constructor. */
     TcpClientChannel(ClientChannelConfiguration cfg) throws ClientConnectionException, ClientAuthenticationException {
@@ -177,12 +177,25 @@ class TcpClientChannel implements ClientChannel {
 
     /** {@inheritDoc} */
     @Override public void close() throws Exception {
-        dataInput.close();
-        out.close();
-        sock.close();
+        if (closed.compareAndSet(false, true)) {
+            U.closeQuiet(dataInput);
+            U.closeQuiet(out);
+            U.closeQuiet(sock);
 
-        for (ClientRequestFuture pendingReq : pendingReqs.values())
-            pendingReq.onDone(new ClientConnectionException("Channel is closed"));
+            sndLock.lock(); // Lock here to prevent creation of new pending requests.
+
+            try {
+                for (ClientRequestFuture pendingReq : pendingReqs.values())
+                    pendingReq.onDone(new ClientConnectionException("Channel is closed"));
+
+                if (receiverThread != null)
+                    receiverThread.interrupt();
+            }
+            finally {
+                sndLock.unlock();
+            }
+
+        }
     }
 
     /** {@inheritDoc} */
@@ -206,6 +219,11 @@ class TcpClientChannel implements ClientChannel {
         sndLock.lock();
 
         try (PayloadOutputChannel payloadCh = new PayloadOutputChannel(this)) {
+            if (closed.get())
+                throw new ClientConnectionException("Channel is closed");
+
+            initReceiverThread(); // Start the receiver thread with the first request.
+
             pendingReqs.put(id, new ClientRequestFuture());
 
             BinaryOutputStream req = payloadCh.out();
@@ -244,34 +262,13 @@ class TcpClientChannel implements ClientChannel {
 
         assert pendingReq != null : "Pending request future not found for request " + reqId;
 
-        // Each thread creates a future on request sent and returns a response when this future is completed.
-        // Only one thread at a time can have access to read from the channel. This thread reads the next available
-        // response and complete corresponding future. All other concurrent threads wait for their own futures with
-        // a timeout and periodically try to lock the channel to process the next response.
         try {
-            while (true) {
-                if (rcvLock.tryLock()) {
-                    try {
-                        if (!pendingReq.isDone())
-                            processNextMessage();
-                    }
-                    finally {
-                        rcvLock.unlock();
-                    }
-                }
+            byte[] payload = pendingReq.get();
 
-                try {
-                    byte[] payload = pendingReq.get(PAYLOAD_WAIT_TIMEOUT);
+            if (payload == null || payloadReader == null)
+                return null;
 
-                    if (payload == null || payloadReader == null)
-                        return null;
-
-                    return payloadReader.apply(new PayloadInputChannel(this, payload));
-                }
-                catch (IgniteFutureTimeoutCheckedException ignore) {
-                    // Next cycle if timed out.
-                }
-            }
+            return payloadReader.apply(new PayloadInputChannel(this, payload));
         }
         catch (IgniteCheckedException e) {
             if (e.getCause() instanceof ClientError)
@@ -284,6 +281,31 @@ class TcpClientChannel implements ClientChannel {
         }
         finally {
             pendingReqs.remove(reqId);
+        }
+    }
+
+    /**
+     * Init and start receiver thread if it wasn't started before.
+     *
+     * Note: Method should be called only under external synchronization.
+     */
+    private void initReceiverThread() {
+        if (receiverThread == null) {
+            Socket sock = this.sock;
+
+            String sockInfo = sock == null ? null : sock.getInetAddress().getHostName() + ":" + sock.getPort();
+
+            receiverThread = new Thread(() -> {
+                try {
+                    while (!closed.get())
+                        processNextMessage();
+                }
+                catch (Throwable e) {
+                    U.closeQuiet(this);
+                }
+            }, "thin-client-channel-" + sockInfo);
+
+            receiverThread.start();
         }
     }
 
@@ -436,17 +458,6 @@ class TcpClientChannel implements ClientChannel {
         return sock;
     }
 
-    /** Serialize String for thin client protocol. */
-    private static byte[] marshalString(String s) {
-        try (BinaryOutputStream out = new BinaryHeapOutputStream(s == null ? 1 : s.length() + 20);
-             BinaryRawWriterEx writer = new BinaryWriterExImpl(null, out, null, null)
-        ) {
-            writer.writeString(s);
-
-            return out.arrayCopy();
-        }
-    }
-
     /** Client handshake. */
     private void handshake(String user, String pwd, Map<String, String> userAttrs)
         throws ClientConnectionException, ClientAuthenticationException {
@@ -569,7 +580,7 @@ class TcpClientChannel implements ClientChannel {
      * Auxiliary class to read byte buffers and numeric values, counting total bytes read.
      * Numeric values are read in the little-endian byte order.
      */
-    private class ByteCountingDataInput {
+    private class ByteCountingDataInput implements AutoCloseable {
         /** Input stream. */
         private final InputStream in;
 
@@ -659,7 +670,7 @@ class TcpClientChannel implements ClientChannel {
         /**
          * Close input stream.
          */
-        public void close() throws IOException {
+        @Override public void close() throws IOException {
             in.close();
         }
     }
