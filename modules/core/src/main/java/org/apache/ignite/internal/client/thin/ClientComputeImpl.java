@@ -23,6 +23,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.client.ClientCompute;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.internal.IgniteInternalFuture;
@@ -280,7 +281,14 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
         private ClientComputeTask(ClientChannel ch, long taskId) {
             this.ch = ch;
             this.taskId = taskId;
-            fut = new GridFutureAdapter<>();
+
+            fut = new GridFutureAdapter<R>() {
+                @Override public boolean cancel() throws IgniteCheckedException {
+                    ch.service(ClientOperation.RESOURCE_CLOSE, req -> req.out().writeLong(taskId), null);
+
+                    return super.cancel();
+                }
+            };
         }
     }
 }
