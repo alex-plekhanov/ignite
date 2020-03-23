@@ -97,20 +97,20 @@ enum ClientOperation {
     }
 
     /** Enum mapping from code to values. */
-    private static final Map<Integer, ClientOperation> map;
+    private static final Map<Short, ClientOperation> map;
 
     static {
         map = new HashMap<>();
 
         for (ClientOperation op : values())
-            map.put(op.code, op);
+            map.put(op.code(), op);
     }
 
     /**
      * @param code Code to convert to enum.
      * @return Enum.
      */
-    @Nullable public static ClientOperation fromCode(int code) {
+    @Nullable public static ClientOperation fromCode(short code) {
         return map.get(code);
     }
 }

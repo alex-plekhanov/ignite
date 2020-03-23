@@ -33,6 +33,7 @@ import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.future.IgniteFutureImpl;
 import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.lang.IgniteFuture;
 import org.jetbrains.annotations.Nullable;
 
@@ -132,12 +133,11 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
         byte flags,
         long timeout
     ) throws ClientException {
-        guard.readLock().lock();
 
-        try {
-            Collection<UUID> nodeIds = clusterGrp == null ? null : clusterGrp.nodeIds();
+        Collection<UUID> nodeIds = clusterGrp == null ? null : clusterGrp.nodeIds();
 
-            ClientComputeTask<Object> task = ch.service(ClientOperation.COMPUTE_TASK_EXECUTE,
+        while (true) {
+            T2<ClientChannel, Long> taskParams = ch.service(ClientOperation.COMPUTE_TASK_EXECUTE,
                 ch -> {
                     try (BinaryRawWriterEx w = new BinaryWriterExImpl(marsh.context(), ch.out(), null, null)) {
                         if (F.isEmpty(nodeIds))
@@ -155,18 +155,16 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
                         utils.writeObject(ch.out(), arg);
                     }
                 },
-                ch -> new ClientComputeTask<>(ch.clientChannel(), ch.in().readLong()));
+                ch -> new T2<>(ch.clientChannel(), ch.in().readLong()));
 
-            Map<Long, ClientComputeTask<Object>> chTasks = activeTasks.computeIfAbsent(task.ch, ch -> new ConcurrentHashMap<>());
+            ClientComputeTask<Object> task = addTask(taskParams.get1(), taskParams.get2());
 
-            chTasks.put(task.taskId, task);
+            if (task == null) // Channel is closed concurrently, retry with another channel.
+                continue;
 
-            task.fut.listen(f -> removeTaskIfExists(task.ch, task.taskId));
+            task.fut.listen(f -> removeTask(task.ch, task.taskId));
 
             return new IgniteFutureImpl<>((IgniteInternalFuture<R>)task.fut);
-        }
-        finally {
-            guard.readLock().unlock();
         }
     }
 
@@ -175,9 +173,9 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
         if (op == ClientOperation.COMPUTE_TASK_FINISHED) {
             Object res = payload == null ? null : utils.readObject(new BinaryHeapInputStream(payload), false);
 
-            ClientComputeTask<Object> task = removeTaskIfExists(ch, rsrcId);
+            ClientComputeTask<Object> task = addTask(ch, rsrcId);
 
-            if (task != null)
+            if (task != null) // If channel is closed concurrently, task is already done with "channel closed" reason.
                 task.fut.onDone(res);
         }
     }
@@ -185,9 +183,9 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
     /** {@inheritDoc} */
     @Override public void acceptError(ClientChannel ch, ClientOperation op, long rsrcId, Throwable err) {
         if (op == ClientOperation.COMPUTE_TASK_FINISHED) {
-            ClientComputeTask<Object> task = removeTaskIfExists(ch, rsrcId);
+            ClientComputeTask<Object> task = addTask(ch, rsrcId);
 
-            if (task != null)
+            if (task != null) // If channel is closed concurrently, task is already done with "channel closed" reason.
                 task.fut.onDone(err);
         }
     }
@@ -195,14 +193,39 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
     /**
      * @param ch Client channel.
      * @param taskId Task id.
+     * @return Already registered task, new task if task wasn't registered before, or {@code null} if channel was
+     * closed concurrently.
      */
-    private ClientComputeTask<Object> removeTaskIfExists(ClientChannel ch, long taskId) {
+    private ClientComputeTask<Object> addTask(ClientChannel ch, long taskId) {
+        guard.readLock().lock();
+
+        try {
+            // If channel is closed we should only get task if it was registered before, but not add new one.
+            boolean closed = ch.closed();
+
+            Map<Long, ClientComputeTask<Object>> chTasks = closed ? activeTasks.get(ch) :
+                activeTasks.computeIfAbsent(ch, c -> new ConcurrentHashMap<>());
+
+            if (chTasks == null)
+                return null;
+
+            return closed ? chTasks.get(taskId) :
+                chTasks.computeIfAbsent(taskId, t -> new ClientComputeTask<>(ch, taskId));
+        }
+        finally {
+            guard.readLock().unlock();
+        }
+    }
+
+    /**
+     * @param ch Client channel.
+     * @param taskId Task id.
+     */
+    private void removeTask(ClientChannel ch, long taskId) {
         Map<Long, ClientComputeTask<Object>> chTasks = activeTasks.get(ch);
 
         if (!F.isEmpty(chTasks))
-            return chTasks.remove(taskId);
-
-        return null;
+            chTasks.remove(taskId);
     }
 
     /**

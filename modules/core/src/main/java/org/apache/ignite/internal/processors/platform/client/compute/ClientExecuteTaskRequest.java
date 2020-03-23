@@ -42,6 +42,7 @@ public class ClientExecuteTaskRequest extends ClientRequest {
     /** Task timeout. */
     private final long timeout;
 
+    /** Task flags. */
     private final byte flags;
 
     /**

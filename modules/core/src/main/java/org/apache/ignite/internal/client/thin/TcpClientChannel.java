@@ -176,7 +176,14 @@ class TcpClientChannel implements ClientChannel {
     }
 
     /** {@inheritDoc} */
-    @Override public void close() throws Exception {
+    @Override public void close() {
+        close(null);
+    }
+
+    /**
+     * Close the channel with cause.
+     */
+    private void close(Throwable cause) {
         if (closed.compareAndSet(false, true)) {
             U.closeQuiet(dataInput);
             U.closeQuiet(out);
@@ -186,7 +193,7 @@ class TcpClientChannel implements ClientChannel {
 
             try {
                 for (ClientRequestFuture pendingReq : pendingReqs.values())
-                    pendingReq.onDone(new ClientConnectionException("Channel is closed"));
+                    pendingReq.onDone(new ClientConnectionException("Channel is closed", cause));
 
                 if (receiverThread != null)
                     receiverThread.interrupt();
@@ -219,7 +226,7 @@ class TcpClientChannel implements ClientChannel {
         sndLock.lock();
 
         try (PayloadOutputChannel payloadCh = new PayloadOutputChannel(this)) {
-            if (closed.get())
+            if (closed())
                 throw new ClientConnectionException("Channel is closed");
 
             initReceiverThread(); // Start the receiver thread with the first request.
@@ -297,11 +304,11 @@ class TcpClientChannel implements ClientChannel {
 
             receiverThread = new Thread(() -> {
                 try {
-                    while (!closed.get())
+                    while (!closed())
                         processNextMessage();
                 }
                 catch (Throwable e) {
-                    U.closeQuiet(this);
+                    close(e);
                 }
             }, "thin-client-channel-" + sockInfo);
 
@@ -341,17 +348,17 @@ class TcpClientChannel implements ClientChannel {
                     lsnr.accept(this);
             }
 
-            if ((flags & ClientFlag.ERROR) != 0)
-                status = dataInput.readInt();
-
             if ((flags & ClientFlag.NOTIFICATION) != 0) {
-                int notificationCode = dataInput.readInt();
+                short notificationCode = dataInput.readShort();
 
                 notificationOp = ClientOperation.fromCode(notificationCode);
 
                 if (notificationOp == null || !notificationOp.isNotification())
                     throw new ClientProtocolError(String.format("Unexpected notification code [%d]", notificationCode));
             }
+
+            if ((flags & ClientFlag.ERROR) != 0)
+                status = dataInput.readInt();
         }
         else
             status = dataInput.readInt();
@@ -421,6 +428,11 @@ class TcpClientChannel implements ClientChannel {
     /** {@inheritDoc} */
     @Override public void addNotificationListener(NotificationListener lsnr) {
         notificationLsnrs.add(lsnr);
+    }
+
+    /** {@inheritDoc} */
+    @Override public boolean closed() {
+        return closed.get();
     }
 
     /** Validate {@link ClientConfiguration}. */
