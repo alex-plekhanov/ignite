@@ -23,21 +23,29 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.client.ClientCluster;
 import org.apache.ignite.client.ClientClusterGroup;
 import org.apache.ignite.client.ClientCompute;
 import org.apache.ignite.client.ClientException;
+import org.apache.ignite.client.ClientFeatureNotSupportedByServerException;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.binary.BinaryRawWriterEx;
 import org.apache.ignite.internal.binary.BinaryWriterExImpl;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
+import org.apache.ignite.internal.processors.platform.client.ClientFeature;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.future.IgniteFutureImpl;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.T2;
+import org.apache.ignite.internal.util.typedef.internal.CU;
 import org.apache.ignite.lang.IgniteFuture;
 import org.jetbrains.annotations.Nullable;
+
+import static org.apache.ignite.internal.client.thin.ClientOperation.COMPUTE_TASK_EXECUTE;
+import static org.apache.ignite.internal.client.thin.ClientOperation.RESOURCE_CLOSE;
 
 /**
  * Implementation of {@link ClientCompute}.
@@ -106,7 +114,19 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
 
     /** {@inheritDoc} */
     @Override public <T, R> IgniteFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException {
-        return executeAsync0(taskName, arg, null, (byte)0, 0L);
+        return executeAsync0(null, null, taskName, arg, null, (byte)0, 0L);
+    }
+
+    /** {@inheritDoc} */
+    @Override public <T, R> R affinityExecute(String cacheName, Object affKey, String taskName,
+        @Nullable T arg) throws ClientException {
+        return (R)affinityExecuteAsync(cacheName, affKey, taskName, arg).get();
+    }
+
+    /** {@inheritDoc} */
+    @Override public <T, R> IgniteFuture<R> affinityExecuteAsync(String cacheName, Object affKey, String taskName,
+        @Nullable T arg) throws ClientException {
+        return null;
     }
 
     /** {@inheritDoc} */
@@ -138,6 +158,8 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
      * @param arg Argument.
      */
     private <T, R> IgniteFuture<R> executeAsync0(
+        @Nullable String cacheName,
+        @Nullable Object affKey,
         String taskName,
         @Nullable T arg,
         ClientClusterGroupImpl clusterGrp,
@@ -150,25 +172,35 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
             throw new ClientException("Cluster group is empty.");
 
         while (true) {
-            T2<ClientChannel, Long> taskParams = ch.service(ClientOperation.COMPUTE_TASK_EXECUTE,
-                ch -> {
-                    try (BinaryRawWriterEx w = new BinaryWriterExImpl(marsh.context(), ch.out(), null, null)) {
-                        if (nodeIds == null) // Include all nodes.
-                            w.writeInt(0);
-                        else {
-                            w.writeInt(nodeIds.size());
+            Consumer<PayloadOutputChannel> payloadWriter = ch -> {
+                if (!ch.clientChannel().isFeatureSupported(ClientFeature.EXECUTE_TASK_BY_NAME)) {
+                    throw new ClientFeatureNotSupportedByServerException("Compute grid functionality for thin " +
+                        "client not supported by server node (" + ch.clientChannel().serverNodeId() + ')');
+                }
 
-                            for (UUID nodeId : nodeIds)
-                                w.writeUuid(nodeId);
-                        }
+                try (BinaryRawWriterEx w = new BinaryWriterExImpl(marsh.context(), ch.out(), null, null)) {
+                    if (nodeIds == null) // Include all nodes.
+                        w.writeInt(0);
+                    else {
+                        w.writeInt(nodeIds.size());
 
-                        w.writeByte(flags);
-                        w.writeLong(timeout);
-                        w.writeString(taskName);
-                        utils.writeObject(ch.out(), arg);
+                        for (UUID nodeId : nodeIds)
+                            w.writeUuid(nodeId);
                     }
-                },
-                ch -> new T2<>(ch.clientChannel(), ch.in().readLong()));
+
+                    w.writeByte(flags);
+                    w.writeLong(timeout);
+                    w.writeString(taskName);
+                    utils.writeObject(ch.out(), arg);
+                }
+            };
+
+            Function<PayloadInputChannel, T2<ClientChannel, Long>> payloadReader =
+                ch -> new T2<>(ch.clientChannel(), ch.in().readLong());
+
+            T2<ClientChannel, Long> taskParams = (cacheName != null && affKey != null) ?
+                ch.affinityService(CU.cacheId(cacheName), affKey, COMPUTE_TASK_EXECUTE, payloadWriter, payloadReader) :
+                ch.service(COMPUTE_TASK_EXECUTE, payloadWriter, payloadReader);
 
             ClientComputeTask<Object> task = addTask(taskParams.get1(), taskParams.get2());
 
@@ -280,7 +312,19 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
 
         /** {@inheritDoc} */
         @Override public <T, R> IgniteFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException {
-            return delegate.executeAsync0(taskName, arg, clusterGrp, flags, timeout);
+            return delegate.executeAsync0(null, null, taskName, arg, clusterGrp, flags, timeout);
+        }
+
+        /** {@inheritDoc} */
+        @Override public <T, R> R affinityExecute(String cacheName, Object affKey, String taskName,
+            @Nullable T arg) throws ClientException {
+            return (R)affinityExecuteAsync(cacheName, affKey, taskName, arg).get();
+        }
+
+        /** {@inheritDoc} */
+        @Override public <T, R> IgniteFuture<R> affinityExecuteAsync(String cacheName, Object affKey, String taskName,
+            @Nullable T arg) throws ClientException {
+            return delegate.executeAsync0(cacheName, affKey, taskName, arg, clusterGrp, flags, timeout);
         }
 
         /** {@inheritDoc} */
@@ -326,7 +370,7 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
 
             fut = new GridFutureAdapter<R>() {
                 @Override public boolean cancel() throws IgniteCheckedException {
-                    ch.service(ClientOperation.RESOURCE_CLOSE, req -> req.out().writeLong(taskId), null);
+                    ch.service(RESOURCE_CLOSE, req -> req.out().writeLong(taskId), null);
 
                     return super.cancel();
                 }

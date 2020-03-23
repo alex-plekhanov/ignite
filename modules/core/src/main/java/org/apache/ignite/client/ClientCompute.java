@@ -18,6 +18,7 @@
 package org.apache.ignite.client;
 
 import org.apache.ignite.compute.ComputeTask;
+import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.lang.IgniteFuture;
 import org.jetbrains.annotations.Nullable;
 
@@ -56,6 +57,38 @@ public interface ClientCompute {
      * @see ComputeTask for information about task execution.
      */
     public <T, R> IgniteFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException;
+
+    /**
+     * Executes task within the cluster group using cache affinity key for routing. This way the task will try to
+     * start executing on the node where this affinity key is cached. Affinity routing only works when
+     * partition awareness is enabled. If partition awareness is disabled task will be routed to the default channel.
+     *
+     * @param cacheName Name of the cache on which affinity should be calculated.
+     * @param affKey Affinity key.
+     * @param taskName Name of the task to execute.
+     * @param arg Optional argument of task execution, can be {@code null}.
+     * @return Task result.
+     * @throws ClientException If task failed.
+     * @see ClientConfiguration#setPartitionAwarenessEnabled
+     */
+    public <T, R> R affinityExecute(String cacheName, Object affKey, String taskName, @Nullable T arg)
+        throws ClientException;
+
+    /**
+     * Executes task asynchronously within the cluster group using cache affinity key for routing. This way the task
+     * will try to start executing on the node where this affinity key is cached. Affinity routing only works when
+     * partition awareness is enabled. If partition awareness is disabled task will be routed to the default channel.
+     *
+     * @param cacheName Name of the cache on which affinity should be calculated.
+     * @param affKey Affinity key.
+     * @param taskName Name of the task to execute.
+     * @param arg Optional argument of task execution, can be {@code null}.
+     * @return a Future representing pending completion of the task.
+     * @throws ClientException If task failed.
+     * @see ClientConfiguration#setPartitionAwarenessEnabled
+     */
+    public <T, R> IgniteFuture<R> affinityExecuteAsync(String cacheName, Object affKey, String taskName, @Nullable T arg)
+        throws ClientException;
 
     /**
      * Sets timeout for tasks executed by returned {@code ClientCompute} instance.

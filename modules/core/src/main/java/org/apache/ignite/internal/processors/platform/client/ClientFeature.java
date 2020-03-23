@@ -23,8 +23,8 @@ import java.util.BitSet;
  * Defines supported by thin client features.
  */
 public enum ClientFeature {
-    /** Compute task. */
-    COMPUTE_TASK(0);
+    /** Compute tasks (execute by task name). */
+    EXECUTE_TASK_BY_NAME(0);
 
     /**
      * Unique feature identifier.

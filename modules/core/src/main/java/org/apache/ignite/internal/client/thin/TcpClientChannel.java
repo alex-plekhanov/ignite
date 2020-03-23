@@ -113,7 +113,7 @@ class TcpClientChannel implements ClientChannel {
 
     /** Features supported by this client. */
     private static final ClientFeature[] SUPPORTED_FEATURES = new ClientFeature[] {
-        ClientFeature.COMPUTE_TASK
+        ClientFeature.EXECUTE_TASK_BY_NAME
     };
 
     /** Protocol version agreed with the server. */
