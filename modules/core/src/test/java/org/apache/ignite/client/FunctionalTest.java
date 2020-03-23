@@ -62,6 +62,9 @@ import org.apache.ignite.compute.ComputeJobResultPolicy;
 import org.apache.ignite.compute.ComputeTask;
 import org.apache.ignite.compute.ComputeTaskName;
 import org.apache.ignite.configuration.ClientConfiguration;
+import org.apache.ignite.configuration.ClientConnectorConfiguration;
+import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.configuration.ThinClientConfiguration;
 import org.apache.ignite.internal.client.thin.ClientServerError;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProcessor;
 import org.apache.ignite.internal.processors.platform.cache.expiry.PlatformExpiryPolicy;
@@ -1069,7 +1072,11 @@ public class FunctionalTest {
      */
     @Test
     public void testCompute() throws Exception {
-        try (Ignite ignite = Ignition.start(Config.getServerConfiguration());
+        IgniteConfiguration cfg = Config.getServerConfiguration().setClientConnectorConfiguration(
+            new ClientConnectorConfiguration().setThinClientConfiguration(
+                new ThinClientConfiguration().setComputeEnabled(true)));
+
+        try (Ignite ignite = Ignition.start(cfg);
              IgniteClient client = Ignition.startClient(getClientConfiguration())
         ) {
             ignite.compute().execute(TestComputeTask.class, null);
@@ -1092,7 +1099,6 @@ public class FunctionalTest {
                 null
             );
         }
-
     }
 
     /** */

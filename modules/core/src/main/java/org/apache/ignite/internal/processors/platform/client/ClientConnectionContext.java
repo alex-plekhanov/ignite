@@ -116,6 +116,9 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
     /** Active tx count limit. */
     private final int maxActiveTxCnt;
 
+    /** Compute enabled. */
+    private final boolean computeEnabled;
+
     /** Tx id. */
     private final AtomicInteger txIdSeq = new AtomicInteger();
 
@@ -138,6 +141,7 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
 
         this.maxCursors = maxCursors;
         maxActiveTxCnt = thinCfg.getMaxActiveTxPerConnection();
+        computeEnabled = thinCfg.isComputeEnabled();
     }
 
     /**
@@ -344,5 +348,12 @@ public class ClientConnectionContext extends ClientListenerAbstractConnectionCon
      */
     public void notifyClient(ClientNotification notification) {
         ses.send(parser.encode(notification));
+    }
+
+    /**
+     * Gets compute enabled flag.
+     */
+    public boolean isComputeEnabled() {
+        return computeEnabled;
     }
 }

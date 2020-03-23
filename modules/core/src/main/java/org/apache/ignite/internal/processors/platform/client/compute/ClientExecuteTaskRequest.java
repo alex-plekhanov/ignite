@@ -24,6 +24,8 @@ import org.apache.ignite.internal.processors.platform.client.ClientConnectionCon
 import org.apache.ignite.internal.processors.platform.client.ClientLongResponse;
 import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
+import org.apache.ignite.internal.processors.platform.client.ClientStatus;
+import org.apache.ignite.internal.processors.platform.client.IgniteClientException;
 import org.apache.ignite.internal.util.typedef.internal.U;
 
 /**
@@ -71,6 +73,12 @@ public class ClientExecuteTaskRequest extends ClientRequest {
 
     /** {@inheritDoc} */
     @Override public ClientResponse process(ClientConnectionContext ctx) {
+        if (!ctx.isComputeEnabled()) {
+            throw new IgniteClientException(ClientStatus.FUNCTIONALITY_DISABLED,
+                "Compute grid functionality is disabled for thin clients on server node. " +
+                "To enable it set up ThinClientConfiguration.ComputeEnabled property.");
+        }
+
         ClientComputeTask task = new ClientComputeTask(ctx, taskName, arg, nodeIds, flags, timeout);
 
         long taskId = ctx.resources().put(task);
