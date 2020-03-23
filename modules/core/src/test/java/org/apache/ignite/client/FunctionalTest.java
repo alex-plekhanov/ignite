@@ -1079,12 +1079,14 @@ public class FunctionalTest {
         try (Ignite ignite = Ignition.start(cfg);
              IgniteClient client = Ignition.startClient(getClientConfiguration())
         ) {
-            ignite.compute().execute(TestComputeTask.class, null);
+            //ignite.compute().execute(TestComputeTask.class, null);
+            ignite.compute().execute(TestComputeTask.class.getName(), null);
 
-            ignite.compute().localDeployTask(TestComputeTask.class, TestComputeTask.class.getClassLoader());
+            //ignite.compute().localDeployTask(TestComputeTask.class, TestComputeTask.class.getClassLoader());
 
-            // T2<UUID, List<UUID>> val = client.compute().execute("org.apache.ignite.client.FunctionalTest.TestComputeTask", null);
-            T2<UUID, List<UUID>> val = client.compute().execute("TestComputeTask", null);
+            T2<UUID, List<UUID>> val = client.compute().execute(TestComputeTask.class.getName(), null);
+            //T2<UUID, List<UUID>> val = client.compute().execute("org.apache.ignite.client.FunctionalTest$TestComputeTask", null);
+            //T2<UUID, List<UUID>> val = client.compute().execute("TestComputeTask", null);
 
             UUID locId = ignite.cluster().localNode().id();
 
