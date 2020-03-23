@@ -112,9 +112,9 @@ public class TcpIgniteClient implements IgniteClient {
         transactions = new TcpClientTransactions(ch, marsh,
             new ClientTransactionConfiguration(cfg.getTransactionConfiguration()));
 
-        compute = new ClientComputeImpl(ch, marsh);
-
         cluster = new ClientClusterImpl();
+
+        compute = new ClientComputeImpl(ch, marsh, cluster);
     }
 
     /** {@inheritDoc} */

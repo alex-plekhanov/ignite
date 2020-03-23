@@ -21,9 +21,7 @@ import java.util.Collection;
 import java.util.UUID;
 
 /**
- * Thin client cluster group facade.
- * <p>
- * TODO
+ * Thin client cluster group facade. Defines a cluster group which contains all or a subset of cluster nodes.
  */
 public interface ClientClusterGroup {
     /**

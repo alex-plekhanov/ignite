@@ -18,9 +18,8 @@
 package org.apache.ignite.client;
 
 /**
- * Thin client cluster facade.
- * <p>
- * TODO
+ * Thin client cluster facade.  Represents whole cluster (all available nodes).
  */
 public interface ClientCluster extends ClientClusterGroup {
+    // No-op.
 }

@@ -24,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.client.ClientCluster;
+import org.apache.ignite.client.ClientClusterGroup;
 import org.apache.ignite.client.ClientCompute;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.internal.IgniteInternalFuture;
@@ -56,6 +58,9 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
     /** Utils for serialization/deserialization. */
     private final ClientUtils utils;
 
+    /** ClientCluster instance. */
+    private final ClientCluster cluster;
+
     /** Active tasks. */
     private final Map<ClientChannel, Map<Long, ClientComputeTask<Object>>> activeTasks = new ConcurrentHashMap<>();
 
@@ -63,9 +68,10 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
     private final ReadWriteLock guard = new ReentrantReadWriteLock();
 
     /** Constructor. */
-    ClientComputeImpl(ReliableChannel ch, ClientBinaryMarshaller marsh) {
+    ClientComputeImpl(ReliableChannel ch, ClientBinaryMarshaller marsh, ClientCluster cluster) {
         this.ch = ch;
         this.marsh = marsh;
+        this.cluster = cluster;
 
         utils = new ClientUtils(marsh);
 
@@ -86,6 +92,11 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
                 guard.writeLock().unlock();
             }
         });
+    }
+
+    /** {@inheritDoc} */
+    @Override public ClientClusterGroup clusterGroup() {
+        return cluster;
     }
 
     /** {@inheritDoc} */
@@ -133,15 +144,17 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
         byte flags,
         long timeout
     ) throws ClientException {
+        Collection<UUID> nodeIds = clusterGrp == cluster ? null : clusterGrp.nodeIds();
 
-        Collection<UUID> nodeIds = clusterGrp == null ? null : clusterGrp.nodeIds();
+        if (nodeIds != null && nodeIds.isEmpty())
+            throw new ClientException("Cluster group is empty.");
 
         while (true) {
             T2<ClientChannel, Long> taskParams = ch.service(ClientOperation.COMPUTE_TASK_EXECUTE,
                 ch -> {
                     try (BinaryRawWriterEx w = new BinaryWriterExImpl(marsh.context(), ch.out(), null, null)) {
-                        if (F.isEmpty(nodeIds))
-                            w.writeInt(0); // Nodes count.
+                        if (nodeIds == null) // Include all nodes.
+                            w.writeInt(0);
                         else {
                             w.writeInt(nodeIds.size());
 
@@ -229,7 +242,7 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
     }
 
     /**
-     * TODO
+     * ClientCompute with modificators.
      */
     private static class ClientComputeModificator implements ClientCompute {
         /** Delegate. */
@@ -247,11 +260,17 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
         /**
          * Constructor.
          */
-        private ClientComputeModificator(ClientComputeImpl delegate, ClientClusterGroupImpl grp, byte flags, long timeout) {
+        private ClientComputeModificator(ClientComputeImpl delegate, ClientClusterGroupImpl clusterGrp, byte flags,
+            long timeout) {
             this.delegate = delegate;
-            clusterGrp = grp;
+            this.clusterGrp = clusterGrp;
             this.flags = flags;
             this.timeout = timeout;
+        }
+
+        /** {@inheritDoc} */
+        @Override public ClientClusterGroup clusterGroup() {
+            return clusterGrp;
         }
 
         /** {@inheritDoc} */
