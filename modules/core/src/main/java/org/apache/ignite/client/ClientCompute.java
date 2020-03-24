@@ -19,7 +19,6 @@ package org.apache.ignite.client;
 
 import org.apache.ignite.compute.ComputeTask;
 import org.apache.ignite.configuration.ClientConfiguration;
-import org.apache.ignite.lang.IgniteFuture;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -42,9 +41,10 @@ public interface ClientCompute {
      * @param arg Optional argument of task execution, can be {@code null}.
      * @return Task result.
      * @throws ClientException If task failed.
+     * @throws InterruptedException If the wait for task completion was interrupted.
      * @see ComputeTask for information about task execution.
      */
-    public <T, R> R execute(String taskName, @Nullable T arg) throws ClientException;
+    public <T, R> R execute(String taskName, @Nullable T arg) throws ClientException, InterruptedException;
 
     /**
      * Executes given task asynchronously within the cluster group. For step-by-step explanation of task execution
@@ -56,7 +56,7 @@ public interface ClientCompute {
      * @throws ClientException If task failed.
      * @see ComputeTask for information about task execution.
      */
-    public <T, R> IgniteFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException;
+    public <T, R> ClientFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException;
 
     /**
      * Executes task within the cluster group using cache affinity key for routing. This way the task will try to
@@ -69,10 +69,11 @@ public interface ClientCompute {
      * @param arg Optional argument of task execution, can be {@code null}.
      * @return Task result.
      * @throws ClientException If task failed.
+     * @throws InterruptedException If the wait for task completion was interrupted.
      * @see ClientConfiguration#setPartitionAwarenessEnabled
      */
     public <T, R> R affinityExecute(String cacheName, Object affKey, String taskName, @Nullable T arg)
-        throws ClientException;
+        throws ClientException, InterruptedException;
 
     /**
      * Executes task asynchronously within the cluster group using cache affinity key for routing. This way the task
@@ -87,7 +88,7 @@ public interface ClientCompute {
      * @throws ClientException If task failed.
      * @see ClientConfiguration#setPartitionAwarenessEnabled
      */
-    public <T, R> IgniteFuture<R> affinityExecuteAsync(String cacheName, Object affKey, String taskName, @Nullable T arg)
+    public <T, R> ClientFuture<R> affinityExecuteAsync(String cacheName, Object affKey, String taskName, @Nullable T arg)
         throws ClientException;
 
     /**

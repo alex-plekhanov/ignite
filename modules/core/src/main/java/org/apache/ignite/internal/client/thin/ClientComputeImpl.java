@@ -26,22 +26,20 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.client.ClientCluster;
 import org.apache.ignite.client.ClientClusterGroup;
 import org.apache.ignite.client.ClientCompute;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.ClientFeatureNotSupportedByServerException;
+import org.apache.ignite.client.ClientFuture;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.binary.BinaryRawWriterEx;
 import org.apache.ignite.internal.binary.BinaryWriterExImpl;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
 import org.apache.ignite.internal.processors.platform.client.ClientFeature;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
-import org.apache.ignite.internal.util.future.IgniteFutureImpl;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.internal.util.typedef.internal.CU;
-import org.apache.ignite.lang.IgniteFuture;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.internal.client.thin.ClientOperation.COMPUTE_TASK_EXECUTE;
@@ -67,7 +65,7 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
     private final ClientUtils utils;
 
     /** ClientCluster instance. */
-    private final ClientCluster cluster;
+    private final ClientClusterImpl cluster;
 
     /** Active tasks. */
     private final Map<ClientChannel, Map<Long, ClientComputeTask<Object>>> activeTasks = new ConcurrentHashMap<>();
@@ -76,7 +74,7 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
     private final ReadWriteLock guard = new ReentrantReadWriteLock();
 
     /** Constructor. */
-    ClientComputeImpl(ReliableChannel ch, ClientBinaryMarshaller marsh, ClientCluster cluster) {
+    ClientComputeImpl(ReliableChannel ch, ClientBinaryMarshaller marsh, ClientClusterImpl cluster) {
         this.ch = ch;
         this.marsh = marsh;
         this.cluster = cluster;
@@ -108,40 +106,40 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
     }
 
     /** {@inheritDoc} */
-    @Override public <T, R> R execute(String taskName, @Nullable T arg) throws ClientException {
+    @Override public <T, R> R execute(String taskName, @Nullable T arg) throws ClientException, InterruptedException {
         return (R)executeAsync(taskName, arg).get();
     }
 
     /** {@inheritDoc} */
-    @Override public <T, R> IgniteFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException {
-        return executeAsync0(null, null, taskName, arg, null, (byte)0, 0L);
+    @Override public <T, R> ClientFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException {
+        return executeAsync0(null, null, taskName, arg, cluster, (byte)0, 0L);
     }
 
     /** {@inheritDoc} */
     @Override public <T, R> R affinityExecute(String cacheName, Object affKey, String taskName,
-        @Nullable T arg) throws ClientException {
+        @Nullable T arg) throws ClientException, InterruptedException {
         return (R)affinityExecuteAsync(cacheName, affKey, taskName, arg).get();
     }
 
     /** {@inheritDoc} */
-    @Override public <T, R> IgniteFuture<R> affinityExecuteAsync(String cacheName, Object affKey, String taskName,
+    @Override public <T, R> ClientFuture<R> affinityExecuteAsync(String cacheName, Object affKey, String taskName,
         @Nullable T arg) throws ClientException {
-        return null;
+        return executeAsync0(cacheName, affKey, taskName, arg, cluster, (byte)0, 0L);
     }
 
     /** {@inheritDoc} */
     @Override public ClientCompute withTimeout(long timeout) {
-        return timeout == 0L ? this : new ClientComputeModificator(this, null, (byte)0, timeout);
+        return timeout == 0L ? this : new ClientComputeModificator(this, cluster, (byte)0, timeout);
     }
 
     /** {@inheritDoc} */
     @Override public ClientCompute withNoFailover() {
-        return new ClientComputeModificator(this, null, NO_FAILOVER_FLAG_MASK, 0L);
+        return new ClientComputeModificator(this, cluster, NO_FAILOVER_FLAG_MASK, 0L);
     }
 
     /** {@inheritDoc} */
     @Override public ClientCompute withNoResultCache() {
-        return new ClientComputeModificator(this, null, NO_RESULT_CACHE_FLAG_MASK, 0L);
+        return new ClientComputeModificator(this, cluster, NO_RESULT_CACHE_FLAG_MASK, 0L);
     }
 
     /**
@@ -157,7 +155,7 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
      * @param taskName Task name.
      * @param arg Argument.
      */
-    private <T, R> IgniteFuture<R> executeAsync0(
+    private <T, R> ClientFuture<R> executeAsync0(
         @Nullable String cacheName,
         @Nullable Object affKey,
         String taskName,
@@ -209,7 +207,7 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
 
             task.fut.listen(f -> removeTask(task.ch, task.taskId));
 
-            return new IgniteFutureImpl<>((IgniteInternalFuture<R>)task.fut);
+            return new ClientFutureImpl<>((IgniteInternalFuture<R>)task.fut);
         }
     }
 
@@ -306,23 +304,23 @@ class ClientComputeImpl implements ClientCompute, NotificationListener {
         }
 
         /** {@inheritDoc} */
-        @Override public <T, R> R execute(String taskName, @Nullable T arg) throws ClientException {
+        @Override public <T, R> R execute(String taskName, @Nullable T arg) throws ClientException, InterruptedException {
             return (R)executeAsync(taskName, arg).get();
         }
 
         /** {@inheritDoc} */
-        @Override public <T, R> IgniteFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException {
+        @Override public <T, R> ClientFuture<R> executeAsync(String taskName, @Nullable T arg) throws ClientException {
             return delegate.executeAsync0(null, null, taskName, arg, clusterGrp, flags, timeout);
         }
 
         /** {@inheritDoc} */
         @Override public <T, R> R affinityExecute(String cacheName, Object affKey, String taskName,
-            @Nullable T arg) throws ClientException {
+            @Nullable T arg) throws ClientException, InterruptedException {
             return (R)affinityExecuteAsync(cacheName, affKey, taskName, arg).get();
         }
 
         /** {@inheritDoc} */
-        @Override public <T, R> IgniteFuture<R> affinityExecuteAsync(String cacheName, Object affKey, String taskName,
+        @Override public <T, R> ClientFuture<R> affinityExecuteAsync(String cacheName, Object affKey, String taskName,
             @Nullable T arg) throws ClientException {
             return delegate.executeAsync0(cacheName, affKey, taskName, arg, clusterGrp, flags, timeout);
         }

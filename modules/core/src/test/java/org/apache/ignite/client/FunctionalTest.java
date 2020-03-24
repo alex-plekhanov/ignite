@@ -1093,11 +1093,10 @@ public class FunctionalTest {
             assertEquals(locId, val.get1());
             assertEquals(F.asList(locId), val.get2());
 
-            // TODO exception should be ClientException (now IgniteException)
             GridTestUtils.assertThrowsAnyCause(
                 null,
                 () -> client.compute().execute("NoSuchTask", null),
-                IgniteException.class,
+                ClientException.class,
                 null
             );
         }
