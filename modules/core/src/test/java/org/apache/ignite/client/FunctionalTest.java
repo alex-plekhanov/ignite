@@ -43,7 +43,6 @@ import javax.cache.expiry.Duration;
 import javax.cache.expiry.ModifiedExpiryPolicy;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
-import org.apache.ignite.IgniteException;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.cache.CacheAtomicityMode;
@@ -55,16 +54,7 @@ import org.apache.ignite.cache.CacheWriteSynchronizationMode;
 import org.apache.ignite.cache.PartitionLossPolicy;
 import org.apache.ignite.cache.QueryEntity;
 import org.apache.ignite.cache.QueryIndex;
-import org.apache.ignite.cluster.ClusterNode;
-import org.apache.ignite.compute.ComputeJob;
-import org.apache.ignite.compute.ComputeJobResult;
-import org.apache.ignite.compute.ComputeJobResultPolicy;
-import org.apache.ignite.compute.ComputeTask;
-import org.apache.ignite.compute.ComputeTaskName;
 import org.apache.ignite.configuration.ClientConfiguration;
-import org.apache.ignite.configuration.ClientConnectorConfiguration;
-import org.apache.ignite.configuration.IgniteConfiguration;
-import org.apache.ignite.configuration.ThinClientConfiguration;
 import org.apache.ignite.internal.client.thin.ClientServerError;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProcessor;
 import org.apache.ignite.internal.processors.platform.cache.expiry.PlatformExpiryPolicy;
@@ -73,10 +63,7 @@ import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.mxbean.ClientProcessorMXBean;
-import org.apache.ignite.resources.IgniteInstanceResource;
 import org.apache.ignite.testframework.GridTestUtils;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.Timeout;
@@ -1067,93 +1054,11 @@ public class FunctionalTest {
         }
     }
 
-    /**
-     *
-     */
-    @Test
-    public void testCompute() throws Exception {
-        IgniteConfiguration cfg = Config.getServerConfiguration().setClientConnectorConfiguration(
-            new ClientConnectorConfiguration().setThinClientConfiguration(
-                new ThinClientConfiguration().setComputeEnabled(true)));
-
-        try (Ignite ignite = Ignition.start(cfg);
-             IgniteClient client = Ignition.startClient(getClientConfiguration())
-        ) {
-            //ignite.compute().execute(TestComputeTask.class, null);
-            ignite.compute().execute(TestComputeTask.class.getName(), null);
-
-            //ignite.compute().localDeployTask(TestComputeTask.class, TestComputeTask.class.getClassLoader());
-
-            T2<UUID, List<UUID>> val = client.compute().execute(TestComputeTask.class.getName(), null);
-            //T2<UUID, List<UUID>> val = client.compute().execute("org.apache.ignite.client.FunctionalTest$TestComputeTask", null);
-            //T2<UUID, List<UUID>> val = client.compute().execute("TestComputeTask", null);
-
-            UUID locId = ignite.cluster().localNode().id();
-
-            assertEquals(locId, val.get1());
-            assertEquals(F.asList(locId), val.get2());
-
-            GridTestUtils.assertThrowsAnyCause(
-                null,
-                () -> client.compute().execute("NoSuchTask", null),
-                ClientException.class,
-                null
-            );
-        }
-    }
-
     /** */
     private static ClientConfiguration getClientConfiguration() {
         return new ClientConfiguration()
             .setAddresses(Config.SERVER)
             .setSendBufferSize(0)
             .setReceiveBufferSize(0);
-    }
-
-    /**
-     * Test compute job wich return node id where it was executed.
-     */
-    private static class TestComputeJob implements ComputeJob {
-        /** Ignite. */
-        @IgniteInstanceResource
-        Ignite ignite;
-
-        /** {@inheritDoc} */
-        @Override public void cancel() {
-            // No-op.
-        }
-
-        /** {@inheritDoc} */
-        @Override public Object execute() throws IgniteException {
-            return ignite.cluster().localNode().id();
-        }
-    }
-
-    /**
-     * Test compute task wich returns ... TODO
-     */
-    @ComputeTaskName("TestComputeTask")
-    private static class TestComputeTask implements ComputeTask<String, T2<UUID, List<UUID>>> {
-
-        /** Ignite. */
-        @IgniteInstanceResource
-        Ignite ignite;
-
-        /** {@inheritDoc} */
-        @Override public @NotNull Map<? extends ComputeJob, ClusterNode> map(List<ClusterNode> subgrid,
-            @Nullable String arg) throws IgniteException {
-            return subgrid.stream().collect(Collectors.toMap(node -> new TestComputeJob(), node -> node));
-        }
-
-        /** {@inheritDoc} */
-        @Override public ComputeJobResultPolicy result(ComputeJobResult res, List<ComputeJobResult> rcvd) throws IgniteException {
-            return ComputeJobResultPolicy.WAIT;
-        }
-
-        /** {@inheritDoc} */
-        @Nullable @Override public T2<UUID, List<UUID>> reduce(List<ComputeJobResult> results) throws IgniteException {
-            return new T2<>(ignite.cluster().localNode().id(),
-                results.stream().map(res -> (UUID)res.getData()).collect(Collectors.toList()));
-        }
     }
 }
