@@ -125,7 +125,8 @@ class ClientComputeTask implements ClientCloseableResource {
                 ctx.notifyClient(notification);
             }
             finally {
-                ctx.resources().release(taskId);
+                if (!closed.get()) // If task was explicitly closed before, resource is already released.
+                    ctx.resources().release(taskId);
             }
         });
     }

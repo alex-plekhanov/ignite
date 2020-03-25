@@ -99,6 +99,9 @@ import static org.apache.ignite.internal.client.thin.ProtocolVersion.V2_0_0;
  * Implements {@link ClientChannel} over TCP.
  */
 class TcpClientChannel implements ClientChannel {
+    /** Receiver thread prefix. */
+    static final String RECEIVER_THREAD_PREFIX = "thin-client-channel#";
+
     /** Supported protocol versions. */
     private static final Collection<ProtocolVersion> SUPPORTED_VERS = Arrays.asList(
         V2_0_0,
@@ -310,7 +313,7 @@ class TcpClientChannel implements ClientChannel {
                 catch (Throwable e) {
                     close(e);
                 }
-            }, "thin-client-channel-" + sockInfo);
+            }, RECEIVER_THREAD_PREFIX + sockInfo);
 
             receiverThread.start();
         }
