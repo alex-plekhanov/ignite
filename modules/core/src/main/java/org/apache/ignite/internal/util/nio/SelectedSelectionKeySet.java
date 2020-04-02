@@ -18,6 +18,8 @@ package org.apache.ignite.internal.util.nio;
 
 import java.nio.channels.SelectionKey;
 import java.util.AbstractSet;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 
 /**
@@ -127,5 +129,18 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
     /** {@inheritDoc} */
     @Override public Iterator<SelectionKey> iterator() {
         throw new UnsupportedOperationException();
+    }
+
+    /** {@inheritDoc} */
+    @Override public String toString() {
+        ArrayList<SelectionKey> l = new ArrayList<SelectionKey>();
+        for (SelectionKey key : isA ? keysA : keysB) {
+            if (key != null)
+                l.add(key);
+            else
+                break;
+        }
+
+        return l.toString();
     }
 }

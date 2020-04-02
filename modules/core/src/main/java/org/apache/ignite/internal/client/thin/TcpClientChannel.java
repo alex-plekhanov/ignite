@@ -22,9 +22,10 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -119,11 +120,7 @@ class TcpClientChannel implements ClientChannel {
     /** Server topology version. */
     private AffinityTopologyVersion srvTopVer;
 
-    /** Channel. */
-    private final Socket sock;
-
-    /** Output stream. */
-    private final OutputStream out;
+    private final SocketChannel ch;
 
     /** Data input. */
     private final ByteCountingDataInput dataInput;
@@ -148,10 +145,9 @@ class TcpClientChannel implements ClientChannel {
         validateConfiguration(cfg);
 
         try {
-            sock = createSocket(cfg);
+            ch = SocketChannel.open(cfg.getAddress());
 
-            out = sock.getOutputStream();
-            dataInput = new ByteCountingDataInput(sock.getInputStream());
+            dataInput = new ByteCountingDataInput(ch);
         }
         catch (IOException e) {
             throw handleIOError("addr=" + cfg.getAddress(), e);
@@ -163,8 +159,7 @@ class TcpClientChannel implements ClientChannel {
     /** {@inheritDoc} */
     @Override public void close() throws Exception {
         dataInput.close();
-        out.close();
-        sock.close();
+        ch.close();
 
         for (ClientRequestFuture pendingReq : pendingReqs.values())
             pendingReq.onDone(new ClientConnectionException("Channel is closed"));
@@ -489,12 +484,23 @@ class TcpClientChannel implements ClientChannel {
 
     /** Write bytes to the output stream. */
     private void write(byte[] bytes, int len) throws ClientConnectionException {
-        try {
-            out.write(bytes, 0, len);
-            out.flush();
-        }
-        catch (IOException e) {
-            throw handleIOError(e);
+        int bytesNum;
+        int writeBytesNum = 0;
+
+        ByteBuffer buf = ByteBuffer.wrap(bytes, 0, len);
+
+        while (writeBytesNum < len) {
+            try {
+                bytesNum = ch.write(buf);
+            }
+            catch (IOException e) {
+                throw handleIOError(e);
+            }
+
+            if (bytesNum < 0)
+                throw handleIOError(null);
+
+            writeBytesNum += bytesNum;
         }
     }
 
@@ -502,7 +508,7 @@ class TcpClientChannel implements ClientChannel {
      * @param ex IO exception (cause).
      */
     private ClientException handleIOError(@Nullable IOException ex) {
-        return handleIOError("sock=" + sock, ex);
+        return handleIOError(null, ex);
     }
 
     /**
@@ -518,8 +524,7 @@ class TcpClientChannel implements ClientChannel {
      * Numeric values are read in the little-endian byte order.
      */
     private class ByteCountingDataInput {
-        /** Input stream. */
-        private final InputStream in;
+        private final SocketChannel ch;
 
         /** Total bytes read from the input stream. */
         private long totalBytesRead;
@@ -528,10 +533,10 @@ class TcpClientChannel implements ClientChannel {
         private byte[] tmpBuf = new byte[Long.BYTES];
 
         /**
-         * @param in Input stream.
+         * @param ch Input stream.
          */
-        public ByteCountingDataInput(InputStream in) {
-            this.in = in;
+        public ByteCountingDataInput(SocketChannel ch) {
+            this.ch = ch;
         }
 
         /**
@@ -544,9 +549,11 @@ class TcpClientChannel implements ClientChannel {
             int bytesNum;
             int readBytesNum = 0;
 
+            ByteBuffer buf = ByteBuffer.wrap(bytes, 0, len);
+
             while (readBytesNum < len) {
                 try {
-                    bytesNum = in.read(bytes, readBytesNum, len - readBytesNum);
+                    bytesNum = ch.read(buf);
                 }
                 catch (IOException e) {
                     throw handleIOError(e);
@@ -608,7 +615,6 @@ class TcpClientChannel implements ClientChannel {
          * Close input stream.
          */
         public void close() throws IOException {
-            in.close();
         }
     }
 

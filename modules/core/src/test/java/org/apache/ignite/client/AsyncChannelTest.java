@@ -195,4 +195,24 @@ public class AsyncChannelTest extends GridCommonAbstractTest {
             }, THREADS_CNT, "thin-client-thread");
         }
     }
+
+
+    /**
+     *
+     */
+    @Test
+    public void testConcurrentLoad() throws Exception {
+        try (IgniteClient client = Ignition.startClient(new ClientConfiguration().setAddresses("127.0.0.1:10800"))) {
+            int threadsCnt = 5;
+            int iterations = 1000;
+
+            ClientCache<Integer, Integer> cache = client.getOrCreateCache(DEFAULT_CACHE_NAME);
+
+            GridTestUtils.runMultiThreaded(
+                () -> {
+                    for (int i = 0; i < iterations; i++)
+                        cache.put(i, i);
+                }, threadsCnt, "run-async");
+        }
+    }
 }

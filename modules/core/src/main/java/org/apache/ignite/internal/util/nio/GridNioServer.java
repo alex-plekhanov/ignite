@@ -128,7 +128,7 @@ public class GridNioServer<T> {
     private static final int REQUESTS_META_KEY = GridNioSessionMetaKey.nextUniqueKey();
 
     /** */
-    private static final boolean DISABLE_KEYSET_OPTIMIZATION =
+    private final boolean DISABLE_KEYSET_OPTIMIZATION =
         IgniteSystemProperties.getBoolean(IgniteSystemProperties.IGNITE_NO_SELECTOR_OPTS);
 
     /** */
@@ -256,6 +256,8 @@ public class GridNioServer<T> {
 
     /** */
     private final IgniteRunnable balancer;
+
+    AtomicLong cntInform = new AtomicLong();
 
     /**
      * Interval in milliseconds between consequtive {@link GridWorkerListener#onIdle(GridWorker)} calls
@@ -1072,6 +1074,8 @@ public class GridNioServer<T> {
      * Stop polling for write availability if write queue is empty.
      */
     private void stopPollingForWrite(SelectionKey key, GridSelectorNioSessionImpl ses) {
+        log.info("Stop polling " + ses.procWrite.get());
+
         if (ses.procWrite.get()) {
             ses.procWrite.set(false);
 
@@ -1079,9 +1083,16 @@ public class GridNioServer<T> {
                 if ((key.interestOps() & SelectionKey.OP_WRITE) != 0)
                     key.interestOps(key.interestOps() & (~SelectionKey.OP_WRITE));
             }
-            else
+            else {
+                log.info("Remain true");
                 ses.procWrite.set(true);
+            }
         }
+        else if ((key.interestOps() & SelectionKey.OP_WRITE) != 0)
+            System.out.println("Stop polling");
+/*
+            key.interestOps(key.interestOps() & (~SelectionKey.OP_WRITE));
+*/
     }
 
     /** {@inheritDoc} */
@@ -1342,6 +1353,7 @@ public class GridNioServer<T> {
                     readBuf.clear();
 
                 if (ses.hasSystemMessage() && !ses.procWrite.get()) {
+                    log.info("hasSystemMessage");
                     ses.procWrite.set(true);
 
                     registerWrite(ses);
@@ -2048,6 +2060,8 @@ public class GridNioServer<T> {
 
                                     ses.key(key);
 
+                                    log.info("MOVE");
+
                                     ses.procWrite.set(true);
 
                                     f.onDone(true);
@@ -2078,6 +2092,7 @@ public class GridNioServer<T> {
                             case REQUIRE_WRITE: {
                                 SessionWriteRequest req = (SessionWriteRequest)req0;
 
+                                log.info("REQUIRE_WRITE");
                                 registerWrite((GridSelectorNioSessionImpl)req.session());
 
                                 break;
@@ -2192,13 +2207,20 @@ public class GridNioServer<T> {
 
                         updateHeartbeat();
 
+                        int selCnt = 0;
                         // Wake up every 2 seconds to check if closed.
-                        if (selector.select(2000) > 0) {
+                        if ((selCnt = selector.select(2000)) > 0) {
                             // Walk through the ready keys collection and process network events.
-                            if (selectedKeys == null)
+                            if (selectedKeys == null) {
+                                log.info("Selected=" + selCnt + " selkeys=" + selector.selectedKeys());
+
                                 processSelectedKeys(selector.selectedKeys());
-                            else
+                            } else {
+                                if (cntInform.incrementAndGet() < 1000)
+                                    log.info("Selected=" + selCnt + " keys=" + selectedKeys);
+
                                 processSelectedKeysOptimized(selectedKeys.flip());
+                            }
                         }
 
                         // select() call above doesn't throw on interruption; checking it here to propagate timely.
@@ -2254,6 +2276,13 @@ public class GridNioServer<T> {
          * @param ses Session.
          */
         @Override public final void registerWrite(GridSelectorNioSessionImpl ses) {
+            log.info("Start polling " + ses.procWrite.get());
+
+            if (!ses.procWrite.get())
+                System.out.println("Start polling");
+
+            ses.procWrite.set(true);
+
             SelectionKey key = ses.key();
 
             if (key.isValid()) {
@@ -3603,6 +3632,8 @@ public class GridNioServer<T> {
                     queue.offer((ByteBuffer)msg);
 
                     GridSelectorNioSessionImpl ses0 = (GridSelectorNioSessionImpl)ses;
+
+                    log.info("Session write");
 
                     if (!ses0.procWrite.get() && ses0.procWrite.compareAndSet(false, true)) {
                         GridNioWorker worker = ses0.worker();
