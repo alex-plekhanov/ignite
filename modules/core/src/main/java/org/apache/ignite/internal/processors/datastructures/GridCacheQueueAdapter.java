@@ -443,7 +443,8 @@ public abstract class GridCacheQueueAdapter<T> extends AbstractCollection<T> imp
             null,
             false,
             false,
-            DFLT_ALLOW_ATOMIC_OPS_IN_TX)
+            DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+            false)
             : opCtx.keepBinary();
 
         cctx.operationContextPerCall(opCtx);

@@ -291,7 +291,8 @@ public class GridCacheProxyImpl<K, V> implements IgniteInternalCache<K, V>, Exte
                     null,
                     false,
                     false,
-                    DFLT_ALLOW_ATOMIC_OPS_IN_TX));
+                    DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+                    false));
     }
 
     /** {@inheritDoc} */
@@ -313,7 +314,8 @@ public class GridCacheProxyImpl<K, V> implements IgniteInternalCache<K, V>, Exte
                         null,
                         false,
                         false,
-                        DFLT_ALLOW_ATOMIC_OPS_IN_TX));
+                        DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+                        false));
         }
         finally {
             gate.leave(prev);
@@ -336,7 +338,28 @@ public class GridCacheProxyImpl<K, V> implements IgniteInternalCache<K, V>, Exte
                     null,
                     false,
                     false,
-                    DFLT_ALLOW_ATOMIC_OPS_IN_TX));
+                    DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+                    false));
+    }
+
+    /** {@inheritDoc} */
+    @Override public <K1, V1> GridCacheProxyImpl<K1, V1> keepCacheObjects() {
+        if (opCtx != null && opCtx.isKeepCacheObjects())
+            return (GridCacheProxyImpl<K1, V1>)this;
+
+        return new GridCacheProxyImpl<>((GridCacheContext<K1, V1>)ctx,
+            (GridCacheAdapter<K1, V1>)delegate,
+            opCtx != null ? opCtx.keepCacheObjects() :
+                new CacheOperationContext(false,
+                    null,
+                    false,
+                    null,
+                    false,
+                    null,
+                    false,
+                    false,
+                    DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+                    true));
     }
 
     /** {@inheritDoc} */
@@ -1611,7 +1634,8 @@ public class GridCacheProxyImpl<K, V> implements IgniteInternalCache<K, V>, Exte
                         null,
                         false,
                         false,
-                        DFLT_ALLOW_ATOMIC_OPS_IN_TX));
+                        DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+                        false));
         }
         finally {
             gate.leave(prev);
@@ -1633,7 +1657,8 @@ public class GridCacheProxyImpl<K, V> implements IgniteInternalCache<K, V>, Exte
                     null,
                     false,
                     false,
-                    DFLT_ALLOW_ATOMIC_OPS_IN_TX));
+                    DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+                    false));
         }
         finally {
             gate.leave(prev);

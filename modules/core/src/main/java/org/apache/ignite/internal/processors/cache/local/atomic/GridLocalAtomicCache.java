@@ -380,6 +380,8 @@ public class GridLocalAtomicCache<K, V> extends GridLocalCache<K, V> {
 
         CacheOperationContext opCtx = ctx.operationContextPerCall();
 
+        boolean keepCacheObjects = opCtx != null && opCtx.isKeepCacheObjects();
+
         UUID subjId = ctx.subjectIdPerCall(null, opCtx);
 
         Map<K, V> vals = U.newHashMap(keys.size());
@@ -417,7 +419,7 @@ public class GridLocalAtomicCache<K, V> extends GridLocalCache<K, V> {
                                 cacheKey,
                                 row.value(),
                                 skipVals,
-                                false,
+                                keepCacheObjects,
                                 deserializeBinary,
                                 true,
                                 null,
@@ -475,7 +477,7 @@ public class GridLocalAtomicCache<K, V> extends GridLocalCache<K, V> {
                                             cacheKey,
                                             res,
                                             skipVals,
-                                            false,
+                                            keepCacheObjects,
                                             deserializeBinary,
                                             true,
                                             needVer);
@@ -501,7 +503,7 @@ public class GridLocalAtomicCache<K, V> extends GridLocalCache<K, V> {
                                             cacheKey,
                                             v,
                                             skipVals,
-                                            false,
+                                            keepCacheObjects,
                                             deserializeBinary,
                                             true,
                                             null,
@@ -553,6 +555,7 @@ public class GridLocalAtomicCache<K, V> extends GridLocalCache<K, V> {
             /*force primary*/false,
             expiry,
             skipVals,
+            opCtx.isKeepCacheObjects(),
             needVer).get();
     }
 

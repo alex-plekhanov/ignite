@@ -749,6 +749,11 @@ public class HibernateCacheProxy implements IgniteInternalCache<Object, Object> 
     }
 
     /** {@inheritDoc} */
+    @Override public <K1, V1> IgniteInternalCache<K1, V1> keepCacheObjects() {
+        return delegate.get().keepCacheObjects();
+    }
+
+    /** {@inheritDoc} */
     @Override public IgniteInternalCache cache() {
         return delegate.get().cache();
     }

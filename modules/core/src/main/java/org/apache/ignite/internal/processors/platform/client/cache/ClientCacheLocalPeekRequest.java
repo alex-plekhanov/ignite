@@ -17,8 +17,11 @@
 
 package org.apache.ignite.internal.processors.platform.client.cache;
 
+import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.CachePeekMode;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientObjectResponse;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
@@ -32,16 +35,21 @@ public class ClientCacheLocalPeekRequest extends ClientCacheKeyRequest {
      * Constructor.
      *
      * @param reader Reader.
+     * @param in Input stream.
      */
-    public ClientCacheLocalPeekRequest(BinaryRawReaderEx reader) {
-        super(reader);
+    public ClientCacheLocalPeekRequest(BinaryRawReaderEx reader, BinaryInputStream in) {
+        super(reader, in);
     }
 
     /** {@inheritDoc} */
-    @SuppressWarnings("unchecked")
     @Override public ClientResponse process(ClientConnectionContext ctx) {
-        Object val = cache(ctx).localPeek(key(), CachePeekMode.ALL);
+        try {
+            Object val = binaryCache(ctx).localPeek(key(), new CachePeekMode[] {CachePeekMode.ALL});
 
-        return new ClientObjectResponse(requestId(), val);
+            return new ClientObjectResponse(requestId(), val);
+        }
+        catch (IgniteCheckedException e) {
+            throw new IgniteException(e);
+        }
     }
 }

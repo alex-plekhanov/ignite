@@ -72,6 +72,10 @@ public class GridCacheReturn implements Externalizable, Message {
     @GridDirectTransient
     private transient boolean loc;
 
+    /** Keep cache objects flag. */
+    @GridDirectTransient
+    private transient volatile boolean keepCacheObjects;
+
     /** */
     private int cacheId;
 
@@ -123,7 +127,7 @@ public class GridCacheReturn implements Externalizable, Message {
      * @return Value.
      */
     @Nullable public <V> V value() {
-        return (V)v;
+        return keepCacheObjects ? (V)cacheObj : (V)v;
     }
 
     /**
@@ -191,7 +195,7 @@ public class GridCacheReturn implements Externalizable, Message {
      * @param keepBinary Keep binary flag.
      */
     private void initValue(GridCacheContext cctx, @Nullable CacheObject cacheObj, boolean keepBinary) {
-        if (loc)
+        if (loc && !keepCacheObjects)
             v = cctx.cacheObjectContext().unwrapBinaryIfNeeded(cacheObj, keepBinary, true);
         else {
             assert cacheId == 0 || cacheId == cctx.cacheId();
@@ -208,6 +212,16 @@ public class GridCacheReturn implements Externalizable, Message {
      */
     public GridCacheReturn success(boolean success) {
         this.success = success;
+
+        return this;
+    }
+
+    /**
+     * @param keepCacheObjects Keep cache objects flag.
+     * @return This instance for chaining.
+     */
+    public GridCacheReturn keepCacheObjects(boolean keepCacheObjects) {
+        this.keepCacheObjects = keepCacheObjects;
 
         return this;
     }

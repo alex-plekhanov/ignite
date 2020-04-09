@@ -471,6 +471,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
         final boolean skipStore = opCtx != null && opCtx.skipStore();
         final boolean recovery = opCtx != null && opCtx.recovery();
         final boolean readRepair = opCtx != null && opCtx.readRepair();
+        final boolean keepCacheObjects = opCtx != null && opCtx.isKeepCacheObjects();
 
         return asyncOp(new CO<IgniteInternalFuture<V>>() {
             @Override public IgniteInternalFuture<V> apply() {
@@ -484,6 +485,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
                     expiryPlc,
                     skipVals,
                     skipStore,
+                    keepCacheObjects,
                     needVer);
             }
         });
@@ -577,6 +579,8 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
 
         final boolean skipStore = opCtx != null && opCtx.skipStore();
 
+        final boolean keepCacheObjects = opCtx != null && opCtx.isKeepCacheObjects();
+
         if (asyncOp) {
             return asyncOp(new CO<IgniteInternalFuture<Map<K, V>>>() {
                 @Override public IgniteInternalFuture<Map<K, V>> apply() {
@@ -590,6 +594,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
                         expiryPlc,
                         skipVals,
                         skipStore,
+                        keepCacheObjects,
                         needVer);
                 }
             });
@@ -605,6 +610,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
                 expiryPlc,
                 skipVals,
                 skipStore,
+                keepCacheObjects,
                 needVer);
         }
     }
@@ -1431,6 +1437,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
         @Nullable ExpiryPolicy expiryPlc,
         boolean skipVals,
         boolean skipStore,
+        boolean keepCacheObjects,
         boolean needVer
     ) {
         AffinityTopologyVersion topVer = ctx.affinity().affinityTopologyVersion();
@@ -1448,7 +1455,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
                 expiry,
                 skipVals,
                 needVer,
-                false,
+                keepCacheObjects,
                 null).single();
         }
 
@@ -1463,7 +1470,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
             expiry,
             skipVals,
             needVer,
-            false,
+            keepCacheObjects,
             recovery,
             null,
             null);
@@ -1497,6 +1504,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
         @Nullable ExpiryPolicy expiryPlc,
         boolean skipVals,
         boolean skipStore,
+        boolean keepCacheObjects,
         boolean needVer
     ) {
         AffinityTopologyVersion topVer = ctx.affinity().affinityTopologyVersion();
@@ -1516,7 +1524,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
                 expiry,
                 skipVals,
                 needVer,
-                false,
+                keepCacheObjects,
                 null).multi();
         }
 
@@ -1543,7 +1551,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
                                     key,
                                     row.value(),
                                     skipVals,
-                                    false,
+                                    keepCacheObjects,
                                     deserializeBinary,
                                     true,
                                     null,
@@ -1627,7 +1635,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
                                             key,
                                             v,
                                             skipVals,
-                                            false,
+                                            keepCacheObjects,
                                             deserializeBinary,
                                             true,
                                             getRes,
@@ -1692,7 +1700,7 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
             expiry,
             skipVals,
             needVer,
-            false,
+            keepCacheObjects,
             null,
             null,
             null);

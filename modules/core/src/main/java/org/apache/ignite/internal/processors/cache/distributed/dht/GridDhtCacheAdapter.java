@@ -679,6 +679,7 @@ public abstract class GridDhtCacheAdapter<K, V> extends GridDistributedCacheAdap
             forcePrimary,
             null,
             skipVals,
+            opCtx.isKeepCacheObjects(),
             needVer);
     }
 

@@ -59,6 +59,9 @@ public class CacheOperationContext implements Serializable {
     /** Keep binary flag. */
     private final boolean keepBinary;
 
+    /** Keep cache objects flag (don't unwrap object from CacheObject class) */
+    private final boolean keepCacheObjects;
+
     /** Allow atomic cache in transaction. */
     private final boolean allowAtomicOpsInTx;
 
@@ -81,6 +84,7 @@ public class CacheOperationContext implements Serializable {
         readRepair = false;
         dataCenterId = null;
         allowAtomicOpsInTx = DFLT_ALLOW_ATOMIC_OPS_IN_TX;
+        keepCacheObjects = false;
     }
 
     /**
@@ -100,7 +104,8 @@ public class CacheOperationContext implements Serializable {
         @Nullable Byte dataCenterId,
         boolean recovery,
         boolean readRepair,
-        boolean allowAtomicOpsInTx
+        boolean allowAtomicOpsInTx,
+        boolean keepCacheObjects
     ) {
         this.skipStore = skipStore;
         this.subjId = subjId;
@@ -111,6 +116,7 @@ public class CacheOperationContext implements Serializable {
         this.recovery = recovery;
         this.readRepair = readRepair;
         this.allowAtomicOpsInTx = allowAtomicOpsInTx;
+        this.keepCacheObjects = keepCacheObjects;
     }
 
     /**
@@ -118,6 +124,13 @@ public class CacheOperationContext implements Serializable {
      */
     public boolean isKeepBinary() {
         return keepBinary;
+    }
+
+    /**
+     * @return Keep cache objects flag.
+     */
+    public boolean isKeepCacheObjects() {
+        return keepCacheObjects;
     }
 
     /**
@@ -142,7 +155,25 @@ public class CacheOperationContext implements Serializable {
             dataCenterId,
             recovery,
             readRepair,
-            allowAtomicOpsInTx);
+            allowAtomicOpsInTx,
+            keepCacheObjects);
+    }
+
+    /**
+     * @return New instance of CacheOperationContext with keep cache objects flag.
+     */
+    public CacheOperationContext keepCacheObjects() {
+        return new CacheOperationContext(
+            skipStore,
+            subjId,
+            keepBinary,
+            expiryPlc,
+            noRetries,
+            dataCenterId,
+            recovery,
+            readRepair,
+            allowAtomicOpsInTx,
+            true);
     }
 
     /**
@@ -179,7 +210,8 @@ public class CacheOperationContext implements Serializable {
             dataCenterId,
             recovery,
             readRepair,
-            allowAtomicOpsInTx);
+            allowAtomicOpsInTx,
+            keepCacheObjects);
     }
 
     /**
@@ -205,7 +237,8 @@ public class CacheOperationContext implements Serializable {
             dataCenterId,
             recovery,
             readRepair,
-            allowAtomicOpsInTx);
+            allowAtomicOpsInTx,
+            keepCacheObjects);
     }
 
     /**
@@ -231,7 +264,8 @@ public class CacheOperationContext implements Serializable {
             dataCenterId,
             recovery,
             readRepair,
-            allowAtomicOpsInTx);
+            allowAtomicOpsInTx,
+            keepCacheObjects);
     }
 
     /**
@@ -248,7 +282,8 @@ public class CacheOperationContext implements Serializable {
             dataCenterId,
             recovery,
             readRepair,
-            allowAtomicOpsInTx);
+            allowAtomicOpsInTx,
+            keepCacheObjects);
     }
 
     /**
@@ -265,7 +300,8 @@ public class CacheOperationContext implements Serializable {
             dataCenterId,
             recovery,
             readRepair,
-            allowAtomicOpsInTx);
+            allowAtomicOpsInTx,
+            keepCacheObjects);
     }
 
     /**
@@ -282,7 +318,8 @@ public class CacheOperationContext implements Serializable {
             dataCenterId,
             recovery,
             readRepair,
-            allowAtomicOpsInTx);
+            allowAtomicOpsInTx,
+            keepCacheObjects);
     }
 
     /**
@@ -299,7 +336,8 @@ public class CacheOperationContext implements Serializable {
             dataCenterId,
             recovery,
             readRepair,
-            allowAtomicOpsInTx);
+            allowAtomicOpsInTx,
+            keepCacheObjects);
     }
 
     /**
@@ -336,7 +374,8 @@ public class CacheOperationContext implements Serializable {
             dataCenterId,
             recovery,
             readRepair,
-            true);
+            true,
+            false);
     }
 
     /**

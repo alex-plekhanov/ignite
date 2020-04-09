@@ -283,21 +283,22 @@ public class ClientMessageParser implements ClientListenerMessageParser {
         BinaryRawReaderEx reader = new BinaryReaderExImpl(marsh.context(), inStream,
                 null, null, true, true);
 
-        return decode(reader);
+        return decode(reader, inStream);
     }
 
     /**
      * Decodes the request.
      *
      * @param reader Reader.
+     * @param in Input stream.
      * @return Request.
      */
-    public ClientListenerRequest decode(BinaryRawReaderEx reader) {
+    public ClientListenerRequest decode(BinaryRawReaderEx reader, BinaryInputStream in) {
         short opCode = reader.readShort();
 
         switch (opCode) {
             case OP_CACHE_GET:
-                return new ClientCacheGetRequest(reader);
+                return new ClientCacheGetRequest(reader, in);
 
             case OP_BINARY_TYPE_NAME_GET:
                 return new ClientBinaryTypeNameGetRequest(reader);
@@ -306,7 +307,7 @@ public class ClientMessageParser implements ClientListenerMessageParser {
                 return new ClientBinaryTypeGetRequest(reader);
 
             case OP_CACHE_PUT:
-                return new ClientCachePutRequest(reader);
+                return new ClientCachePutRequest(reader, in);
 
             case OP_BINARY_TYPE_NAME_PUT:
                 return new ClientBinaryTypeNamePutRequest(reader);
@@ -326,61 +327,61 @@ public class ClientMessageParser implements ClientListenerMessageParser {
                 return new ClientResourceCloseRequest(reader);
 
             case OP_CACHE_CONTAINS_KEY:
-                return new ClientCacheContainsKeyRequest(reader);
+                return new ClientCacheContainsKeyRequest(reader, in);
 
             case OP_CACHE_CONTAINS_KEYS:
-                return new ClientCacheContainsKeysRequest(reader);
+                return new ClientCacheContainsKeysRequest(reader, in);
 
             case OP_CACHE_GET_ALL:
-                return new ClientCacheGetAllRequest(reader);
+                return new ClientCacheGetAllRequest(reader, in);
 
             case OP_CACHE_GET_AND_PUT:
-                return new ClientCacheGetAndPutRequest(reader);
+                return new ClientCacheGetAndPutRequest(reader, in);
 
             case OP_CACHE_GET_AND_REPLACE:
-                return new ClientCacheGetAndReplaceRequest(reader);
+                return new ClientCacheGetAndReplaceRequest(reader, in);
 
             case OP_CACHE_GET_AND_REMOVE:
-                return new ClientCacheGetAndRemoveRequest(reader);
+                return new ClientCacheGetAndRemoveRequest(reader, in);
 
             case OP_CACHE_PUT_IF_ABSENT:
-                return new ClientCachePutIfAbsentRequest(reader);
+                return new ClientCachePutIfAbsentRequest(reader, in);
 
             case OP_CACHE_GET_AND_PUT_IF_ABSENT:
-                return new ClientCacheGetAndPutIfAbsentRequest(reader);
+                return new ClientCacheGetAndPutIfAbsentRequest(reader, in);
 
             case OP_CACHE_REPLACE:
-                return new ClientCacheReplaceRequest(reader);
+                return new ClientCacheReplaceRequest(reader, in);
 
             case OP_CACHE_REPLACE_IF_EQUALS:
-                return new ClientCacheReplaceIfEqualsRequest(reader);
+                return new ClientCacheReplaceIfEqualsRequest(reader, in);
 
             case OP_CACHE_PUT_ALL:
-                return new ClientCachePutAllRequest(reader);
+                return new ClientCachePutAllRequest(reader, in);
 
             case OP_CACHE_CLEAR:
                 return new ClientCacheClearRequest(reader);
 
             case OP_CACHE_CLEAR_KEY:
-                return new ClientCacheClearKeyRequest(reader);
+                return new ClientCacheClearKeyRequest(reader, in);
 
             case OP_CACHE_CLEAR_KEYS:
-                return new ClientCacheClearKeysRequest(reader);
+                return new ClientCacheClearKeysRequest(reader, in);
 
             case OP_CACHE_REMOVE_KEY:
-                return new ClientCacheRemoveKeyRequest(reader);
+                return new ClientCacheRemoveKeyRequest(reader, in);
 
             case OP_CACHE_REMOVE_IF_EQUALS:
-                return new ClientCacheRemoveIfEqualsRequest(reader);
+                return new ClientCacheRemoveIfEqualsRequest(reader, in);
 
             case OP_CACHE_GET_SIZE:
                 return new ClientCacheGetSizeRequest(reader);
 
             case OP_CACHE_REMOVE_KEYS:
-                return new ClientCacheRemoveKeysRequest(reader);
+                return new ClientCacheRemoveKeysRequest(reader, in);
 
             case OP_CACHE_LOCAL_PEEK:
-                return new ClientCacheLocalPeekRequest(reader);
+                return new ClientCacheLocalPeekRequest(reader, in);
 
             case OP_CACHE_REMOVE_ALL:
                 return new ClientCacheRemoveAllRequest(reader);

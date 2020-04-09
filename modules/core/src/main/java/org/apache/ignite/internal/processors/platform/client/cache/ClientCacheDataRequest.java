@@ -18,6 +18,11 @@
 package org.apache.ignite.internal.processors.platform.client.cache;
 
 import org.apache.ignite.binary.BinaryRawReader;
+import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.internal.binary.streams.BinaryInputStream;
+import org.apache.ignite.internal.processors.cache.CacheObject;
+import org.apache.ignite.internal.processors.cache.CacheObjectImpl;
+import org.apache.ignite.internal.processors.cache.KeyCacheObjectImpl;
 
 /**
  * Cache data manipulation request.
@@ -47,5 +52,22 @@ class ClientCacheDataRequest extends ClientCacheRequest {
     /** {@inheritDoc} */
     @Override public boolean isTransactional() {
         return super.isTransactional();
+    }
+
+    /**
+     * Read cache object from stream, including RAW bytes.
+     */
+    protected static CacheObject readCacheObject(BinaryRawReaderEx reader, BinaryInputStream in, boolean isKey) {
+        int pos0 = in.position();
+
+        Object obj = reader.readObjectDetached();
+
+        int pos1 = in.position();
+
+        in.position(pos0);
+
+        byte[] objBytes = in.readByteArray(pos1 - pos0);
+
+        return isKey ? new KeyCacheObjectImpl(obj, objBytes, -1) : new CacheObjectImpl(obj, objBytes);
     }
 }

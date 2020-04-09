@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.platform.client.cache;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
 import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
@@ -35,8 +36,9 @@ public class ClientCachePutAllRequest extends ClientCacheDataRequest implements 
      * Constructor.
      *
      * @param reader Reader.
+     * @param in Input stream.
      */
-    public ClientCachePutAllRequest(BinaryRawReaderEx reader) {
+    public ClientCachePutAllRequest(BinaryRawReaderEx reader, BinaryInputStream in) {
         super(reader);
 
         int cnt = reader.readInt();
@@ -44,11 +46,10 @@ public class ClientCachePutAllRequest extends ClientCacheDataRequest implements 
         map = new LinkedHashMap<>(cnt);
 
         for (int i = 0; i < cnt; i++)
-            map.put(reader.readObjectDetached(), reader.readObjectDetached());
+            map.put(readCacheObject(reader, in, true), readCacheObject(reader, in, false));
     }
 
     /** {@inheritDoc} */
-    @SuppressWarnings("unchecked")
     @Override public ClientResponse process(ClientConnectionContext ctx) {
         cache(ctx).putAll(map);
 

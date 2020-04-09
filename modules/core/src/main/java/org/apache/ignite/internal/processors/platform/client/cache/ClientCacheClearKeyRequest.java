@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.platform.client.cache;
 
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
 
@@ -29,13 +30,13 @@ public class ClientCacheClearKeyRequest extends ClientCacheKeyRequest {
      * Constructor.
      *
      * @param reader Reader.
+     * @param in Input stream.
      */
-    public ClientCacheClearKeyRequest(BinaryRawReaderEx reader) {
-        super(reader);
+    public ClientCacheClearKeyRequest(BinaryRawReaderEx reader, BinaryInputStream in) {
+        super(reader, in);
     }
 
     /** {@inheritDoc} */
-    @SuppressWarnings("unchecked")
     @Override public ClientResponse process(ClientConnectionContext ctx) {
         cache(ctx).clear(key());
 

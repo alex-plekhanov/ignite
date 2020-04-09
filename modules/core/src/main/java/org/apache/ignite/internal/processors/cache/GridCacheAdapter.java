@@ -511,7 +511,8 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
             null,
             false,
             false,
-            DFLT_ALLOW_ATOMIC_OPS_IN_TX);
+            DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+            false);
 
         return new GridCacheProxyImpl<>(ctx, this, opCtx);
     }
@@ -532,7 +533,8 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
             null,
             false,
             false,
-            DFLT_ALLOW_ATOMIC_OPS_IN_TX);
+            DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+            false);
 
         return new GridCacheProxyImpl<>(ctx, this, opCtx);
     }
@@ -548,7 +550,25 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
             null,
             false,
             false,
-            DFLT_ALLOW_ATOMIC_OPS_IN_TX);
+            DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+            false);
+
+        return new GridCacheProxyImpl<>((GridCacheContext<K1, V1>)ctx, (GridCacheAdapter<K1, V1>)this, opCtx);
+    }
+
+    /** {@inheritDoc} */
+    @Override public final <K1, V1> GridCacheProxyImpl<K1, V1> keepCacheObjects() {
+        CacheOperationContext opCtx = new CacheOperationContext(
+            false,
+            null,
+            false,
+            null,
+            false,
+            null,
+            false,
+            false,
+            DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+            true);
 
         return new GridCacheProxyImpl<>((GridCacheContext<K1, V1>)ctx, (GridCacheAdapter<K1, V1>)this, opCtx);
     }
@@ -571,7 +591,8 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
             null,
             false,
             false,
-            DFLT_ALLOW_ATOMIC_OPS_IN_TX);
+            DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+            false);
 
         return new GridCacheProxyImpl<>(ctx, this, opCtx);
     }
@@ -587,7 +608,8 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
             null,
             false,
             false,
-            DFLT_ALLOW_ATOMIC_OPS_IN_TX);
+            DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+            false);
 
         return new GridCacheProxyImpl<>(ctx, this, opCtx);
     }
@@ -603,7 +625,8 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
             null,
             false,
             false,
-            DFLT_ALLOW_ATOMIC_OPS_IN_TX);
+            DFLT_ALLOW_ATOMIC_OPS_IN_TX,
+            false);
 
         return new GridCacheProxyImpl<>(ctx, this, opCtx);
     }
@@ -1945,6 +1968,7 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
             forcePrimary,
             skipVals ? null : expiryPolicy(opCtx != null ? opCtx.expiry() : null),
             skipVals,
+            opCtx.isKeepCacheObjects(),
             needVer);
     }
 
@@ -1976,6 +2000,7 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
         final boolean forcePrimary,
         @Nullable IgniteCacheExpiryPolicy expiry,
         final boolean skipVals,
+        final boolean keepCacheObjects,
         final boolean needVer
     ) {
         ctx.checkSecurity(SecurityPermission.CACHE_READ);
@@ -1994,7 +2019,7 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
             deserializeBinary,
             expiry,
             skipVals,
-            /*keep cache objects*/false,
+            keepCacheObjects,
             recovery,
             readRepair,
             needVer,
@@ -2398,7 +2423,8 @@ public abstract class GridCacheAdapter<K, V> implements IgniteInternalCache<K, V
                         keys,
                         deserializeBinary,
                         skipVals,
-                        false,
+                        // TODO It's dangerous to change it here.
+                        keepCacheObjects,
                         !readThrough,
                         recovery,
                         readRepair,

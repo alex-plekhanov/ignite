@@ -141,6 +141,8 @@ public class GridNearTransactionalCache<K, V> extends GridNearCacheAdapter<K, V>
 
         final boolean skipStore = opCtx != null && opCtx.skipStore();
 
+        final boolean keepCacheObjects = opCtx != null && opCtx.isKeepCacheObjects();
+
         if (tx != null && !tx.implicit() && !skipTx) {
             return asyncOp(tx, new AsyncOp<Map<K, V>>(keys) {
                 @Override public IgniteInternalFuture<Map<K, V>> op(GridNearTxLocal tx, AffinityTopologyVersion readyTopVer) {
@@ -149,7 +151,7 @@ public class GridNearTransactionalCache<K, V> extends GridNearCacheAdapter<K, V>
                         ctx.cacheKeysView(keys),
                         deserializeBinary,
                         skipVals,
-                        false,
+                        keepCacheObjects,
                         skipStore,
                         recovery,
                         readRepair,
@@ -170,6 +172,7 @@ public class GridNearTransactionalCache<K, V> extends GridNearCacheAdapter<K, V>
             skipVals ? null : opCtx != null ? opCtx.expiry() : null,
             skipVals,
             skipStore,
+            keepCacheObjects,
             needVer);
     }
 

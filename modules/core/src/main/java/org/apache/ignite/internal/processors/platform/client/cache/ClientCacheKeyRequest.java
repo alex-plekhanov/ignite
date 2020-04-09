@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.platform.client.cache;
 
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.processors.platform.client.tx.ClientTxAwareRequest;
 
 /**
@@ -31,11 +32,12 @@ public abstract class ClientCacheKeyRequest extends ClientCacheDataRequest imple
      * Ctor.
      *
      * @param reader Reader.
+     * @param in Input stream.
      */
-    ClientCacheKeyRequest(BinaryRawReaderEx reader) {
+    public ClientCacheKeyRequest(BinaryRawReaderEx reader, BinaryInputStream in) {
         super(reader);
 
-        key = reader.readObjectDetached();
+        key = readCacheObject(reader, in, true);
     }
 
     /**

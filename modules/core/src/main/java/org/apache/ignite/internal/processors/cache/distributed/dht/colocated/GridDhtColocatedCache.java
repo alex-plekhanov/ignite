@@ -196,6 +196,7 @@ public class GridDhtColocatedCache<K, V> extends GridDhtTransactionalCacheAdapte
 
         final boolean recovery = opCtx != null && opCtx.recovery();
         final boolean readRepair = opCtx != null && opCtx.readRepair();
+        final boolean keepCacheObjects = opCtx != null && opCtx.isKeepCacheObjects();
 
         // Get operation bypass Tx in Mvcc mode.
         if (!ctx.mvccEnabled() && tx != null && !tx.implicit() && !skipTx) {
@@ -206,7 +207,7 @@ public class GridDhtColocatedCache<K, V> extends GridDhtTransactionalCacheAdapte
                         Collections.singleton(ctx.toCacheKeyObject(key)),
                         deserializeBinary,
                         skipVals,
-                        false,
+                        keepCacheObjects,
                         opCtx != null && opCtx.skipStore(),
                         recovery,
                         readRepair,
@@ -274,7 +275,7 @@ public class GridDhtColocatedCache<K, V> extends GridDhtTransactionalCacheAdapte
                 skipVals ? null : expiryPolicy(opCtx != null ? opCtx.expiry() : null),
                 skipVals,
                 needVer,
-                false,
+                keepCacheObjects,
                 tx).single();
         }
 
@@ -289,7 +290,7 @@ public class GridDhtColocatedCache<K, V> extends GridDhtTransactionalCacheAdapte
             skipVals ? null : expiryPolicy(opCtx != null ? opCtx.expiry() : null),
             skipVals,
             needVer,
-            /*keepCacheObjects*/false,
+            keepCacheObjects,
             opCtx != null && opCtx.recovery(),
             null,
             mvccSnapshot);
@@ -337,6 +338,8 @@ public class GridDhtColocatedCache<K, V> extends GridDhtTransactionalCacheAdapte
 
         final CacheOperationContext opCtx = ctx.operationContextPerCall();
 
+        final boolean keepCacheObjects = opCtx != null && opCtx.isKeepCacheObjects();
+
         if (!ctx.mvccEnabled() && tx != null && !tx.implicit() && !skipTx) {
             return asyncOp(tx, new AsyncOp<Map<K, V>>(keys) {
                 /** {@inheritDoc} */
@@ -347,7 +350,7 @@ public class GridDhtColocatedCache<K, V> extends GridDhtTransactionalCacheAdapte
                         ctx.cacheKeysView(keys),
                         deserializeBinary,
                         skipVals,
-                        false,
+                        keepCacheObjects,
                         opCtx != null && opCtx.skipStore(),
                         recovery,
                         readRepair,
@@ -398,7 +401,7 @@ public class GridDhtColocatedCache<K, V> extends GridDhtTransactionalCacheAdapte
                 skipVals ? null : expiryPolicy(opCtx != null ? opCtx.expiry() : null),
                 skipVals,
                 needVer,
-                false,
+                keepCacheObjects,
                 tx).multi();
         }
 
@@ -414,7 +417,7 @@ public class GridDhtColocatedCache<K, V> extends GridDhtTransactionalCacheAdapte
             skipVals ? null : expiryPolicy(opCtx != null ? opCtx.expiry() : null),
             skipVals,
             needVer,
-            false,
+            keepCacheObjects,
             null,
             mvccSnapshot
         );

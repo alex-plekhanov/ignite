@@ -17,11 +17,15 @@
 
 package org.apache.ignite.internal.processors.platform.client.cache;
 
+import java.util.Map;
+import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
+import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
-
-import java.util.Map;
+import org.apache.ignite.internal.processors.platform.client.ClientStatus;
+import org.apache.ignite.internal.processors.platform.client.IgniteClientException;
 
 /**
  * GetAll request.
@@ -31,16 +35,22 @@ public class ClientCacheGetAllRequest extends ClientCacheKeysRequest {
      * Constructor.
      *
      * @param reader Reader.
+     * @param in Input stream.
      */
-    public ClientCacheGetAllRequest(BinaryRawReaderEx reader) {
-        super(reader);
+    public ClientCacheGetAllRequest(BinaryRawReaderEx reader, BinaryInputStream in) {
+        super(reader, in);
     }
 
     /** {@inheritDoc} */
-    @SuppressWarnings("unchecked")
     @Override public ClientResponse process(ClientConnectionContext ctx) {
-                Map val = cache(ctx).getAll(keys());
+        try {
+            Map<Object, Object> val = binaryCache(ctx).getAll(keys());
 
-        return new ClientCacheGetAllResponse(requestId(), val);
+            return new ClientCacheGetAllResponse(requestId(), val);
+        }
+        catch (IgniteCheckedException e) {
+            throw new IgniteException(e);
+        }
+
     }
 }

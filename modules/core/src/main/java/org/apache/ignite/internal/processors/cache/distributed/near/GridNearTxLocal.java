@@ -633,6 +633,9 @@ public class GridNearTxLocal extends GridDhtTxLocalAdapter implements GridTimeou
 
             CacheOperationContext opCtx = cacheCtx.operationContextPerCall();
 
+            if (opCtx != null && opCtx.isKeepCacheObjects())
+                ret.keepCacheObjects(true);
+
             final Byte dataCenterId = opCtx != null ? opCtx.dataCenterId() : null;
 
             KeyCacheObject cacheKey = cacheCtx.toCacheKeyObject(key);
@@ -1766,6 +1769,9 @@ public class GridNearTxLocal extends GridDhtTxLocalAdapter implements GridTimeou
         }
 
         final GridCacheReturn ret = new GridCacheReturn(localResult(), false);
+
+        if (opCtx != null && opCtx.isKeepCacheObjects())
+            ret.keepCacheObjects(true);
 
         if (F.isEmpty(keys0)) {
             if (implicit()) {
