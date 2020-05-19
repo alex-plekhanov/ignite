@@ -527,6 +527,13 @@ final class ClientUtils {
         out.writeByteArray(marsh.marshal(obj));
     }
 
+    /**
+     * @param out Output stream.
+     */
+    BinaryRawWriterEx createBinaryWriter(BinaryOutputStream out) {
+        return new BinaryWriterExImpl(marsh.context(), out, null, null);
+    }
+
     /** Read Ignite binary object from input stream. */
     <T> T readObject(BinaryInputStream in, boolean keepBinary) {
         if (keepBinary)
