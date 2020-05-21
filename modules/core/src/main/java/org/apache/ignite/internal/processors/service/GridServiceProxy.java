@@ -350,7 +350,7 @@ public class GridServiceProxy<T> implements Serializable {
     /**
      * @return Proxy object for a given instance.
      */
-    public T proxy() {
+    T proxy() {
         return proxy;
     }
 

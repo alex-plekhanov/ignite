@@ -40,6 +40,7 @@ import org.apache.ignite.internal.processors.service.GridServiceProxy;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceDescriptor;
 
 /**
@@ -138,18 +139,22 @@ public class ClientServiceInvokeRequest extends ClientRequest {
 
         IgniteServices services = grp.services();
 
-        GridServiceProxy<?> proxy = PlatformServices.serviceProxy(ctx.kernalContext(), services, desc, false, timeout);
-
         boolean keepBinary = (flags & FLAG_KEEP_BINARY_MASK) != 0;
-
-        Object[] args = keepBinary ? this.args : PlatformUtils.unwrapBinariesInArray(this.args);
 
         try {
             Object res;
 
-            if (proxy.proxy() instanceof PlatformService)
-                res = ((PlatformService)proxy.proxy()).invokeMethod(methodName, keepBinary, args);
+            if (PlatformService.class.isAssignableFrom(desc.serviceClass())) {
+                PlatformService proxy = services.serviceProxy(name, PlatformService.class, false, timeout);
+
+                res = proxy.invokeMethod(methodName, keepBinary, args);
+            }
             else {
+                GridServiceProxy<?> proxy = new GridServiceProxy<>(grp, name, Service.class, false, timeout,
+                    ctx.kernalContext());
+
+                Object[] args = keepBinary ? this.args : PlatformUtils.unwrapBinariesInArray(this.args);
+
                 Method method = resolveMethod(ctx, svcCls);
 
                 res = proxy.invokeMethod(method, args);
@@ -207,6 +212,9 @@ public class ClientServiceInvokeRequest extends ClientRequest {
         /** Parameter type IDs. */
         private final int[] paramTypeIds;
 
+        /** Hash code. */
+        private final int hash;
+
         /**
          * @param cls Class.
          * @param methodName Method name.
@@ -220,6 +228,9 @@ public class ClientServiceInvokeRequest extends ClientRequest {
             this.cls = cls;
             this.methodName = methodName;
             this.paramTypeIds = paramTypeIds;
+
+            // Precalculate hash in constructor, since we need it for all objects of this class.
+            hash = 31 * ((31 * cls.hashCode()) + methodName.hashCode()) + Arrays.hashCode(paramTypeIds);
         }
 
         /**
@@ -253,7 +264,7 @@ public class ClientServiceInvokeRequest extends ClientRequest {
 
         /** {@inheritDoc} */
         @Override public int hashCode() {
-            return 31 * ((31 * cls.hashCode()) + methodName.hashCode()) + Arrays.hashCode(paramTypeIds);
+            return hash;
         }
 
         /** {@inheritDoc} */
