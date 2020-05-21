@@ -24,16 +24,19 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.ignite.IgniteException;
+import org.apache.ignite.IgniteServices;
 import org.apache.ignite.internal.binary.BinaryContext;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
-import org.apache.ignite.internal.cluster.ClusterGroupEx;
+import org.apache.ignite.internal.cluster.ClusterGroupAdapter;
 import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientObjectResponse;
 import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
+import org.apache.ignite.internal.processors.platform.services.PlatformService;
 import org.apache.ignite.internal.processors.platform.services.PlatformServices;
 import org.apache.ignite.internal.processors.platform.utils.PlatformUtils;
+import org.apache.ignite.internal.processors.service.GridServiceProxy;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -124,28 +127,37 @@ public class ClientServiceInvokeRequest extends ClientRequest {
         if (desc == null)
             throw new IgniteException("Service not found: " + name);
 
-        Class<?> itfCls = desc.serviceClass();
+        Class<?> svcCls = desc.serviceClass();
 
-        ClusterGroupEx grp = ctx.kernalContext().cluster().get();
+        ClusterGroupAdapter grp = ctx.kernalContext().cluster().get();
 
         if (ctx.securityContext() != null)
-            grp = grp.forSubjectId(ctx.securityContext().subject().id());
+            grp = (ClusterGroupAdapter)grp.forSubjectId(ctx.securityContext().subject().id());
 
-        grp = (ClusterGroupEx)(nodeIds.isEmpty() ? grp.forServers() : grp.forNodeIds(nodeIds));
+        grp = (ClusterGroupAdapter)(nodeIds.isEmpty() ? grp.forServers() : grp.forNodeIds(nodeIds));
 
-        Object proxy = ctx.kernalContext().service().serviceProxy(grp, name, itfCls, false, timeout);
+        IgniteServices services = grp.services();
 
-        Object[] args = (flags & FLAG_KEEP_BINARY_MASK) == 0 ? PlatformUtils.unwrapBinariesInArray(this.args) :
-            this.args;
+        GridServiceProxy<?> proxy = PlatformServices.serviceProxy(ctx.kernalContext(), services, desc, false, timeout);
+
+        boolean keepBinary = (flags & FLAG_KEEP_BINARY_MASK) != 0;
+
+        Object[] args = keepBinary ? this.args : PlatformUtils.unwrapBinariesInArray(this.args);
 
         try {
-            Method method = resolveMethod(ctx, itfCls);
+            Object res;
 
-            Object res = method.invoke(proxy, args);
+            if (proxy.proxy() instanceof PlatformService)
+                res = ((PlatformService)proxy.proxy()).invokeMethod(methodName, keepBinary, args);
+            else {
+                Method method = resolveMethod(ctx, svcCls);
+
+                res = proxy.invokeMethod(method, args);
+            }
 
             return new ClientObjectResponse(requestId(), res);
         }
-        catch (ReflectiveOperationException e) {
+        catch (Throwable e) {
             throw new IgniteException(e);
         }
     }

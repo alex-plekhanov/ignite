@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.platform.services;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteServices;
+import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
 import org.apache.ignite.internal.binary.BinaryRawWriterEx;
 import org.apache.ignite.internal.processors.platform.PlatformAbstractTarget;
@@ -379,10 +380,7 @@ public class PlatformServices extends PlatformAbstractTarget {
                 if (d == null)
                     throw new IgniteException("Failed to find deployed service: " + name);
 
-                Object proxy = PlatformService.class.isAssignableFrom(d.serviceClass())
-                    ? services.serviceProxy(name, PlatformService.class, sticky)
-                    : new GridServiceProxy<>(services.clusterGroup(), name, Service.class, sticky, 0,
-                        platformCtx.kernalContext());
+                GridServiceProxy<?> proxy = serviceProxy(platformCtx.kernalContext(), services, d, sticky, 0);
 
                 return new ServiceProxyHolder(proxy, d.serviceClass(), platformContext());
             }
@@ -514,6 +512,21 @@ public class PlatformServices extends PlatformAbstractTarget {
     }
 
     /**
+     * @param ctx Kernel context.
+     * @param services Ignite services instance.
+     * @param desc Service descriptor.
+     * @param sticky Sticky flag.
+     * @param timeout Timeout.
+     */
+    public static GridServiceProxy<?> serviceProxy(GridKernalContext ctx, IgniteServices services,
+        ServiceDescriptor desc, boolean sticky, long timeout) {
+        Class<?> proxyItf = PlatformService.class.isAssignableFrom(desc.serviceClass()) ? PlatformService.class :
+            Service.class;
+
+        return new GridServiceProxy<>(services.clusterGroup(), desc.name(), proxyItf, sticky, timeout, ctx);
+    }
+
+    /**
      * Finds a suitable method in a class.
      *
      * @param clazz Class.
@@ -532,10 +545,10 @@ public class PlatformServices extends PlatformAbstractTarget {
     @SuppressWarnings("unchecked")
     private static class ServiceProxyHolder extends PlatformAbstractTarget {
         /** */
-        private final Object proxy;
+        private final GridServiceProxy<?> proxy;
 
         /** */
-        private final Class serviceClass;
+        private final Class<?> serviceClass;
 
         /** */
         private static final Map<Class<?>, Class<?>> PRIMITIVES_TO_WRAPPERS = new HashMap<>();
@@ -561,7 +574,7 @@ public class PlatformServices extends PlatformAbstractTarget {
          * @param clazz Proxy class.
          * @param ctx Platform context.
          */
-        private ServiceProxyHolder(Object proxy, Class clazz, PlatformContext ctx) {
+        private ServiceProxyHolder(GridServiceProxy<?> proxy, Class<?> clazz, PlatformContext ctx) {
             super(ctx);
 
             assert proxy != null;
@@ -583,11 +596,9 @@ public class PlatformServices extends PlatformAbstractTarget {
          */
         public Object invoke(String mthdName, boolean srvKeepBinary, Object[] args)
             throws IgniteCheckedException, NoSuchMethodException {
-            if (proxy instanceof PlatformService)
-                return ((PlatformService)proxy).invokeMethod(mthdName, srvKeepBinary, args);
+            if (proxy.proxy() instanceof PlatformService)
+                return ((PlatformService)proxy.proxy()).invokeMethod(mthdName, srvKeepBinary, args);
             else {
-                assert proxy instanceof GridServiceProxy;
-
                 // Deserialize arguments for Java service when not in binary mode
                 if (!srvKeepBinary)
                     args = PlatformUtils.unwrapBinariesInArray(args);
@@ -595,7 +606,7 @@ public class PlatformServices extends PlatformAbstractTarget {
                 Method mtd = getMethod(serviceClass, mthdName, args);
 
                 try {
-                    return ((GridServiceProxy)proxy).invokeMethod(mtd, args);
+                    return proxy.invokeMethod(mtd, args);
                 }
                 catch (Throwable t) {
                     throw IgniteUtils.cast(t);
