@@ -127,7 +127,7 @@ import org.springframework.context.event.ContextRefreshedEvent;
  * &lt;/beans&gt;
  * </pre>
  * This can be used, for example, when you are running your application
- * in a J2EE Web container and use {@ignitelink org.apache.ignite.startup.servlet.ServletContextListenerStartup}
+ * in a J2EE Web container and use {@link org.apache.ignite.startup.servlet.ServletContextListenerStartup}
  * for node startup.
  * <p>
  * If neither {@link #setConfigurationPath(String) configurationPath},
@@ -142,6 +142,7 @@ import org.springframework.context.event.ContextRefreshedEvent;
  * Ignite distribution, and all these nodes will participate
  * in caching the data.
  */
+@SuppressWarnings("JavadocReference")
 public class SpringCacheManager implements CacheManager, ApplicationListener<ContextRefreshedEvent>, ApplicationContextAware {
     /** Default locks count. */
     private static final int DEFAULT_LOCKS_COUNT = 512;

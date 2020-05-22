@@ -137,7 +137,7 @@ import java.lang.annotation.Target;
  * Spring AOP framework is based on dynamic proxy implementation and doesn't require
  * any specific runtime parameters for online weaving. All weaving is on-demand and should
  * be performed by calling method
- * {@ignitelink org.apache.ignite.compute.gridify.aop.spring.GridifySpringEnhancer#enhance(java.lang.Object)} for the object
+ * {@link org.apache.ignite.compute.gridify.aop.spring.GridifySpringEnhancer#enhance(java.lang.Object)} for the object
  * that has method with {@link GridifySetToValue} annotation.
  * <p>
  * Note that this method of weaving is rather inconvenient and AspectJ or JBoss AOP is
@@ -145,7 +145,7 @@ import java.lang.annotation.Target;
  * undesired and cannot be used. It also allows for very fine grained control of what gets
  * weaved.
  */
-@SuppressWarnings({"JavaDoc"})
+@SuppressWarnings("JavadocReference")
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.METHOD})

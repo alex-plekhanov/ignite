@@ -46,7 +46,7 @@ import org.jetbrains.annotations.Nullable;
  * <ul>
  * <li>{@link org.apache.ignite.spi.checkpoint.noop.NoopCheckpointSpi} - default</li>
  * <li>{@link org.apache.ignite.spi.checkpoint.sharedfs.SharedFsCheckpointSpi}</li>
- * <li>{@ignitelink org.apache.ignite.spi.checkpoint.s3.S3CheckpointSpi}</li>
+ * <li>{@link org.apache.ignite.spi.checkpoint.s3.S3CheckpointSpi}</li>
  * <li>{@link org.apache.ignite.spi.checkpoint.jdbc.JdbcCheckpointSpi}</li>
  * <li>{@link org.apache.ignite.spi.checkpoint.cache.CacheCheckpointSpi}</li>
  * </ul>
@@ -57,6 +57,7 @@ import org.jetbrains.annotations.Nullable;
  * methods. Note again that calling methods from this interface on the obtained instance can lead
  * to undefined behavior and explicitly not supported.
  */
+@SuppressWarnings("JavadocReference")
 public interface CheckpointSpi extends IgniteSpi {
     /**
      * Loads checkpoint from storage by its unique key.

@@ -131,7 +131,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * &lt;/beans&gt;
  * </pre>
  * This can be used, for example, when you are running your application
- * in a J2EE Web container and use {@ignitelink org.apache.ignite.startup.servlet.ServletContextListenerStartup}
+ * in a J2EE Web container and use {@link org.apache.ignite.startup.servlet.ServletContextListenerStartup}
  * for node startup.
  *
  * If neither {@link #setConfigurationPath(String) configurationPath},
@@ -199,6 +199,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * }
  * </pre>
  */
+@SuppressWarnings("JavadocReference")
 public class SpringTransactionManager extends AbstractPlatformTransactionManager
     implements ResourceTransactionManager, PlatformTransactionManager, ApplicationListener<ContextRefreshedEvent>, ApplicationContextAware {
     /**

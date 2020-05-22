@@ -167,7 +167,7 @@ import static org.apache.ignite.failure.FailureType.CRITICAL_ERROR;
  * See the following IP finder implementations for details on configuration:
  * <ul>
  * <li>{@link TcpDiscoverySharedFsIpFinder}</li>
- * <li>{@ignitelink org.apache.ignite.spi.discovery.tcp.ipfinder.s3.TcpDiscoveryS3IpFinder}</li>
+ * <li>{@link org.apache.ignite.spi.discovery.tcp.ipfinder.s3.TcpDiscoveryS3IpFinder}</li>
  * <li>{@link TcpDiscoveryJdbcIpFinder}</li>
  * <li>{@link TcpDiscoveryVmIpFinder}</li>
  * <li>{@link TcpDiscoveryMulticastIpFinder} - default</li>
@@ -230,6 +230,7 @@ import static org.apache.ignite.failure.FailureType.CRITICAL_ERROR;
  * For information about Spring framework visit <a href="http://www.springframework.org/">www.springframework.org</a>
  * @see DiscoverySpi
  */
+@SuppressWarnings("JavadocReference")
 @IgniteSpiMultipleInstancesSupport(true)
 @DiscoverySpiOrderSupport(true)
 @DiscoverySpiHistorySupport(true)

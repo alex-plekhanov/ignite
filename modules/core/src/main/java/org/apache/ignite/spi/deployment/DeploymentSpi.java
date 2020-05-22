@@ -49,7 +49,7 @@ import org.jetbrains.annotations.Nullable;
  * Ignite provides following {@code GridDeploymentSpi} implementations out of the box:
  * <ul>
  * <li>{@link org.apache.ignite.spi.deployment.local.LocalDeploymentSpi}</li>
- * <li>{@ignitelink org.apache.ignite.spi.deployment.uri.UriDeploymentSpi}</li>
+ * <li>{@link org.apache.ignite.spi.deployment.uri.UriDeploymentSpi}</li>
  * </ul>
  * <b>NOTE:</b> SPI methods should never be used directly. SPIs provide
  * internal view on the subsystem and is used internally by Ignite. In rare use cases when
@@ -58,6 +58,7 @@ import org.jetbrains.annotations.Nullable;
  * methods. Note again that calling methods from this interface on the obtained instance can lead
  * to undefined behavior and explicitly not supported.
  */
+@SuppressWarnings("JavadocReference")
 public interface DeploymentSpi extends IgniteSpi {
     /**
      * Finds class loader for the given class.

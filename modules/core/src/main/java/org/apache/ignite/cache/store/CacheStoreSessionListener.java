@@ -59,14 +59,14 @@ import org.apache.ignite.configuration.IgniteConfiguration;
  *         when session ends.
  *     </li>
  *     <li>
- *         {@ignitelink org.apache.ignite.cache.store.spring.CacheSpringStoreSessionListener} -
+ *         {@link org.apache.ignite.cache.store.spring.CacheSpringStoreSessionListener} -
  *         session listener based on Spring transaction management.
  *         It starts a new DB transaction for each session and commits
  *         (or rolls back) it when session ends. If there is no ongoing
  *         cache transaction, this listener is no-op.
  *     </li>
  *     <li>
- *         {@ignitelink org.apache.ignite.cache.store.hibernate.CacheHibernateStoreSessionListener} -
+ *         {@link org.apache.ignite.cache.store.hibernate.CacheHibernateStoreSessionListener} -
  *         Hibernate-based session listener. It creates a new Hibernate
  *         session for each Ignite session. If there is an ongoing cache
  *         transaction, a corresponding Hibernate transaction is created
@@ -111,6 +111,7 @@ import org.apache.ignite.configuration.IgniteConfiguration;
  * &lt;/bean&gt;
  * </pre>
  */
+@SuppressWarnings("JavadocReference")
 public interface CacheStoreSessionListener {
     /**
      * On session start callback.

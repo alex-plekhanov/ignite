@@ -48,7 +48,7 @@ import static org.apache.ignite.internal.processors.security.SecurityUtils.isIns
  * {@link org.apache.ignite.startup} package, for example:
  * <ul>
  * <li>{@link org.apache.ignite.startup.cmdline.CommandLineStartup}</li>
- * <li>{@ignitelink org.apache.ignite.startup.servlet.ServletStartup}</li>
+ * <li>{@link org.apache.ignite.startup.servlet.ServletStartup}</li>
  * </ul>
  * <h1 class="header">Examples</h1>
  * Use {@link #start()} method to start grid with default configuration. You can also use
@@ -90,8 +90,9 @@ import static org.apache.ignite.internal.processors.security.SecurityUtils.isIns
  * ...
  * </pre>
  * You can also instantiate grid directly from Spring without using {@code Ignition}.
- * For more information refer to {@ignitelink org.apache.ignite.IgniteSpringBean} documentation.
+ * For more information refer to {@link org.apache.ignite.IgniteSpringBean IgniteSpringBean} documentation.
  */
+@SuppressWarnings("JavadocReference")
 public class Ignition {
     /**
      * This is restart code that can be used by external tools, like Shell scripts,

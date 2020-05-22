@@ -42,7 +42,10 @@
         <doxygen.exec>doxygen</doxygen.exec>
         <docfx.exec>docfx</docfx.exec>
         <git.exec>git</git.exec>
+<!--
         <javadoc.opts>-Xdoclint:none</javadoc.opts>
+-->
+        <javadoc.opts>-Xdoclint:none -linkoffline . ${project.basedir}/../tools/src/main/resources/javadoc</javadoc.opts>
         <update.notifier.enabled.by.default>true</update.notifier.enabled.by.default>
 
         <!-- Dependency versions -->
@@ -146,7 +149,7 @@
         <spark24.version>2.4.4</spark24.version>
 
         <!-- Maven plugins versions -->
-        <maven.javadoc.plugin.version>2.10.4</maven.javadoc.plugin.version>
+        <maven.javadoc.plugin.version>3.2.0</maven.javadoc.plugin.version>
 
         <!-- OSGI Manifest generation default property values -->
         <osgi.import.package>*</osgi.import.package>
@@ -268,25 +271,29 @@
                     <artifactId>maven-javadoc-plugin</artifactId>
                     <version>${maven.javadoc.plugin.version}</version>
                     <configuration>
-                        <taglets>
-                            <taglet>
-                                <tagletClass>org.apache.ignite.tools.javadoc.IgniteLinkTaglet</tagletClass>
-                                <tagletArtifact>
-                                    <groupId>org.apache.ignite</groupId>
-                                    <artifactId>ignite-tools</artifactId>
-                                    <version>${project.version}</version>
-                                </tagletArtifact>
-                            </taglet>
-                        </taglets>
                         <doctitle>Ignite ${project.version}</doctitle>
                         <windowtitle>Ignite ${project.version}</windowtitle>
                         <breakiterator>true</breakiterator>
                         <verbose>true</verbose>
                         <show>protected</show>
                         <use>true</use>
+                        <source>1.8</source>
                         <author>false</author>
                         <version>false</version>
-                        <additionalparam>${javadoc.opts}</additionalparam>
+                        <additionalOptions>${javadoc.opts}</additionalOptions>
+                        <offlineLinks>
+                            <offlineLink>
+                                <url>.</url>
+                                <location>${project.basedir}/modules/tools/src/main/resources/javadoc</location>
+                            </offlineLink>
+<!--
+                            <offlineLink>
+                                <url>./</url>
+                                <location>${project.basedir}/../tools/src/main/resources/javadoc/</location>
+                            </offlineLink>
+-->
+                        </offlineLinks>
+
                         <groups>
                             <group>
                                 <title>Common Grid APIs</title>
@@ -330,7 +337,7 @@
                             </group>
                             <group>
                                 <title>Streaming APIs</title>
-                                <packages>org.apache.ignite.streamer*::org.apache.ignite.stream*</packages>
+                                <packages>org.apache.ignite.streamer*:org.apache.ignite.stream*</packages>
                             </group>
                             <group>
                                 <title>Security APIs</title>
