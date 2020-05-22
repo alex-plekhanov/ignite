@@ -24,7 +24,7 @@ import org.yardstickframework.BenchmarkConfiguration;
 /**
  * Class for thin client benchmarks which use service invocation.
  */
-public abstract class IgniteThinServiceBenchmark extends IgniteThinAbstractBenchmark {
+public abstract class IgniteThinServiceInvocationBenchmark extends IgniteThinAbstractBenchmark {
     /** Service proxy. */
     private SimpleService srvcProxy;
 
