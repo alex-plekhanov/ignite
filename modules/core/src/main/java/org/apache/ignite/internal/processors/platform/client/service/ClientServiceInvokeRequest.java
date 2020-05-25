@@ -20,14 +20,10 @@ package org.apache.ignite.internal.processors.platform.client.service;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.ignite.IgniteException;
-import org.apache.ignite.IgniteServices;
 import org.apache.ignite.internal.binary.BinaryContext;
 import org.apache.ignite.internal.binary.BinaryRawReaderEx;
-import org.apache.ignite.internal.cluster.ClusterGroupAdapter;
 import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientObjectResponse;
@@ -39,9 +35,6 @@ import org.apache.ignite.internal.processors.platform.utils.PlatformUtils;
 import org.apache.ignite.internal.processors.service.GridServiceProxy;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
-import org.apache.ignite.internal.util.typedef.internal.U;
-import org.apache.ignite.services.Service;
-import org.apache.ignite.services.ServiceDescriptor;
 
 /**
  * Request to invoke service method.
@@ -53,17 +46,8 @@ public class ClientServiceInvokeRequest extends ClientRequest {
     /** Methods cache. */
     private static final Map<MethodDescriptor, Method> methodsCache = new ConcurrentHashMap<>();
 
-    /** Service name. */
-    private final String name;
-
-    /** Flags. */
-    private final byte flags;
-
-    /** Timeout. */
-    private final long timeout;
-
-    /** Nodes. */
-    private final Set<UUID> nodeIds;
+    /** Service proxy id. */
+    private final long proxyId;
 
     /** Method name. */
     private final String methodName;
@@ -82,18 +66,7 @@ public class ClientServiceInvokeRequest extends ClientRequest {
     public ClientServiceInvokeRequest(BinaryRawReaderEx reader) {
         super(reader);
 
-        name = reader.readString();
-
-        flags = reader.readByte();
-
-        timeout = reader.readLong();
-
-        int cnt = reader.readInt();
-
-        nodeIds = U.newHashSet(cnt);
-
-        for (int i = 0; i < cnt; i++)
-            nodeIds.add(reader.readUuid());
+        proxyId = reader.readLong();
 
         methodName = reader.readString();
 
@@ -109,55 +82,29 @@ public class ClientServiceInvokeRequest extends ClientRequest {
 
     /** {@inheritDoc} */
     @Override public ClientResponse process(ClientConnectionContext ctx) {
-        if (F.isEmpty(name))
-            throw new IgniteException("Service name can't be empty");
+        ClientServiceProxy proxy = ctx.resources().get(proxyId);
+
+        if (proxy == null)
+            throw new IgniteException("Proxy by resource id not found: " + proxyId);
 
         if (F.isEmpty(methodName))
             throw new IgniteException("Method name can't be empty");
 
-        ServiceDescriptor desc = null;
-
-        for (ServiceDescriptor desc0 : ctx.kernalContext().service().serviceDescriptors()) {
-            if (name.equals(desc0.name())) {
-                desc = desc0;
-
-                break;
-            }
-        }
-
-        if (desc == null)
-            throw new IgniteException("Service not found: " + name);
-
-        Class<?> svcCls = desc.serviceClass();
-
-        ClusterGroupAdapter grp = ctx.kernalContext().cluster().get();
-
-        if (ctx.securityContext() != null)
-            grp = (ClusterGroupAdapter)grp.forSubjectId(ctx.securityContext().subject().id());
-
-        grp = (ClusterGroupAdapter)(nodeIds.isEmpty() ? grp.forServers() : grp.forNodeIds(nodeIds));
-
-        IgniteServices services = grp.services();
-
-        boolean keepBinary = (flags & FLAG_KEEP_BINARY_MASK) != 0;
+        boolean keepBinary = (proxy.flags() & FLAG_KEEP_BINARY_MASK) != 0;
 
         try {
             Object res;
 
-            if (PlatformService.class.isAssignableFrom(desc.serviceClass())) {
-                PlatformService proxy = services.serviceProxy(name, PlatformService.class, false, timeout);
-
-                res = proxy.invokeMethod(methodName, keepBinary, args);
-            }
+            if (PlatformService.class.isAssignableFrom(proxy.svcCls()))
+                res = ((PlatformService)proxy.proxy()).invokeMethod(methodName, keepBinary, args);
             else {
-                GridServiceProxy<?> proxy = new GridServiceProxy<>(grp, name, Service.class, false, timeout,
-                    ctx.kernalContext());
+                GridServiceProxy<?> srvcProxy = (GridServiceProxy<?>)proxy.proxy();
 
                 Object[] args = keepBinary ? this.args : PlatformUtils.unwrapBinariesInArray(this.args);
 
-                Method method = resolveMethod(ctx, svcCls);
+                Method method = resolveMethod(ctx, proxy.svcCls());
 
-                res = proxy.invokeMethod(method, args);
+                res = srvcProxy.invokeMethod(method, args);
             }
 
             return new ClientObjectResponse(requestId(), res);

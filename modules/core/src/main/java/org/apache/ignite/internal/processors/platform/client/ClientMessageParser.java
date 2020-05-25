@@ -76,6 +76,7 @@ import org.apache.ignite.internal.processors.platform.client.cluster.ClientClust
 import org.apache.ignite.internal.processors.platform.client.cluster.ClientClusterWalGetStateRequest;
 import org.apache.ignite.internal.processors.platform.client.compute.ClientExecuteTaskRequest;
 import org.apache.ignite.internal.processors.platform.client.service.ClientServiceInvokeRequest;
+import org.apache.ignite.internal.processors.platform.client.service.ClientServiceProxyRequest;
 import org.apache.ignite.internal.processors.platform.client.tx.ClientTxEndRequest;
 import org.apache.ignite.internal.processors.platform.client.tx.ClientTxStartRequest;
 
@@ -251,8 +252,11 @@ public class ClientMessageParser implements ClientListenerMessageParser {
     /** */
     public static final short OP_COMPUTE_TASK_FINISHED = 6001;
 
+    /** Service proxy. */
+    private static final short OP_SERVICE_PROXY = 7000;
+
     /** Service invocation. */
-    private static final short OP_SERVICE_INVOKE = 7000;
+    private static final short OP_SERVICE_INVOKE = 7001;
 
     /** Marshaller. */
     private final GridBinaryMarshaller marsh;
@@ -454,6 +458,9 @@ public class ClientMessageParser implements ClientListenerMessageParser {
 
             case OP_COMPUTE_TASK_EXECUTE:
                 return new ClientExecuteTaskRequest(reader);
+
+            case OP_SERVICE_PROXY:
+                return new ClientServiceProxyRequest(reader);
 
             case OP_SERVICE_INVOKE:
                 return new ClientServiceInvokeRequest(reader);

@@ -76,7 +76,8 @@ enum ClientOperation {
     /** Execute compute task. */COMPUTE_TASK_EXECUTE(6000),
     /** Finished compute task notification. */COMPUTE_TASK_FINISHED(6001, true),
 
-    /** Invoke service. */SERVICE_INVOKE(7000);
+    /** Service proxy. */SERVICE_PROXY(7000),
+    /** Invoke service. */SERVICE_INVOKE(7001);
 
     /** Code. */
     private final int code;

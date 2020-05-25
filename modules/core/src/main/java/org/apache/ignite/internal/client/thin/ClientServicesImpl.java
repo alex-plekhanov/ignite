@@ -26,6 +26,7 @@ import org.apache.ignite.client.ClientClusterGroup;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.ClientServices;
 import org.apache.ignite.internal.binary.BinaryRawWriterEx;
+import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.internal.util.typedef.internal.A;
 
 /**
@@ -73,8 +74,35 @@ class ClientServicesImpl implements ClientServices {
         if (nodeIds != null && nodeIds.isEmpty())
             throw new ClientException("Cluster group is empty.");
 
-        return (T)Proxy.newProxyInstance(svcItf.getClassLoader(), new Class[] {svcItf},
-            new ServiceInvocationHandler<>(name, svcItf, timeout, nodeIds));
+        try {
+            T2<ClientChannel, Long> proxy = ch.service(ClientOperation.SERVICE_PROXY,
+                req -> {
+                    req.clientChannel().protocolCtx().checkFeatureSupported(ProtocolBitmaskFeature.SERVICE_INVOKE);
+
+                    try (BinaryRawWriterEx writer = utils.createBinaryWriter(req.out())) {
+                        writer.writeString(name);
+                        writer.writeByte((byte)0); // Flags.
+                        writer.writeLong(timeout);
+
+                        if (nodeIds == null)
+                            writer.writeInt(0);
+                        else {
+                            writer.writeInt(nodeIds.size());
+
+                            for (UUID nodeId : nodeIds)
+                                writer.writeUuid(nodeId);
+                        }
+                    }
+                },
+                res -> new T2<>(res.clientChannel(), res.in().readLong())
+            );
+
+            return (T)Proxy.newProxyInstance(svcItf.getClassLoader(), new Class[] {svcItf},
+                new ServiceInvocationHandler<>(proxy.get1(), proxy.get2()));
+        }
+        catch (ClientError e) {
+            throw new ClientException(e);
+        }
     }
 
     /**
@@ -90,28 +118,18 @@ class ClientServicesImpl implements ClientServices {
      * Service invocation handler.
      */
     private class ServiceInvocationHandler<T> implements InvocationHandler {
-        /** Service name. */
-        private final String name;
+        /** Channel. */
+        private final ClientChannel ch;
 
-        /** Service interface. */
-        private final Class<? super T> svcItf;
-
-        /** Timeout. */
-        private final long timeout;
-
-        /** Node IDs. */
-        private final Collection<UUID> nodeIds;
+        /** Proxy id. */
+        private final long proxyId;
 
         /**
-         * @param name Service name.
-         * @param svcItf Service interface.
-         * @param timeout Timeout.
+         *
          */
-        private ServiceInvocationHandler(String name, Class<? super T> svcItf, long timeout, Collection<UUID> nodeIds) {
-            this.name = name;
-            this.svcItf = svcItf;
-            this.timeout = timeout;
-            this.nodeIds = nodeIds;
+        private ServiceInvocationHandler(ClientChannel ch, long proxyId) {
+            this.ch = ch;
+            this.proxyId = proxyId;
         }
 
         /** {@inheritDoc} */
@@ -119,22 +137,11 @@ class ClientServicesImpl implements ClientServices {
             try {
                 return ch.service(ClientOperation.SERVICE_INVOKE,
                     req -> {
-                        req.clientChannel().protocolCtx().checkFeatureSupported(ProtocolBitmaskFeature.SERVICE_INVOKE);
+                        if (ch != req.clientChannel())
+                            throw new ClientException("Connection lost, proxy should be recreated");
 
                         try (BinaryRawWriterEx writer = utils.createBinaryWriter(req.out())) {
-                            writer.writeString(name);
-                            writer.writeByte((byte)0); // Flags.
-                            writer.writeLong(timeout);
-
-                            if (nodeIds == null)
-                                writer.writeInt(0);
-                            else {
-                                writer.writeInt(nodeIds.size());
-
-                                for (UUID nodeId : nodeIds)
-                                    writer.writeUuid(nodeId);
-                            }
-
+                            writer.writeLong(proxyId);
                             writer.writeString(method.getName());
 
                             Class<?>[] paramTypes = method.getParameterTypes();
