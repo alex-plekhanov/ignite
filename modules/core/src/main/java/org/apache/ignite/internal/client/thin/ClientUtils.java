@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.client.thin;
 
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -542,12 +543,6 @@ final class ClientUtils {
         else {
             BinaryReaderHandles hnds = new BinaryReaderHandles();
 
-/*
-            BinaryRawReaderEx reader = new BinaryReaderExImpl(marsh.context(), in, U.gridClassLoader(), hnds, true);
-
-            return (T)unwrapBinary(reader.readObject(), hnds);
-*/
-
             return (T)unwrapBinary(marsh.deserialize(in, hnds), hnds);
         }
     }
@@ -604,7 +599,7 @@ final class ClientUtils {
         if (BinaryUtils.knownArray(arr))
             return arr;
 
-        Object[] res = new Object[arr.length];
+        Object[] res = (Object[])Array.newInstance(arr.getClass().getComponentType(), arr.length);
 
         for (int i = 0; i < arr.length; i++)
             res[i] = unwrapBinary(arr[i], hnds);
