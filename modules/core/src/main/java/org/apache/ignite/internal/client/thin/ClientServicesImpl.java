@@ -26,6 +26,7 @@ import org.apache.ignite.client.ClientClusterGroup;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.ClientServices;
 import org.apache.ignite.internal.binary.BinaryRawWriterEx;
+import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.A;
 
 /**
@@ -145,10 +146,14 @@ class ClientServicesImpl implements ClientServices {
 
                             writer.writeIntArray(paramTypeIds);
 
-                            writer.writeInt(args.length);
+                            if (F.isEmpty(args))
+                                writer.writeInt(0);
+                            else {
+                                writer.writeInt(args.length);
 
-                            for (Object arg : args)
-                                writer.writeObject(arg);
+                                for (Object arg : args)
+                                    writer.writeObject(arg);
+                            }
                         }
                     },
                     res -> utils.readObject(res.in(), false)

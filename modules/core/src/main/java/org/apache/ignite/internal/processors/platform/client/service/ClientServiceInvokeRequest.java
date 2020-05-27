@@ -104,7 +104,7 @@ public class ClientServiceInvokeRequest extends ClientRequest {
         args = new Object[argCnt];
 
         for (int i = 0; i < argCnt; i++)
-            args[i] = reader.readObjectDetached();
+            args[i] = keepBinary() ? reader.readObjectDetached() : reader.readObject();
     }
 
     /** {@inheritDoc} */
@@ -139,21 +139,17 @@ public class ClientServiceInvokeRequest extends ClientRequest {
 
         IgniteServices services = grp.services();
 
-        boolean keepBinary = (flags & FLAG_KEEP_BINARY_MASK) != 0;
-
         try {
             Object res;
 
             if (PlatformService.class.isAssignableFrom(desc.serviceClass())) {
                 PlatformService proxy = services.serviceProxy(name, PlatformService.class, false, timeout);
 
-                res = proxy.invokeMethod(methodName, keepBinary, args);
+                res = proxy.invokeMethod(methodName, keepBinary(), args);
             }
             else {
                 GridServiceProxy<?> proxy = new GridServiceProxy<>(grp, name, Service.class, false, timeout,
                     ctx.kernalContext());
-
-                Object[] args = keepBinary ? this.args : PlatformUtils.unwrapBinariesInArray(this.args);
 
                 Method method = resolveMethod(ctx, svcCls);
 
@@ -165,6 +161,13 @@ public class ClientServiceInvokeRequest extends ClientRequest {
         catch (Throwable e) {
             throw new IgniteException(e);
         }
+    }
+
+    /**
+     * Keep binary flag.
+     */
+    private boolean keepBinary() {
+        return (flags & FLAG_KEEP_BINARY_MASK) != 0;
     }
 
     /**

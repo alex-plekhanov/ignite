@@ -55,6 +55,7 @@ import org.apache.ignite.internal.binary.BinaryRawWriterEx;
 import org.apache.ignite.internal.binary.BinaryReaderExImpl;
 import org.apache.ignite.internal.binary.BinaryReaderHandles;
 import org.apache.ignite.internal.binary.BinarySchema;
+import org.apache.ignite.internal.binary.BinaryThreadLocalContext;
 import org.apache.ignite.internal.binary.BinaryUtils;
 import org.apache.ignite.internal.binary.BinaryWriterExImpl;
 import org.apache.ignite.internal.binary.streams.BinaryHeapInputStream;
@@ -531,7 +532,7 @@ final class ClientUtils {
      * @param out Output stream.
      */
     BinaryRawWriterEx createBinaryWriter(BinaryOutputStream out) {
-        return new BinaryWriterExImpl(marsh.context(), out, null, null);
+        return new BinaryWriterExImpl(marsh.context(), out, BinaryThreadLocalContext.get().schemaHolder(), null);
     }
 
     /** Read Ignite binary object from input stream. */
@@ -540,6 +541,12 @@ final class ClientUtils {
             return (T)marsh.unmarshal(in);
         else {
             BinaryReaderHandles hnds = new BinaryReaderHandles();
+
+/*
+            BinaryRawReaderEx reader = new BinaryReaderExImpl(marsh.context(), in, U.gridClassLoader(), hnds, true);
+
+            return (T)unwrapBinary(reader.readObject(), hnds);
+*/
 
             return (T)unwrapBinary(marsh.deserialize(in, hnds), hnds);
         }
