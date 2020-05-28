@@ -142,7 +142,7 @@ public class ClientServiceInvokeRequest extends ClientRequest {
         try {
             Object res;
 
-            if (PlatformService.class.isAssignableFrom(desc.serviceClass())) {
+            if (PlatformService.class.isAssignableFrom(svcCls)) {
                 PlatformService proxy = services.serviceProxy(name, PlatformService.class, false, timeout);
 
                 res = proxy.invokeMethod(methodName, keepBinary(), args);
