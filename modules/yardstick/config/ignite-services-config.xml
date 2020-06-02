@@ -42,9 +42,7 @@
                     <property name="maxPerNodeCount" value="1"/>
                     <property name="totalCount" value="1"/>
                     <property name="service">
-                        <bean class="org.apache.ignite.yardstick.thin.service.SimpleServiceImpl">
-
-                        </bean>
+                        <bean class="org.apache.ignite.yardstick.thin.service.SimpleServiceImpl"/>
                     </property>
                 </bean>
             </list>
