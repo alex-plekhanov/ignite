@@ -22,22 +22,23 @@ import org.apache.ignite.yardstick.IgniteThinAbstractBenchmark;
 import org.yardstickframework.BenchmarkConfiguration;
 
 /**
- * Class for thin client benchmarks which use service invocation.
+ * Class to benchmark thin client service invocation.
  */
 public class IgniteThinServiceInvocationBenchmark extends IgniteThinAbstractBenchmark {
     /** Service proxy. */
-    private SimpleService srvcProxy;
+    private volatile ThreadLocal<SimpleService> srvcProxy;
 
     /** {@inheritDoc} */
     @Override public void setUp(BenchmarkConfiguration cfg) throws Exception {
         super.setUp(cfg);
 
-        srvcProxy = client().services().serviceProxy(SimpleService.class.getSimpleName(), SimpleService.class);
+        srvcProxy = ThreadLocal.withInitial(
+            () -> client().services().serviceProxy(SimpleService.class.getSimpleName(), SimpleService.class));
     }
 
     /** {@inheritDoc} */
     @Override public boolean test(Map<Object, Object> map) throws Exception {
-        srvcProxy.echo(nextRandom(Integer.MAX_VALUE));
+        srvcProxy.get().echo(nextRandom(Integer.MAX_VALUE));
 
         return true;
     }
