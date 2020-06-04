@@ -66,6 +66,7 @@ import org.apache.ignite.client.SslMode;
 import org.apache.ignite.client.SslProtocol;
 import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.binary.BinaryCachingMetadataHandler;
 import org.apache.ignite.internal.binary.BinaryContext;
 import org.apache.ignite.internal.binary.BinaryPrimitives;
@@ -214,19 +215,31 @@ class TcpClientChannel implements ClientChannel {
         Consumer<PayloadOutputChannel> payloadWriter,
         Function<PayloadInputChannel, T> payloadReader
     ) throws ClientConnectionException, ClientAuthorizationException, ClientServerError, ClientException {
-        long id = send(op, payloadWriter);
+        ClientRequestFuture fut = send(op, payloadWriter);
 
-        return receive(id, payloadReader);
+        return receive(fut, payloadReader);
+    }
+
+    /** {@inheritDoc} */
+    @Override public <T> IgniteInternalFuture<T> serviceAsync(
+        ClientOperation op,
+        Consumer<PayloadOutputChannel> payloadWriter,
+        Function<PayloadInputChannel, T> payloadReader
+    ) throws ClientConnectionException, ClientAuthorizationException, ClientServerError, ClientException {
+        ClientRequestFuture fut = send(op, payloadWriter);
+
+        return fut.chain(f -> receive(fut, payloadReader));
     }
 
     /**
      * @param op Operation.
      * @param payloadWriter Payload writer to stream or {@code null} if request has no payload.
-     * @return Request ID.
+     * @return Future.
      */
-    private long send(ClientOperation op, Consumer<PayloadOutputChannel> payloadWriter)
+    private ClientRequestFuture send(ClientOperation op, Consumer<PayloadOutputChannel> payloadWriter)
         throws ClientException, ClientConnectionException {
         long id = reqId.getAndIncrement();
+        ClientRequestFuture fut = new ClientRequestFuture(id);
 
         // Only one thread at a time can have access to write to the channel.
         sndLock.lock();
@@ -237,7 +250,7 @@ class TcpClientChannel implements ClientChannel {
 
             initReceiverThread(); // Start the receiver thread with the first request.
 
-            pendingReqs.put(id, new ClientRequestFuture());
+            pendingReqs.put(id, fut);
 
             BinaryOutputStream req = payloadCh.out();
 
@@ -261,20 +274,16 @@ class TcpClientChannel implements ClientChannel {
             sndLock.unlock();
         }
 
-        return id;
+        return fut;
     }
 
     /**
-     * @param reqId ID of the request to receive the response for.
+     * @param pendingReq Request future.
      * @param payloadReader Payload reader from stream.
      * @return Received operation payload or {@code null} if response has no payload.
      */
-    private <T> T receive(long reqId, Function<PayloadInputChannel, T> payloadReader)
+    private <T> T receive(ClientRequestFuture pendingReq, Function<PayloadInputChannel, T> payloadReader)
         throws ClientServerError, ClientException, ClientConnectionException, ClientAuthorizationException {
-        ClientRequestFuture pendingReq = pendingReqs.get(reqId);
-
-        assert pendingReq != null : "Pending request future not found for request " + reqId;
-
         try {
             byte[] payload = pendingReq.get();
 
@@ -293,7 +302,7 @@ class TcpClientChannel implements ClientChannel {
             throw new ClientException(e.getMessage(), e);
         }
         finally {
-            pendingReqs.remove(reqId);
+            pendingReqs.remove(pendingReq.id);
         }
     }
 
@@ -713,6 +722,15 @@ class TcpClientChannel implements ClientChannel {
      *
      */
     private static class ClientRequestFuture extends GridFutureAdapter<byte[]> {
+        /** Request ID. */
+        private final long id;
+
+        /**
+         * @param id Request ID.
+         */
+        private ClientRequestFuture(long id) {
+            this.id = id;
+        }
     }
 
     /** SSL Socket Factory. */

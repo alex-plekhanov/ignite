@@ -37,6 +37,7 @@ import org.apache.ignite.client.ClientCacheConfiguration;
 import org.apache.ignite.client.ClientCluster;
 import org.apache.ignite.client.ClientClusterGroup;
 import org.apache.ignite.client.ClientCompute;
+import org.apache.ignite.client.ClientDataStreamer;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.client.ClientServices;
 import org.apache.ignite.client.ClientTransactions;
@@ -82,6 +83,9 @@ public class TcpIgniteClient implements IgniteClient {
     /** Services facade. */
     private final ClientServicesImpl services;
 
+    /** Data streamers facade. */
+    private final ClientDataStreamersImpl streamers;
+
     /** Marshaller. */
     private final ClientBinaryMarshaller marsh;
 
@@ -125,10 +129,14 @@ public class TcpIgniteClient implements IgniteClient {
         compute = new ClientComputeImpl(ch, marsh, cluster.defaultClusterGroup());
 
         services = new ClientServicesImpl(ch, marsh, cluster.defaultClusterGroup());
+
+        streamers = new ClientDataStreamersImpl(ch, marsh);
     }
 
     /** {@inheritDoc} */
     @Override public void close() throws Exception {
+        streamers.stop();
+
         ch.close();
     }
 
@@ -246,6 +254,13 @@ public class TcpIgniteClient implements IgniteClient {
     /** {@inheritDoc} */
     @Override public ClientServices services(ClientClusterGroup grp) {
         return services.withClusterGroup((ClientClusterGroupImpl)grp);
+    }
+
+    /** {@inheritDoc} */
+    @Override public <K, V> ClientDataStreamer<K, V> dataStreamer(String cacheName) {
+        ensureCacheName(cacheName);
+
+        return streamers.create(cacheName);
     }
 
     /**

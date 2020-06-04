@@ -23,6 +23,7 @@ import java.util.function.Function;
 import org.apache.ignite.client.ClientAuthorizationException;
 import org.apache.ignite.client.ClientConnectionException;
 import org.apache.ignite.client.ClientException;
+import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 
 /**
@@ -42,6 +43,15 @@ interface ClientChannel extends AutoCloseable {
      * @throws ClientConnectionException In case of IO errors.
      */
     public <T> T service(
+        ClientOperation op,
+        Consumer<PayloadOutputChannel> payloadWriter,
+        Function<PayloadInputChannel, T> payloadReader
+    ) throws ClientException, ClientAuthorizationException, ClientServerError, ClientConnectionException;
+
+    /**
+     * Send request (sync) and handle response (async) for client operation.
+     */
+    public <T> IgniteInternalFuture<T> serviceAsync(
         ClientOperation op,
         Consumer<PayloadOutputChannel> payloadWriter,
         Function<PayloadInputChannel, T> payloadReader
