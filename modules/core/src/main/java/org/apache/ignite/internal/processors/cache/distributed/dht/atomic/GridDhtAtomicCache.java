@@ -3611,6 +3611,8 @@ public class GridDhtAtomicCache<K, V> extends GridDhtCacheAdapter<K, V> {
                 msg.timeoutSender(timeoutSnd);
 
                 ctx.time().addTimeoutObject(timeoutSnd);
+
+                log.info(">>>>  deff");
             }
 
             resMap.put(primaryId, msg);
