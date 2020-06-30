@@ -236,7 +236,6 @@
                             <jvmArg>-Xmx1024m</jvmArg>
                         </jvmArgs>
                         <args>
-                            <arg>-target:jvm-1.8</arg>
                             <arg>-nobootcp</arg>
                         </args>
                     </configuration>
@@ -290,6 +289,7 @@
                         <use>true</use>
                         <author>false</author>
                         <version>false</version>
+                        <source>1.8</source>
                         <additionalOptions>${javadoc.opts}</additionalOptions>
                         <groups>
                             <group>
@@ -1026,23 +1026,52 @@
             </activation>
             <properties>
                 <maven.compiler.source>1.8</maven.compiler.source>
-                <maven.compiler.target>1.8</maven.compiler.target>
+                <maven.compiler.target>11</maven.compiler.target>
             </properties>
             <dependencies/>
             <build>
                 <plugins>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <version>3.7.0</version>
                         <configuration>
-                            <additionalOptions>${javadoc.opts} --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.management/com.sun.jmx.mbeanserver=ALL-UNNAMED</additionalOptions>
+                            <compilerArgs>
+                                <arg>--add-exports</arg>
+                                <arg>java.base/jdk.internal.misc=ALL-UNNAMED</arg>
+                                <arg>--add-exports</arg>
+                                <arg>java.base/sun.nio.ch=ALL-UNNAMED</arg>
+                                <arg>--add-exports</arg>
+                                <arg>java.management/com.sun.jmx.mbeanserver=ALL-UNNAMED</arg>
+                                <arg>--add-exports</arg>
+                                <arg>jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED</arg>
+                            </compilerArgs>
                         </configuration>
                     </plugin>
+
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-surefire-plugin</artifactId>
                         <configuration>
                             <argLine>--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.management/com.sun.jmx.mbeanserver=ALL-UNNAMED --add-exports=jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED --add-exports=java.base/sun.reflect.generics.reflectiveObjects=ALL-UNNAMED --illegal-access=permit</argLine>
+                        </configuration>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <configuration>
+                            <!--
+                            There is a bug in the JDK 9+ which doesn't allow to build javadoc with source=1.8 and
+                            specified subpackages: https://bugs.openjdk.java.net/browse/JDK-8193030
+                            On the other hand we can't build javadoc with source > 8 and references to java 8 API due to
+                            "The code being documented uses modules but the packages defined in
+                            https://docs.oracle.com/javase/8/docs/api are in the unnamed module" error, so build
+                            javadocs on JDK 9+ with source=9 and with disabled detectJavaApiLink flag.
+                            -->
+                            <additionalOptions>${javadoc.opts} --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.management/com.sun.jmx.mbeanserver=ALL-UNNAMED</additionalOptions>
+                            <detectJavaApiLink>false</detectJavaApiLink>
+                            <source>9</source>
                         </configuration>
                     </plugin>
                 </plugins>
