@@ -23,11 +23,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.TreeSet;
+import java.util.concurrent.CountDownLatch;
+import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.springdata.misc.ApplicationConfiguration;
 import org.apache.ignite.springdata.misc.FullNameProjection;
 import org.apache.ignite.springdata.misc.Person;
 import org.apache.ignite.springdata.misc.PersonProjection;
 import org.apache.ignite.springdata.misc.PersonRepository;
+import org.apache.ignite.springdata.misc.PersonTxRepository;
+import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.junit.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -93,6 +98,26 @@ public class IgniteSpringDataCrudSelfTest extends GridCommonAbstractTest {
     /** {@inheritDoc} */
     @Override protected void afterTestsStopped() throws Exception {
         ctx.destroy();
+    }
+
+    @Test
+    public void testTx() throws IgniteCheckedException {
+        PersonTxRepository txRepo = ctx.getBean(PersonTxRepository.class);
+
+        CountDownLatch latch = new CountDownLatch(1);
+
+        Integer key = (int)repo.count();
+        Person val = new Person("name", "surname");
+
+        IgniteInternalFuture<?> fut = GridTestUtils.runAsync(() -> txRepo.saveInTxAndWaitLatch(key, val, latch));
+
+        assertFalse(repo.findById(key).isPresent());
+
+        latch.countDown();
+
+        fut.get();
+
+        assertEquals(val, repo.findById(key).get());
     }
 
     /** */

@@ -19,19 +19,24 @@ package org.apache.ignite.springdata.misc;
 
 import org.apache.ignite.Ignite;
 import org.apache.ignite.Ignition;
+import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
 import org.apache.ignite.springdata.misc.SampleEvaluationContextExtension.SamplePassParamExtension;
 import org.apache.ignite.springdata22.repository.config.EnableIgniteRepositories;
+import org.apache.ignite.transactions.spring.SpringTransactionManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.spel.spi.EvaluationContextExtension;
+import org.springframework.transaction.TransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 /** */
 @Configuration
 @EnableIgniteRepositories
+@EnableTransactionManagement
 public class ApplicationConfiguration {
     /** */
     public static final String IGNITE_INSTANCE_ONE = "IGNITE_INSTANCE_ONE";
@@ -63,6 +68,16 @@ public class ApplicationConfiguration {
         return new SamplePassParamExtension();
     }
 
+    /** */
+    @Bean
+    public TransactionManager txManager() {
+        SpringTransactionManager txMgr = new SpringTransactionManager();
+
+        txMgr.setIgniteInstanceName(IGNITE_INSTANCE_ONE);
+
+        return txMgr;
+    }
+
     /**
      * Ignite instance bean - no instance name provided on RepositoryConfig
      */
@@ -72,7 +87,7 @@ public class ApplicationConfiguration {
 
         cfg.setIgniteInstanceName(IGNITE_INSTANCE_ONE);
 
-        CacheConfiguration ccfg = new CacheConfiguration("PersonCache");
+        CacheConfiguration ccfg = new CacheConfiguration("PersonCache").setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL);
 
         ccfg.setIndexedTypes(Integer.class, Person.class);
 
