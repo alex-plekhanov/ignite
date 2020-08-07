@@ -1294,5 +1294,34 @@
                 </pluginManagement>
             </build>
         </profile>
+
+        <profile>
+            <id>asciidoc</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.asciidoctor</groupId>
+                        <artifactId>asciidoctor-maven-plugin</artifactId>
+                        <version>1.5.6</version>
+                        <executions>
+                            <execution>
+                                <id>outpumvn t-html</id>
+                                <phase>generate-resources</phase>
+                                <goals>
+                                    <goal>process-asciidoc</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <sourceDirectory>${project.basedir}/docs</sourceDirectory>
+                            <outputDirectory>${project.basedir}/target/generated-docs</outputDirectory>
+                            <backend>html</backend>
+                            <headerFooter>true</headerFooter>
+                            <imagesDir>assets/images</imagesDir>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 </project>
