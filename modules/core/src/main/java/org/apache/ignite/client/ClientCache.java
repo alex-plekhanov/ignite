@@ -361,4 +361,13 @@ public interface ClientCache<K, V> {
      * @return Cursor.
      */
     public FieldsQueryCursor<List<?>> query(SqlFieldsQuery qry);
+
+    /**
+     * Start continuous query over the cache.
+     *
+     * @param qry Query.
+     * @return Continuous query handler.
+     *
+     */
+    public ClientContinuousQueryHandler continuousQuery(ClientContinuousQuery<K, V> qry);
 }

@@ -36,6 +36,8 @@ import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.cache.query.SqlQuery;
 import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.ClientCacheConfiguration;
+import org.apache.ignite.client.ClientContinuousQuery;
+import org.apache.ignite.client.ClientContinuousQueryHandler;
 import org.apache.ignite.client.ClientException;
 import org.apache.ignite.internal.binary.GridBinaryMarshaller;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
@@ -428,6 +430,12 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
             keepBinary,
             marsh
         ));
+    }
+
+    /** {@inheritDoc} */
+    @Override public ClientContinuousQueryHandler continuousQuery(ClientContinuousQuery<K, V> qry) {
+        // TODO
+        return null;
     }
 
     /** Handle scan query. */
