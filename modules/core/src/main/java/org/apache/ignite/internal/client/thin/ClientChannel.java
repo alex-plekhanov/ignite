@@ -73,6 +73,11 @@ interface ClientChannel extends AutoCloseable {
     public void addNotificationListener(NotificationListener lsnr);
 
     /**
+     * Remove notifications (from server to client) listener.
+     */
+    public void removeNotificationListener(NotificationListener lsnr);
+
+    /**
      * @return {@code True} channel is closed.
      */
     public boolean closed();

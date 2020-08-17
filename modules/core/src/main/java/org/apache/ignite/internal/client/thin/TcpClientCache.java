@@ -43,6 +43,7 @@ import org.apache.ignite.internal.binary.GridBinaryMarshaller;
 import org.apache.ignite.internal.binary.streams.BinaryInputStream;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.client.thin.TcpClientTransactions.TcpClientTransaction;
+import org.apache.ignite.internal.util.typedef.internal.A;
 
 import static java.util.AbstractMap.SimpleEntry;
 import static org.apache.ignite.internal.client.thin.ProtocolVersionFeature.EXPIRY_POLICY;
@@ -53,7 +54,7 @@ import static org.apache.ignite.internal.processors.platform.cache.expiry.Platfo
  */
 class TcpClientCache<K, V> implements ClientCache<K, V> {
     /** "Keep binary" flag mask. */
-    private static final byte KEEP_BINARY_FLAG_MASK = 0x01;
+    static final byte KEEP_BINARY_FLAG_MASK = 0x01;
 
     /** "Transactional" flag mask. */
     private static final byte TRANSACTIONAL_FLAG_MASK = 0x02;
@@ -434,8 +435,9 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
 
     /** {@inheritDoc} */
     @Override public ClientContinuousQueryHandler continuousQuery(ClientContinuousQuery<K, V> qry) {
-        // TODO
-        return null;
+        A.notNull(qry, "qry");
+
+        return new ClientContinuousQueryHandlerImpl(cacheId, ch, marsh, qry, keepBinary);
     }
 
     /** Handle scan query. */

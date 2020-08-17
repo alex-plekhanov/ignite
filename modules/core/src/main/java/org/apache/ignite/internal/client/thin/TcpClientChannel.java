@@ -430,6 +430,11 @@ class TcpClientChannel implements ClientChannel {
     }
 
     /** {@inheritDoc} */
+    @Override public void removeNotificationListener(NotificationListener lsnr) {
+        notificationLsnrs.remove(lsnr);
+    }
+
+    /** {@inheritDoc} */
     @Override public boolean closed() {
         return closed.get();
     }

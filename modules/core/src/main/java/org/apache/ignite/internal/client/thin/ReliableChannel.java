@@ -104,9 +104,6 @@ final class ReliableChannel implements AutoCloseable, NotificationListener {
     /** Channel is closed. */
     private volatile boolean closed;
 
-    /** Fail (disconnect) listeners. */
-    private ArrayList<Runnable> chFailLsnrs = new ArrayList<>();
-
     /**
      * Constructor.
      */
@@ -279,6 +276,15 @@ final class ReliableChannel implements AutoCloseable, NotificationListener {
         channelCloseLsnrs.add(lsnr);
     }
 
+    /**
+     * Remove listener of channel close event.
+     *
+     * @param lsnr Listener.
+     */
+    public void removeChannelCloseListener(Consumer<ClientChannel> lsnr) {
+        channelCloseLsnrs.remove(lsnr);
+    }
+
     /** {@inheritDoc} */
     @Override public void acceptNotification(
         ClientChannel ch,
@@ -413,8 +419,6 @@ final class ReliableChannel implements AutoCloseable, NotificationListener {
         // when current index was changed and no other wrong channel will be closed by current thread because
         // onChannelFailure checks channel binded to the holder before closing it.
         onChannelFailure(channels[curChIdx], ch);
-
-        chFailLsnrs.forEach(Runnable::run);
     }
 
     /**
@@ -464,13 +468,6 @@ final class ReliableChannel implements AutoCloseable, NotificationListener {
         if (partitionAwarenessEnabled && affinityCtx.updateLastTopologyVersion(ch.serverTopologyVersion(),
             ch.serverNodeId()))
             initAllChannelsAsync();
-    }
-
-    /**
-     * @param chFailLsnr Listener for the channel fail (disconnect).
-     */
-    public void addChannelFailListener(Runnable chFailLsnr) {
-        chFailLsnrs.add(chFailLsnr);
     }
 
     /**

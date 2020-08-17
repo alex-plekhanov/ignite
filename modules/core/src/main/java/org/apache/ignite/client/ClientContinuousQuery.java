@@ -17,7 +17,6 @@
 
 package org.apache.ignite.client;
 
-import javax.cache.event.CacheEntryUpdatedListener;
 import javax.cache.event.EventType;
 import org.apache.ignite.cache.CacheEntryEventSerializableFilter;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -47,7 +46,7 @@ public class ClientContinuousQuery<K, V> {
     private Runnable disconnectLsnr;
 
     /** Local listener. */
-    private CacheEntryUpdatedListener<K, V> locLsnr;
+    private ClientContinuousQueryListener<K, V> locLsnr;
 
     /** Remote filter. */
     private CacheEntryEventSerializableFilter<K, V> rmtFilter;
@@ -83,26 +82,6 @@ public class ClientContinuousQuery<K, V> {
     }
 
     /**
-     * Sets a disconnect listener. This callback is called on client when channel to the server serving the query is
-     * disconnected.
-     *
-     * @param disconnectLsnr Disconnect listenner.
-     * @return {@code this} for chaining.
-     */
-    public ClientContinuousQuery<K, V> setDisconnectListener(Runnable disconnectLsnr) {
-        this.disconnectLsnr = disconnectLsnr;
-
-        return this;
-    }
-
-    /**
-     * @return Local listener.
-     */
-    public Runnable getDisconnectListener() {
-        return disconnectLsnr;
-    }
-
-    /**
      * Sets a local callback. This callback is called on client when new updates are received.
      * <p>
      * Note that for removed entries values will be {@code null}.
@@ -114,7 +93,7 @@ public class ClientContinuousQuery<K, V> {
      * @param locLsnr Local callback.
      * @return {@code this} for chaining.
      */
-    public ClientContinuousQuery<K, V> setLocalListener(CacheEntryUpdatedListener<K, V> locLsnr) {
+    public ClientContinuousQuery<K, V> setLocalListener(ClientContinuousQueryListener<K, V> locLsnr) {
         this.locLsnr = locLsnr;
 
         return this;
@@ -123,7 +102,7 @@ public class ClientContinuousQuery<K, V> {
     /**
      * @return Local listener.
      */
-    public CacheEntryUpdatedListener<K, V> getLocalListener() {
+    public ClientContinuousQueryListener<K, V> getLocalListener() {
         return locLsnr;
     }
 
