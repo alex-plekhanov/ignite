@@ -162,9 +162,9 @@ public class ClientContinuousQueryHandlerImpl<K, V> implements ClientContinuousQ
                     evts.add(new ClientContinuousQueryEventImpl<K, V>(key, oldVal, val, evtType));
                 }
 
+                // TODO Async notification.
                 qry.getLocalListener().onUpdated(evts);
             }
-
         }
     }
 

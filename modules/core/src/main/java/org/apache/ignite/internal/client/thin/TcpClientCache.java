@@ -437,7 +437,7 @@ class TcpClientCache<K, V> implements ClientCache<K, V> {
     @Override public ClientContinuousQueryHandler continuousQuery(ClientContinuousQuery<K, V> qry) {
         A.notNull(qry, "qry");
 
-        return new ClientContinuousQueryHandlerImpl(cacheId, ch, marsh, qry, keepBinary);
+        return new ClientContinuousQueryHandlerImpl<K, V>(cacheId, ch, marsh, qry, keepBinary);
     }
 
     /** Handle scan query. */
