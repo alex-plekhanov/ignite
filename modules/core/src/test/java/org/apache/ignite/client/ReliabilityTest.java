@@ -17,6 +17,10 @@
 
 package org.apache.ignite.client;
 
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -38,9 +42,15 @@ import org.apache.ignite.cache.query.Query;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.failure.FailureHandler;
+import org.apache.ignite.internal.binary.streams.BinaryHeapOutputStream;
+import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.client.thin.AbstractThinClientTest;
 import org.apache.ignite.internal.client.thin.ClientServerError;
+import org.apache.ignite.internal.client.thin.ProtocolVersion;
+import org.apache.ignite.internal.client.thin.ProtocolVersionFeature;
+import org.apache.ignite.internal.processors.odbc.ClientListenerNioListener;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProcessor;
+import org.apache.ignite.internal.processors.odbc.ClientListenerRequest;
 import org.apache.ignite.mxbean.ClientProcessorMXBean;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.junit.Test;
@@ -350,6 +360,52 @@ public class ReliabilityTest extends AbstractThinClientTest {
             GridTestUtils.assertThrowsAnyCause(log, () -> cache.remove(0), ClientServerError.class, msg);
 
             assertTrue(GridTestUtils.waitForCondition(failure::get, 1_000L));
+        }
+    }
+
+    /**
+     * Test malformed handshake.
+     */
+    @Test
+    public void testMalformedHandshake() {
+        try (Ignite ignite = startGrid(0)){
+            Socket s = new Socket();
+
+            s.connect(new InetSocketAddress(clientHost(ignite.cluster().localNode()),
+                    clientPort(ignite.cluster().localNode())), 1000);
+
+            OutputStream os = s.getOutputStream();
+
+            try (BinaryOutputStream bos = new BinaryHeapOutputStream(32)) {
+                ProtocolVersion ver = ProtocolVersionFeature.BITMAP_FEATURES.verIntroduced();
+
+                bos.writeInt(0); // Reserve an integer for the request size.
+                bos.writeByte((byte) ClientListenerRequest.HANDSHAKE);
+
+                bos.writeShort(ver.major());
+                bos.writeShort(ver.minor());
+                bos.writeShort(ver.patch());
+
+                bos.writeByte(ClientListenerNioListener.THIN_CLIENT);
+
+                // Here byte array expected by protocol, but we send boolean to broke handshake.
+                bos.writeBoolean(false);
+
+                bos.writeInt(0, bos.position() - 4);
+
+                os.write(bos.arrayCopy());
+                os.flush();
+
+                InputStream is = s.getInputStream();
+
+                assertEquals(-1, is.read());
+            }
+            finally {
+                s.close();
+            }
+        }
+        catch (Exception e) {
+            fail("Exception while sending message: " + e.getMessage());
         }
     }
 
