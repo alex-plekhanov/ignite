@@ -410,6 +410,38 @@ public class ReliabilityTest extends AbstractThinClientTest {
     }
 
     /**
+     * Test timeout on handshake.
+     */
+    @Test
+    public void testTimeoutOnHandshake() {
+        try (Ignite ignite = startGrid(0)){
+            Socket s = new Socket();
+
+            s.connect(new InetSocketAddress(clientHost(ignite.cluster().localNode()),
+                    clientPort(ignite.cluster().localNode())), 1000);
+
+            OutputStream os = s.getOutputStream();
+
+            try (BinaryOutputStream bos = new BinaryHeapOutputStream(32)) {
+                bos.writeInt(1000); //  Size.
+
+                os.write(bos.arrayCopy());
+                os.flush();
+
+                InputStream is = s.getInputStream();
+
+                assertEquals(-1, is.read());
+            }
+            finally {
+                s.close();
+            }
+        }
+        catch (Exception e) {
+            fail("Exception while sending message: " + e.getMessage());
+        }
+    }
+
+    /**
      * Performs cache put.
      *
      * @param cache Cache.
