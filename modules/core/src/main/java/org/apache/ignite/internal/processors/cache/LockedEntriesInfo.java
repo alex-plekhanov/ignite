@@ -17,8 +17,8 @@
 
 package org.apache.ignite.internal.processors.cache;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
  * Helper class to acquire java level locks on unordered set of entries and avoid deadlocks.
@@ -27,8 +27,11 @@ public class LockedEntriesInfo {
     /** Deadlock detection timeout in milliseconds. */
     private static final long DEADLOCK_DETECTION_TIMEOUT = 500L;
 
-    /** Locked entries info for each thread. */
-    private final Map<Long, LockedEntries> lockedEntriesPerThread = new ConcurrentHashMap<>();
+    /** Head of queue of locked entries info for each thread. */
+    private final LockedEntries lockedEntriesHead = new LockedEntries(null);
+
+    /** Tail of queue of locked entries info for each thread. */
+    private final AtomicReference<LockedEntries> lockedEntriesTail = new AtomicReference<>(lockedEntriesHead);
 
     /**
      * Attempt to lock all provided entries avoiding deadlocks.
@@ -38,13 +41,11 @@ public class LockedEntriesInfo {
      *      some entries are obsolete (lock attempt should be retried in this case).
      */
     public boolean tryLockEntries(GridCacheEntryEx[] entries) {
-        long threadId = Thread.currentThread().getId();
+        boolean wasInterrupted = false;
 
         LockedEntries lockedEntries = new LockedEntries(entries);
 
-        lockedEntriesPerThread.put(threadId,lockedEntries);
-
-        boolean wasInterrupted = false;
+        addToQueue(lockedEntries);
 
         try {
             for (int i = 0; i < entries.length; i++) {
@@ -100,7 +101,7 @@ public class LockedEntriesInfo {
 
             // Already acuired all locks or released all locks here, deadlock is not possible by this thread anymore,
             // can safely delete locks information.
-            lockedEntriesPerThread.remove(threadId);
+            removeFromQueue(lockedEntries);
         }
     }
 
@@ -110,16 +111,14 @@ public class LockedEntriesInfo {
      * @return {@code True} if another thread holds lock for this entry and started to lock entries earlier.
      */
     private boolean hasLockCollisions(GridCacheEntryEx entry, LockedEntries curLockedEntries) {
-        for (Map.Entry<Long, LockedEntries> other : lockedEntriesPerThread.entrySet()) {
-            LockedEntries otherLockedEntries = other.getValue();
+        for (LockedEntries item = lockedEntriesHead.next; item != null; item = item.next) {
+            if (item == curLockedEntries)
+                // Reached current thread item, all other threads started to lock after the current thread.
+                return false;
 
-            if (otherLockedEntries == curLockedEntries || otherLockedEntries.ts > curLockedEntries.ts)
-                // Skip current thread and threads started to lock after the current thread.
-                continue;
+            GridCacheEntryEx[] otherThreadLocks = item.entries;
 
-            GridCacheEntryEx[] otherThreadLocks = otherLockedEntries.entries;
-
-            int otherThreadLockedIdx = otherLockedEntries.lockedIdx;
+            int otherThreadLockedIdx = item.lockedIdx;
 
             // Visibility guarantees provided by volatile lockedIdx field.
             for (int i = 0; i <= otherThreadLockedIdx; i++) {
@@ -131,10 +130,68 @@ public class LockedEntriesInfo {
         return false;
     }
 
+    /**
+     * Add locked entries info for current thread to the tail of the queue.
+     *
+     * @param lockedEntries Locked entries info.
+     */
+    private void addToQueue(LockedEntries lockedEntries) {
+        // TODO
+        while (true) {
+            LockedEntries prevTail = lockedEntriesTail.get();
+
+            lockedEntries.prev = prevTail;
+
+            if (LockedEntries.NEXT_FIELD_UPDATER.compareAndSet(prevTail, null, lockedEntries)) {
+                lockedEntriesTail.set(lockedEntries);
+
+                return;
+            }
+        }
+    }
+
+    /**
+     * Remove locked entries info for current thread from the queue.
+     *
+     * @param lockedEntries Locked entries info.
+     */
+    private void removeFromQueue(LockedEntries lockedEntries) {
+        // TODO
+        while (true) {
+            LockedEntries prev = lockedEntries.prev;
+            LockedEntries next = lockedEntries.next;
+
+            if (LockedEntries.NEXT_FIELD_UPDATER.compareAndSet(prev, lockedEntries, next)) {
+                while (next != null) {
+                    if (LockedEntries.PREV_FIELD_UPDATER.compareAndSet(next, lockedEntries, prev))
+                        return;
+
+                    next = next.next;
+                }
+
+                // Update tail.
+
+                return;
+            }
+
+        }
+    }
+
     /** Per-thread locked entries info. */
     private static class LockedEntries {
-        /** Timestamp of lock. */
-        private final long ts = System.nanoTime();
+        /** Locked entries "prev" field updater. */
+        private static final AtomicReferenceFieldUpdater<LockedEntries, LockedEntries> PREV_FIELD_UPDATER =
+                AtomicReferenceFieldUpdater.newUpdater(LockedEntries.class, LockedEntries.class, "prev");
+
+        /** Locked entries "next" field updater. */
+        private static final AtomicReferenceFieldUpdater<LockedEntries, LockedEntries> NEXT_FIELD_UPDATER =
+                AtomicReferenceFieldUpdater.newUpdater(LockedEntries.class, LockedEntries.class, "next");
+
+        /** Reference to the previous in queue thread locked reference info. */
+        private volatile LockedEntries prev;
+
+        /** Reference to the next in queue thread locked reference info. */
+        private volatile LockedEntries next;
 
         /** Entries to lock. */
         private final GridCacheEntryEx[] entries;
