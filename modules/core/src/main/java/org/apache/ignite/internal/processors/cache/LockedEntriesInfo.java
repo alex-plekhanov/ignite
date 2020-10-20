@@ -27,11 +27,8 @@ public class LockedEntriesInfo {
     /** Deadlock detection timeout in milliseconds. */
     private static final long DEADLOCK_DETECTION_TIMEOUT = 500L;
 
-    /** Head of queue of locked entries info for each thread. */
-    private final LockedEntries lockedEntriesHead = new LockedEntries(null);
-
     /** Tail of queue of locked entries info for each thread. */
-    private final AtomicReference<LockedEntries> lockedEntriesTail = new AtomicReference<>(lockedEntriesHead);
+    private final AtomicReference<LockedEntries> lockedEntriesTail = new AtomicReference<>(new LockedEntries(null));
 
     /**
      * Attempt to lock all provided entries avoiding deadlocks.
@@ -111,11 +108,8 @@ public class LockedEntriesInfo {
      * @return {@code True} if another thread holds lock for this entry and started to lock entries earlier.
      */
     private boolean hasLockCollisions(GridCacheEntryEx entry, LockedEntries curLockedEntries) {
-        for (LockedEntries item = lockedEntriesHead.next; item != null; item = item.next) {
-            if (item == curLockedEntries)
-                // Reached current thread item, all other threads started to lock after the current thread.
-                return false;
-
+        // Check only threads in queue started to lock before the current thread.
+        for (LockedEntries item = curLockedEntries.prev; item != null; item = item.prev) {
             GridCacheEntryEx[] otherThreadLocks = item.entries;
 
             int otherThreadLockedIdx = item.lockedIdx;
@@ -137,10 +131,17 @@ public class LockedEntriesInfo {
      */
     private void addToQueue(LockedEntries lockedEntries) {
         // TODO
+/*
         while (true) {
             LockedEntries prevTail = lockedEntriesTail.get();
 
             lockedEntries.prev = prevTail;
+
+            synchronized (lockedEntries.prev) {
+                synchronized (lockedEntries) {
+                    lockedEntries.prev.next = lockedEntries.next;
+                }
+            }
 
             if (LockedEntries.NEXT_FIELD_UPDATER.compareAndSet(prevTail, null, lockedEntries)) {
                 lockedEntriesTail.set(lockedEntries);
@@ -148,6 +149,7 @@ public class LockedEntriesInfo {
                 return;
             }
         }
+*/
     }
 
     /**
@@ -157,6 +159,13 @@ public class LockedEntriesInfo {
      */
     private void removeFromQueue(LockedEntries lockedEntries) {
         // TODO
+/*
+        synchronized (lockedEntries.prev) {
+            synchronized (lockedEntries) {
+                lockedEntries.next.prev = lockedEntries.prev;
+                lockedEntries.prev.next = lockedEntries.next;
+            }
+        }
         while (true) {
             LockedEntries prev = lockedEntries.prev;
             LockedEntries next = lockedEntries.next;
@@ -175,6 +184,7 @@ public class LockedEntriesInfo {
             }
 
         }
+*/
     }
 
     /** Per-thread locked entries info. */
@@ -187,10 +197,10 @@ public class LockedEntriesInfo {
         private static final AtomicReferenceFieldUpdater<LockedEntries, LockedEntries> NEXT_FIELD_UPDATER =
                 AtomicReferenceFieldUpdater.newUpdater(LockedEntries.class, LockedEntries.class, "next");
 
-        /** Reference to the previous in queue thread locked reference info. */
+        /** Reference to the previous in queue thread locked entries info. */
         private volatile LockedEntries prev;
 
-        /** Reference to the next in queue thread locked reference info. */
+        /** Reference to the next in queue thread locked entries info. */
         private volatile LockedEntries next;
 
         /** Entries to lock. */
