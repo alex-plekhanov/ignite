@@ -27,9 +27,13 @@ import java.nio.file.Path;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.apache.ignite.Ignite;
+import org.apache.ignite.Ignition;
+import org.apache.ignite.client.IgniteClient;
+import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.services.Service;
+import org.apache.ignite.services.ServiceDescriptor;
 import org.apache.ignite.spi.deployment.DeploymentSpi;
 import org.apache.ignite.spi.deployment.local.LocalDeploymentSpi;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
@@ -93,13 +97,21 @@ public class ServiceHotRedeploymentViaDeploymentSpiTest extends GridCommonAbstra
 
         try {
             Ignite ignite = startGrid(0);
+            IgniteClient client = Ignition.startClient(new ClientConfiguration().setAddresses("127.0.0.1:10800"));
 
             final DeploymentSpi depSpi = ignite.configuration().getDeploymentSpi();
 
             depSpi.register(clsLdr, srvc.getClass());
 
             ignite.services().deployClusterSingleton(SERVICE_NAME, srvc);
-            MyRenewService proxy = ignite.services().serviceProxy(SERVICE_NAME, MyRenewService.class, false);
+
+            for (ServiceDescriptor desc : ignite.services().serviceDescriptors()) {
+                if (SERVICE_NAME.equals(desc.name()))
+                    assertEquals(cls, desc.serviceClass());
+            }
+
+            MyRenewService proxy = client.services().serviceProxy(SERVICE_NAME, MyRenewService.class);
+            //MyRenewService proxy = ignite.services().serviceProxy(SERVICE_NAME, MyRenewService.class, false);
             assertEquals(1, proxy.version());
 
             ignite.services().cancel(SERVICE_NAME);
@@ -111,7 +123,8 @@ public class ServiceHotRedeploymentViaDeploymentSpiTest extends GridCommonAbstra
             depSpi.register(clsLdr, srvc.getClass());
 
             ignite.services().deployClusterSingleton(SERVICE_NAME, srvc);
-            proxy = ignite.services().serviceProxy(SERVICE_NAME, MyRenewService.class, false);
+            proxy = client.services().serviceProxy(SERVICE_NAME, MyRenewService.class);
+            //proxy = ignite.services().serviceProxy(SERVICE_NAME, MyRenewService.class, false);
             assertEquals(2, proxy.version());
         }
         finally {

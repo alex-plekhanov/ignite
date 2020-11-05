@@ -44,7 +44,7 @@ public class ServiceInfoSelfTest {
     private ServiceConfiguration cfg = configuration();
 
     /** Subject under test. */
-    private ServiceInfo sut = new ServiceInfo(nodeId, srvcId, cfg);
+    private ServiceInfo sut = new ServiceInfo(null, nodeId, srvcId, cfg);
 
     /**
      * Tests {@link ServiceInfo#configuration()}.
