@@ -30,6 +30,9 @@ class PageHeader {
     /** Dirty flag. */
     private static final long DIRTY_FLAG = 0x0100000000000000L;
 
+    /** Protected LRU segment flag. */
+    private static final long PROTECTED_LRU_FLAG = 0x0200000000000000L;
+
     /** Page relative pointer. Does not change once a page is allocated. */
     private static final int RELATIVE_PTR_OFFSET = 8;
 
@@ -45,6 +48,12 @@ class PageHeader {
     /** Page temp copy buffer relative pointer offset. */
     private static final int PAGE_TMP_BUF_OFFSET = 40;
 
+    /** Offset of absolute pointer to the previous page in LRU list. */
+    private static final int PAGE_LRU_PREV_PAGE_OFFSET = PAGE_TMP_BUF_OFFSET + 8;
+
+    /** Offset of absolute pointer to the next page in LRU list. */
+    private static final int PAGE_LRU_NEXT_PAGE_OFFSET = PAGE_LRU_PREV_PAGE_OFFSET + 8;
+
     /**
      * @param absPtr Absolute pointer to initialize.
      * @param relative Relative pointer to write.
@@ -56,6 +65,8 @@ class PageHeader {
 
         GridUnsafe.putLong(absPtr, PAGE_MARKER);
         GridUnsafe.putInt(absPtr + PAGE_PIN_CNT_OFFSET, 0);
+        GridUnsafe.putLong(absPtr + PAGE_LRU_PREV_PAGE_OFFSET, 0);
+        GridUnsafe.putLong(absPtr + PAGE_LRU_NEXT_PAGE_OFFSET, 0);
     }
 
     /**
@@ -101,16 +112,16 @@ class PageHeader {
         assert (flag & 0xFFFFFFFFFFFFFFL) == 0;
         assert Long.bitCount(flag) == 1;
 
-        long relPtrWithFlags = GridUnsafe.getLong(absPtr + RELATIVE_PTR_OFFSET);
+        long relPtrWithFlags;
 
-        boolean was = (relPtrWithFlags & flag) != 0;
+        boolean was;
 
-        if (set)
-            relPtrWithFlags |= flag;
-        else
-            relPtrWithFlags &= ~flag;
+        do {
+            relPtrWithFlags = GridUnsafe.getLong(absPtr + RELATIVE_PTR_OFFSET);
 
-        GridUnsafe.putLong(absPtr + RELATIVE_PTR_OFFSET, relPtrWithFlags);
+            was = (relPtrWithFlags & flag) != 0;
+        } while (!GridUnsafe.compareAndSwapLong(null, absPtr + RELATIVE_PTR_OFFSET, relPtrWithFlags,
+            set ? relPtrWithFlags | flag : relPtrWithFlags & ~flag));
 
         return was;
     }
@@ -270,5 +281,62 @@ class PageHeader {
         pageId(absPtr, fullPageId.pageId());
 
         pageGroupId(absPtr, fullPageId.groupId());
+    }
+
+    /**
+     * Sets pointer to the previous page in LRU list.
+     *
+     * @param absPtr Page absolute pointer.
+     * @param prevPageAbsPtr Absolute pointer to the previous page in LRU list.
+     */
+    public static void prevLruPage(long absPtr, long prevPageAbsPtr) {
+        GridUnsafe.putLong(absPtr + PAGE_LRU_PREV_PAGE_OFFSET, prevPageAbsPtr);
+    }
+
+    /**
+     * Gets pointer to the previous page in LRU list.
+     *
+     * @param absPtr Page absolute pointer.
+     * @return Absolute pointer to the previous page in LRU list.
+     */
+    public static long prevLruPage(long absPtr) {
+        return GridUnsafe.getLong(absPtr + PAGE_LRU_PREV_PAGE_OFFSET);
+    }
+
+    /**
+     * Sets pointer to the next page in LRU list.
+     *
+     * @param absPtr Page absolute pointer.
+     * @param nextPageAbsPtr Absolute pointer to the next page in LRU list.
+     */
+    public static void nextLruPage(long absPtr, long nextPageAbsPtr) {
+        GridUnsafe.putLong(absPtr + PAGE_LRU_NEXT_PAGE_OFFSET, nextPageAbsPtr);
+    }
+
+    /**
+     * Gets pointer to the next page in LRU list.
+     *
+     * @param absPtr Page absolute pointer.
+     * @return Absolute pointer to the next page in LRU list.
+     */
+    public static long nextLruPage(long absPtr) {
+        return GridUnsafe.getLong(absPtr + PAGE_LRU_NEXT_PAGE_OFFSET);
+    }
+
+    /**
+     * @param absPtr Absolute pointer.
+     * @return Protected LRU segment flag.
+     */
+    public static boolean protectedLru(long absPtr) {
+        return flag(absPtr, PROTECTED_LRU_FLAG);
+    }
+
+    /**
+     * @param absPtr Page absolute pointer.
+     * @param protectedLru Protected LRU segment.
+     * @return Previous value of protected LRU segment flag.
+     */
+    public static boolean protectedLru(long absPtr, boolean protectedLru) {
+        return flag(absPtr, PROTECTED_LRU_FLAG, protectedLru);
     }
 }
