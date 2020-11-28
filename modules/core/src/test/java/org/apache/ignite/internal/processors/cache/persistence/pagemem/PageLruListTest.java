@@ -17,11 +17,20 @@
 
 package org.apache.ignite.internal.processors.cache.persistence.pagemem;
 
+import org.apache.ignite.IgniteCache;
+import org.apache.ignite.IgniteDataStreamer;
+import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
+import org.apache.ignite.cluster.ClusterState;
+import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.configuration.DataRegionConfiguration;
+import org.apache.ignite.configuration.DataStorageConfiguration;
+import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.mem.DirectMemoryProvider;
 import org.apache.ignite.internal.mem.DirectMemoryRegion;
 import org.apache.ignite.internal.mem.unsafe.UnsafeMemoryProvider;
 import org.apache.ignite.internal.util.GridUnsafe;
 import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -205,15 +214,57 @@ public class PageLruListTest extends GridCommonAbstractTest {
     public void testMoveToTail() {
         lru = new PageLruList(MAX_PAGES_CNT);
 
-        // TODO
+        addToTail(0, false);
+        addToTail(1, true);
+        addToTail(2, false);
+        addToTail(3, true);
+
+        moveToTail(3, true); // Move from protected segment head to protected segment head.
+        assertProbationarySegment(0, 2);
+        assertProtectedSegment(1, 3);
+
+        moveToTail(2, false); // Move from probationary segment head to probationary segment head.
+        assertProbationarySegment(0, 2);
+        assertProtectedSegment(1, 3);
+
+        moveToTail(2, true); // Move from probationary segment to protected segment head.
+        assertProbationarySegment(0);
+        assertProtectedSegment(1, 3, 2);
+
+        moveToTail(1, false); // Move from protected segment to probationary segment head.
+        assertProbationarySegment(0, 1);
+        assertProtectedSegment(3, 2);
+
+        moveToTail(3, true); // Move from protected segment to protected segment head.
+        assertProbationarySegment(0, 1);
+        assertProtectedSegment(2, 3);
+
+        moveToTail(0, false); // Move from probationary segment to probationary segment head.
+        assertProbationarySegment(1, 0);
+        assertProtectedSegment(2, 3);
     }
 
     /** */
     @Test
     public void testProtectedToProbationaryMigration() {
-        lru = new PageLruList(MAX_PAGES_CNT);
+        lru = new PageLruList(10);
 
-        // TODO
+        assertEquals(3, lru.protectedPagesLimit());
+
+        addToTail(0, true);
+        addToTail(1, true);
+        addToTail(2, true);
+
+        assertProbationarySegment();
+        assertProtectedSegment(0, 1, 2);
+
+        addToTail(3, true);
+        assertProbationarySegment(0);
+        assertProtectedSegment(1, 2, 3);
+
+        addToTail(4, true);
+        assertProbationarySegment(0, 1);
+        assertProtectedSegment(2, 3, 4);
     }
 
     /**
@@ -302,8 +353,6 @@ public class PageLruListTest extends GridCommonAbstractTest {
      * Check LRU list invariants.
      */
     private void checkInvariants() {
-        dump(); // TODO remove.
-
         int limit = MAX_PAGES_CNT + 1;
 
         long curPtr = lru.headPtr();
@@ -345,7 +394,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
         assertTrue(limit > 0);
 
         assertEquals(protectedCnt, lru.protectedPagesCount());
-        assertTrue(protectedCnt < lru.protectedPagesLimit());
+        assertTrue(protectedCnt <= lru.protectedPagesLimit());
     }
 
     /**
@@ -369,5 +418,70 @@ public class PageLruListTest extends GridCommonAbstractTest {
 
         if (limit == 0)
             log.info("...");
+    }
+
+    /** */
+    @Test
+    public void testReplacement() throws Exception {
+        // TODO remove
+
+        int keysCnt = 50_000;
+
+        String regionName = "default";
+
+        DataStorageConfiguration dsCfg = new DataStorageConfiguration().setDefaultDataRegionConfiguration(
+            new DataRegionConfiguration()
+                .setMaxSize(50L * 1024 * 1024)
+                .setPersistenceEnabled(true)
+                .setName(regionName)
+                .setMetricsEnabled(true)
+        );
+
+        cleanPersistenceDir();
+
+        try (IgniteEx ignite = startGrid(getConfiguration().setDataStorageConfiguration(dsCfg))) {
+            ignite.cluster().state(ClusterState.ACTIVE);
+
+            IgniteCache<Object, Object> cache = ignite.createCache(new CacheConfiguration<>("test-replacement")
+                .setBackups(1).setAffinity(new RendezvousAffinityFunction(false, 10)));
+
+            try (IgniteDataStreamer<Integer, Object> streamer = ignite.dataStreamer("test-replacement")) {
+                for (int i = 0; i < keysCnt; i++)
+                    streamer.addData(i, new byte[1000]);
+            }
+
+            startGrid(getConfiguration(getTestIgniteInstanceName(1)).setDataStorageConfiguration(dsCfg));
+            startGrid(getConfiguration(getTestIgniteInstanceName(2)).setDataStorageConfiguration(dsCfg));
+
+            resetBaselineTopology();
+
+            awaitPartitionMapExchange(true, true, null);
+
+            // Force checkpoint to invalidate evicted partitions.
+            forceCheckpoint(ignite);
+
+            stopGrid(2);
+
+            resetBaselineTopology();
+
+            // Wait until rebalance complete.
+            assertTrue(GridTestUtils.waitForCondition(() -> ignite.context().discovery().topologyVersionEx()
+                .minorTopologyVersion() >= 2, 5_000L));
+
+            stopGrid(1);
+
+            resetBaselineTopology();
+
+            // Allocate some pages after eviction.
+            for (int i = 0; i < 10_000; i++)
+                cache.put(i + keysCnt, new byte[1024]);
+
+            // Acquire some outdated pages.
+            for (int i = 0; i < keysCnt + 10_000; i++)
+                assertNotNull(cache.get(i));
+        }
+        finally {
+            stopAllGrids();
+        }
     }
 }

@@ -158,10 +158,8 @@ public class PageLruList {
             PageHeader.protectedLru(absPtr, true);
 
             // Move one page from protected segment to probationary segment if there are too many protected pages.
-            if (protectedPagesCnt > protectedPagesLimit) {
-                assert probTailPtr != 0L;
-
-                probTailPtr = PageHeader.nextLruPage(probTailPtr);
+            if (protectedPagesCnt >= protectedPagesLimit) {
+                probTailPtr = probTailPtr != 0L ? PageHeader.nextLruPage(probTailPtr) : headPtr;
 
                 assert probTailPtr != 0L;
 
