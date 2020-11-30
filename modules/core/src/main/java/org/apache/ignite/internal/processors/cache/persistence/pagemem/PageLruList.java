@@ -58,16 +58,10 @@ public class PageLruList {
     /**
      * Remove page from the head of LRU list.
      *
-     * @param protectedPage Poll the page from the head of protected segment.
      * @return Absolute pointer of the page or {@code 0L} if list is empty.
      */
-    public synchronized long poll(boolean protectedPage) {
+    public synchronized long poll() {
         long ptr = headPtr;
-
-        if (protectedPage) {
-            if (probTailPtr != 0L)
-                ptr = PageHeader.nextLruPage(probTailPtr);
-        }
 
         if (ptr != 0L)
             remove(ptr);

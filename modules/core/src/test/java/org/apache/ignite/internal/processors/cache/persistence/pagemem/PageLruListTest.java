@@ -186,27 +186,18 @@ public class PageLruListTest extends GridCommonAbstractTest {
     public void testPoll() {
         lru = new PageLruList(MAX_PAGES_CNT);
 
-        assertEquals(-1, poll(false));
-        assertEquals(-1, poll(true));
+        assertEquals(-1, poll());
 
         addToTail(0, false);
         addToTail(1, true);
         addToTail(2, false);
         addToTail(3, true);
 
-        assertEquals(0, poll(false));
-        assertEquals(2, poll(false));
-        assertEquals(1, poll(false));
-        assertEquals(3, poll(false));
-
-        addToTail(0, false);
-        addToTail(1, true);
-        addToTail(2, false);
-        addToTail(3, true);
-
-        assertEquals(1, poll(true));
-        assertEquals(3, poll(true));
-        assertEquals(-1, poll(true));
+        assertEquals(0, poll());
+        assertEquals(2, poll());
+        assertEquals(1, poll());
+        assertEquals(3, poll());
+        assertEquals(-1, poll());
     }
 
     /** */
@@ -300,8 +291,8 @@ public class PageLruListTest extends GridCommonAbstractTest {
     }
 
     /** */
-    private int poll(boolean protectedPage) {
-        int idx = pageIdx(lru.poll(protectedPage));
+    private int poll() {
+        int idx = pageIdx(lru.poll());
 
         checkInvariants();
 

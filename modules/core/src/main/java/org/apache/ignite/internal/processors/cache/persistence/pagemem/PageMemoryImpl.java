@@ -69,12 +69,9 @@ import org.apache.ignite.internal.processors.cache.persistence.DataRegionMetrics
 import org.apache.ignite.internal.processors.cache.persistence.PageStoreWriter;
 import org.apache.ignite.internal.processors.cache.persistence.StorageException;
 import org.apache.ignite.internal.processors.cache.persistence.checkpoint.CheckpointProgress;
-import org.apache.ignite.internal.processors.cache.persistence.freelist.io.PagesListMetaIO;
 import org.apache.ignite.internal.processors.cache.persistence.partstate.GroupPartitionId;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.DataPageIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
-import org.apache.ignite.internal.processors.cache.persistence.tree.io.PagePartitionCountersIO;
-import org.apache.ignite.internal.processors.cache.persistence.tree.io.PagePartitionMetaIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.TrackingPageIO;
 import org.apache.ignite.internal.processors.cache.persistence.wal.WALPointer;
 import org.apache.ignite.internal.processors.cache.persistence.wal.crc.IgniteDataIntegrityViolationException;
@@ -565,8 +562,11 @@ public class PageMemoryImpl implements PageMemoryEx {
             if (relPtr == INVALID_REL_PTR)
                 relPtr = seg.borrowOrAllocateFreePage(pageId);
 
-            if (relPtr == INVALID_REL_PTR)
+            if (relPtr == INVALID_REL_PTR) {
                 relPtr = seg.removePageForReplacement(delayedWriter == null ? flushDirtyPage : delayedWriter);
+
+                //seg.lruList.remove(seg.absolute(relPtr));
+            }
 
             long absPtr = seg.absolute(relPtr);
 
@@ -623,7 +623,6 @@ public class PageMemoryImpl implements PageMemoryEx {
                 ", maxSize=" + U.readableSize(dataRegionCfg.getMaxSize(), false) +
                 ", persistenceEnabled=" + dataRegionCfg.isPersistenceEnabled() + "] Try the following:" + U.nl() +
                 "  ^-- Increase maximum off-heap memory size (DataRegionConfiguration.maxSize)" + U.nl() +
-                "  ^-- Enable Ignite persistence (DataRegionConfiguration.persistenceEnabled)" + U.nl() +
                 "  ^-- Enable eviction or expiration policies"
             );
 
@@ -2284,12 +2283,6 @@ public class PageMemoryImpl implements PageMemoryEx {
                 }
             }
 
-/*
-            final ThreadLocalRandom rnd = ThreadLocalRandom.current();
-
-            final int cap = loadedPages.capacity();
-*/
-
             if (acquiredPages() >= loadedPages.size()) {
                 DataRegionConfiguration dataRegionCfg = getDataRegionConfiguration();
 
@@ -2305,7 +2298,7 @@ public class PageMemoryImpl implements PageMemoryEx {
             }
 
             for (int i = 0; i < loadedPages.size(); i++) {
-                long absPtr = lruList.poll(false);
+                long absPtr = lruList.poll();
 
                 assert absPtr != 0L;
 
@@ -2319,11 +2312,19 @@ public class PageMemoryImpl implements PageMemoryEx {
                     OUTDATED_REL_PTR
                 );
 
+                assert relPtr != INVALID_REL_PTR;
+
                 if (relPtr == OUTDATED_REL_PTR)
                     return refreshOutdatedPage(this, fullId.groupId(), fullId.pageId(), true);
 
-                if (preparePageRemoval(fullId, absPtr, saveDirtyPage))
+                if (preparePageRemoval(fullId, absPtr, saveDirtyPage)) {
+                    loadedPages.remove(
+                        fullId.groupId(),
+                        fullId.effectivePageId()
+                    );
+
                     return relPtr;
+                }
 
                 // Return page to the LRU list.
                 lruList.addToTail(absPtr, true);
@@ -2331,235 +2332,19 @@ public class PageMemoryImpl implements PageMemoryEx {
 
             DataRegionConfiguration dataRegionCfg = getDataRegionConfiguration();
 
-            throw new IgniteOutOfMemoryException("Failed to evict page from segment (all pages are acquired)."
-                + U.nl() + "Out of memory in data region [" +
+            throw new IgniteOutOfMemoryException("Failed to find a page for eviction [" +
+                "segmentCapacity=" + loadedPages.capacity() +
+                ", loaded=" + loadedPages.size() +
+                ", maxDirtyPages=" + maxDirtyPages +
+                ", dirtyPages=" + dirtyPagesCntr +
+                ", cpPages=" + (checkpointPages == null ? 0 : checkpointPages.size()) +
+                ", pinned=" + acquiredPages() +
+                ']' + U.nl() + "Out of memory in data region [" +
                 "name=" + dataRegionCfg.getName() +
                 ", initSize=" + U.readableSize(dataRegionCfg.getInitialSize(), false) +
                 ", maxSize=" + U.readableSize(dataRegionCfg.getMaxSize(), false) +
                 ", persistenceEnabled=" + dataRegionCfg.isPersistenceEnabled() + "] Try the following:" + U.nl() +
                 "  ^-- Increase maximum off-heap memory size (DataRegionConfiguration.maxSize)" + U.nl() +
-                "  ^-- Enable eviction or expiration policies"
-            );
-/*
-            // With big number of random picked pages we may fall into infinite loop, because
-            // every time the same page may be found.
-            Set<Long> ignored = null;
-
-            long relRmvAddr = INVALID_REL_PTR;
-
-            int iterations = 0;
-
-            while (true) {
-                long cleanAddr = INVALID_REL_PTR;
-                long cleanTs = Long.MAX_VALUE;
-                long dirtyAddr = INVALID_REL_PTR;
-                long dirtyTs = Long.MAX_VALUE;
-                long metaAddr = INVALID_REL_PTR;
-                long metaTs = Long.MAX_VALUE;
-
-                for (int i = 0; i < RANDOM_PAGES_EVICT_NUM; i++) {
-                    ++iterations;
-
-                    if (iterations > pool.pages() * FULL_SCAN_THRESHOLD)
-                        break;
-
-                    // We need to lookup for pages only in current segment for thread safety,
-                    // so peeking random memory will lead to checking for found page segment.
-                    // It's much faster to check available pages for segment right away.
-                    ReplaceCandidate nearest = loadedPages.getNearestAt(rnd.nextInt(cap));
-
-                    assert nearest != null && nearest.relativePointer() != INVALID_REL_PTR;
-
-                    long rndAddr = nearest.relativePointer();
-
-                    int partGen = nearest.generation();
-
-                    final long absPageAddr = absolute(rndAddr);
-
-                    FullPageId fullId = PageHeader.fullPageId(absPageAddr);
-
-                    // Check page mapping consistency.
-                    assert fullId.equals(nearest.fullId()) : "Invalid page mapping [tableId=" + nearest.fullId() +
-                        ", actual=" + fullId + ", nearest=" + nearest;
-
-                    boolean outdated = partGen < partGeneration(fullId.groupId(), PageIdUtils.partId(fullId.pageId()));
-
-                    if (outdated)
-                        return refreshOutdatedPage(this, fullId.groupId(), fullId.pageId(), true);
-
-                    boolean pinned = PageHeader.isAcquired(absPageAddr);
-
-                    boolean skip = ignored != null && ignored.contains(rndAddr);
-
-                    final boolean dirty = isDirty(absPageAddr);
-
-                    CheckpointPages checkpointPages = this.checkpointPages;
-
-                    if (relRmvAddr == rndAddr || pinned || skip ||
-                        fullId.pageId() == META_PAGE_ID ||
-                        (dirty && (checkpointPages == null || !checkpointPages.contains(fullId)))
-                    ) {
-                        i--;
-
-                        continue;
-                    }
-
-                    final long pageTs = PageHeader.readTimestamp(absPageAddr);
-
-                    final boolean storMeta = isStoreMetadataPage(absPageAddr);
-
-                    if (pageTs < cleanTs && !dirty && !storMeta) {
-                        cleanAddr = rndAddr;
-
-                        cleanTs = pageTs;
-                    }
-                    else if (pageTs < dirtyTs && dirty && !storMeta) {
-                        dirtyAddr = rndAddr;
-
-                        dirtyTs = pageTs;
-                    }
-                    else if (pageTs < metaTs && storMeta) {
-                        metaAddr = rndAddr;
-
-                        metaTs = pageTs;
-                    }
-
-                    if (cleanAddr != INVALID_REL_PTR)
-                        relRmvAddr = cleanAddr;
-                    else if (dirtyAddr != INVALID_REL_PTR)
-                        relRmvAddr = dirtyAddr;
-                    else
-                        relRmvAddr = metaAddr;
-                }
-
-                if (relRmvAddr == INVALID_REL_PTR)
-                    return tryToFindSequentially(cap, saveDirtyPage);
-
-                final long absRmvAddr = absolute(relRmvAddr);
-
-                final FullPageId fullPageId = PageHeader.fullPageId(absRmvAddr);
-
-                if (!preparePageRemoval(fullPageId, absRmvAddr, saveDirtyPage)) {
-                    if (iterations > 10) {
-                        if (ignored == null)
-                            ignored = new HashSet<>();
-
-                        ignored.add(relRmvAddr);
-                    }
-
-                    if (iterations > pool.pages() * FULL_SCAN_THRESHOLD)
-                        return tryToFindSequentially(cap, saveDirtyPage);
-
-                    continue;
-                }
-
-                loadedPages.remove(
-                    fullPageId.groupId(),
-                    fullPageId.effectivePageId()
-                );
-
-                return relRmvAddr;
-            }
-*/
-        }
-
-        /**
-         * @param absPageAddr Absolute page address
-         * @return {@code True} if page is related to partition metadata, which is loaded in saveStoreMetadata().
-         */
-        private boolean isStoreMetadataPage(long absPageAddr) {
-            try {
-                long dataAddr = absPageAddr + PAGE_OVERHEAD;
-
-                int type = PageIO.getType(dataAddr);
-                int ver = PageIO.getVersion(dataAddr);
-
-                PageIO io = PageIO.getPageIO(type, ver);
-
-                return io instanceof PagePartitionMetaIO
-                    || io instanceof PagesListMetaIO
-                    || io instanceof PagePartitionCountersIO;
-            }
-            catch (IgniteCheckedException ignored) {
-                return false;
-            }
-        }
-
-        /**
-         * Will scan all segment pages to find one to evict it
-         *
-         * @param cap Capacity.
-         * @param saveDirtyPage Evicted page writer.
-         */
-        private long tryToFindSequentially(int cap, PageStoreWriter saveDirtyPage) throws IgniteCheckedException {
-            assert getWriteHoldCount() > 0;
-
-            long prevAddr = INVALID_REL_PTR;
-            int pinnedCnt = 0;
-            int failToPrepare = 0;
-
-            for (int i = 0; i < cap; i++) {
-                final ReplaceCandidate nearest = loadedPages.getNearestAt(i);
-
-                assert nearest != null && nearest.relativePointer() != INVALID_REL_PTR;
-
-                final long addr = nearest.relativePointer();
-
-                int partGen = nearest.generation();
-
-                final long absPageAddr = absolute(addr);
-
-                FullPageId fullId = PageHeader.fullPageId(absPageAddr);
-
-                if (partGen < partGeneration(fullId.groupId(), PageIdUtils.partId(fullId.pageId())))
-                    return refreshOutdatedPage(this, fullId.groupId(), fullId.pageId(), true);
-
-                boolean pinned = PageHeader.isAcquired(absPageAddr);
-
-                if (pinned)
-                    pinnedCnt++;
-
-                if (addr == prevAddr || pinned)
-                    continue;
-
-                final long absEvictAddr = absolute(addr);
-
-                final FullPageId fullPageId = PageHeader.fullPageId(absEvictAddr);
-
-                if (preparePageRemoval(fullPageId, absEvictAddr, saveDirtyPage)) {
-                    loadedPages.remove(
-                        fullPageId.groupId(),
-                        fullPageId.effectivePageId()
-                    );
-
-                    return addr;
-                }
-                else
-                    failToPrepare++;
-
-                prevAddr = addr;
-            }
-
-            DataRegionConfiguration dataRegionCfg = getDataRegionConfiguration();
-
-            throw new IgniteOutOfMemoryException("Failed to find a page for eviction [segmentCapacity=" + cap +
-                ", loaded=" + loadedPages.size() +
-                ", maxDirtyPages=" + maxDirtyPages +
-                ", dirtyPages=" + dirtyPagesCntr +
-                ", cpPages=" + (checkpointPages == null ? 0 : checkpointPages.size()) +
-                ", pinnedInSegment=" + pinnedCnt +
-                ", failedToPrepare=" + failToPrepare +
-                ']' + U.nl() + "Out of memory in data region [" +
-                (dataRegionCfg == null ? "NULL" : (
-                    "name=" + dataRegionCfg.getName() +
-                    ", initSize=" + U.readableSize(dataRegionCfg.getInitialSize(), false) +
-                    ", maxSize=" + U.readableSize(dataRegionCfg.getMaxSize(), false) +
-                    ", persistenceEnabled=" + dataRegionCfg.isPersistenceEnabled()
-                )) +
-                "]" +
-                " Try the following:" + U.nl() +
-                "  ^-- Increase maximum off-heap memory size (DataRegionConfiguration.maxSize)" + U.nl() +
-                "  ^-- Enable Ignite persistence (DataRegionConfiguration.persistenceEnabled)" + U.nl() +
                 "  ^-- Enable eviction or expiration policies"
             );
         }
