@@ -389,14 +389,14 @@ public class PageMemoryImpl implements PageMemoryEx {
 
             this.segments = segments;
 
-            if (log.isInfoEnabled())
+            if (log.isInfoEnabled()) {
                 log.info("Started page memory [memoryAllocated=" + U.readableSize(totalAllocated, false) +
                     ", pages=" + pages +
                     ", tableSize=" + U.readableSize(totalTblSize, false) +
                     ", replacementSize=" + U.readableSize(totalReplSize, false) +
                     ", checkpointBuffer=" + U.readableSize(checkpointBuf, false) +
                     ']');
-
+            }
         }
     }
 
@@ -2001,13 +2001,16 @@ public class PageMemoryImpl implements PageMemoryEx {
                 ? new RobinHoodBackwardShiftHashMap(ldPagesAddr, memPerTbl)
                 : new FullPageIdTable(ldPagesAddr, memPerTbl, true);
 
-            pageReplacement = new SegmentedLruPageReplacement(this);
+            pages = (int)((totalMemory - memPerTbl - ldPagesMapOffInRegion)/ sysPageSize);
+
+            pageReplacement = new ClockPageReplacement(this);
             memPerRepl = pageReplacement.requiredMemory(pages);
-            pageReplacement.init(region.address() + memPerTbl + ldPagesMapOffInRegion, pages);
 
             DirectMemoryRegion poolRegion = region.slice(memPerTbl + memPerRepl + ldPagesMapOffInRegion);
 
             pool = new PagePool(idx, poolRegion, sysPageSize, rwLock);
+
+            pageReplacement.init(region.address() + memPerTbl + ldPagesMapOffInRegion, pool.pages());
 
             maxDirtyPages = throttlingPlc != ThrottlingPolicy.DISABLED
                 ? pool.pages() * 3L / 4

@@ -75,7 +75,7 @@ public class PageLruList {
     /**
      * Remove page from the head of LRU list.
      *
-     * @return Absolute pointer of the page or {@code 0L} if list is empty.
+     * @return Page index or {@code -1} if list is empty.
      */
     public synchronized int poll() {
         int idx = headIdx;
