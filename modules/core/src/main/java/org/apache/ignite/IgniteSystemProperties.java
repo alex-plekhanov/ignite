@@ -91,6 +91,7 @@ import static org.apache.ignite.internal.processors.cache.persistence.diagnostic
 import static org.apache.ignite.internal.processors.cache.persistence.pagemem.FullPageIdTable.DFLT_LONG_LONG_HASH_MAP_LOAD_FACTOR;
 import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl.DFLT_DELAYED_REPLACED_PAGE_WRITE;
 import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl.DFLT_LOADED_PAGES_BACKWARD_SHIFT_MAP;
+import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl.DFLT_PAGE_REPLACEMENT_TYPE;
 import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PagesWriteThrottlePolicy.DFLT_THROTTLE_LOG_THRESHOLD;
 import static org.apache.ignite.internal.processors.cache.persistence.tree.BPlusTree.IGNITE_BPLUS_TREE_LOCK_RETRIES_DEFAULT;
 import static org.apache.ignite.internal.processors.cache.persistence.wal.FileWriteAheadLogManager.DFLT_CHECKPOINT_TRIGGER_ARCHIVE_SIZE_PERCENTAGE;
@@ -1347,6 +1348,15 @@ public final class IgniteSystemProperties {
         "version of implementation, FullPageIdTable. True value enables 'Robin Hood hashing: backward shift " +
         "deletion'", defaults = "" + DFLT_LOADED_PAGES_BACKWARD_SHIFT_MAP)
     public static final String IGNITE_LOADED_PAGES_BACKWARD_SHIFT_MAP = "IGNITE_LOADED_PAGES_BACKWARD_SHIFT_MAP";
+
+    /**
+     * Implementation of page replacement algorithm. Possible implementations: Random-LRU ('RLRU'),
+     * Segmented-LRU ('SLRU'), Clock ('CLOCK').
+     * Default is 'RLRU'.
+     */
+    @SystemProperty(value = "Implementation of page replacement algorithm. Possible implementations: " +
+        "Random-LRU ('RLRU'), Segmented-LRU ('SLRU'), Clock ('CLOCK').", defaults = DFLT_PAGE_REPLACEMENT_TYPE)
+    public static final String IGNITE_PAGE_REPLACEMENT_TYPE = "IGNITE_PAGE_REPLACEMENT_TYPE";
 
     /**
      * Property for setup percentage of archive size for checkpoint trigger. Default value is 0.25

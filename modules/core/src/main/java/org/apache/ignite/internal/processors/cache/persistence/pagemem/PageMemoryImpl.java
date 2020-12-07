@@ -99,6 +99,7 @@ import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_DELAYED_REPLACED_PAGE_WRITE;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_LOADED_PAGES_BACKWARD_SHIFT_MAP;
+import static org.apache.ignite.IgniteSystemProperties.IGNITE_PAGE_REPLACEMENT_TYPE;
 import static org.apache.ignite.IgniteSystemProperties.getBoolean;
 import static org.apache.ignite.internal.pagemem.FullPageId.NULL_PAGE;
 import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PagePool.SEGMENT_INDEX_MASK;
@@ -162,6 +163,9 @@ public class PageMemoryImpl implements PageMemoryEx {
     /** @see IgniteSystemProperties#IGNITE_LOADED_PAGES_BACKWARD_SHIFT_MAP */
     public static final boolean DFLT_LOADED_PAGES_BACKWARD_SHIFT_MAP = true;
 
+    /** @see IgniteSystemProperties#IGNITE_PAGE_REPLACEMENT_TYPE */
+    public static final String DFLT_PAGE_REPLACEMENT_TYPE = "RLRU";
+
     /** Tracking io. */
     private static final TrackingPageIO trackingIO = TrackingPageIO.VERSIONS.latest();
 
@@ -184,6 +188,10 @@ public class PageMemoryImpl implements PageMemoryEx {
     /** Use new implementation of loaded pages table:  'Robin Hood hashing: backward shift deletion'. */
     private final boolean useBackwardShiftMap =
         IgniteSystemProperties.getBoolean(IGNITE_LOADED_PAGES_BACKWARD_SHIFT_MAP, DFLT_LOADED_PAGES_BACKWARD_SHIFT_MAP);
+
+    /** Page replacement implementation. */
+    private final String pageReplacementType =
+        IgniteSystemProperties.getString(IGNITE_PAGE_REPLACEMENT_TYPE, DFLT_PAGE_REPLACEMENT_TYPE);
 
     /** */
     private final ExecutorService asyncRunner;
@@ -2003,7 +2011,15 @@ public class PageMemoryImpl implements PageMemoryEx {
 
             pages = (int)((totalMemory - memPerTbl - ldPagesMapOffInRegion)/ sysPageSize);
 
-            pageReplacement = new ClockPageReplacement(this);
+            if ("RLRU".equals(pageReplacementType))
+                pageReplacement = new RandomLruPageReplacement(this);
+            else if ("SLRU".equals(pageReplacementType))
+                pageReplacement = new SegmentedLruPageReplacement(this);
+            else if ("CLOCK".equals(pageReplacementType))
+                pageReplacement = new ClockPageReplacement(this);
+            else
+                throw new IgniteException("Unknown page replacement type: " + pageReplacementType);
+
             memPerRepl = pageReplacement.requiredMemory(pages);
 
             DirectMemoryRegion poolRegion = region.slice(memPerTbl + memPerRepl + ldPagesMapOffInRegion);

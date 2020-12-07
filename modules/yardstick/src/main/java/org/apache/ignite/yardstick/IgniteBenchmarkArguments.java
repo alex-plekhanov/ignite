@@ -306,6 +306,11 @@ public class IgniteBenchmarkArguments {
         description = "Allow add any dynamic parameters specific for some benchmarks")
     private Map<String, String> params = new HashMap<>();
 
+    /** Additional system prorperties. */
+    @DynamicParameter(names = {"-S", "--sysProp"},
+        description = "Allow add additinal dynamic system properties to benchmarks")
+    private Map<String, String> sysProps = new HashMap<>();
+
     /**
      * @return {@code True} if need set {@link DataStorageConfiguration}.
      */
@@ -787,6 +792,13 @@ public class IgniteBenchmarkArguments {
         String val = params.get(name);
 
         return val != null ? Long.parseLong(val) : dflt;
+    }
+
+    /**
+     * @return Additional dynamic system properties.
+     */
+    public Map<String, String> systemProperties() {
+        return sysProps;
     }
 
     /** {@inheritDoc} */

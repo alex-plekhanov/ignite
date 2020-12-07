@@ -126,7 +126,7 @@ public class IgnitePutGetWithPageReplacements extends IgniteCacheAbstractBenchma
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
 
         for (int i = 0; i < portion; i++) {
-            int val = rnd.nextInt(replCntr / 2);
+            int val = rnd.nextInt(args.range());
 
             putMap.put(val, new TestValue(val));
         }
