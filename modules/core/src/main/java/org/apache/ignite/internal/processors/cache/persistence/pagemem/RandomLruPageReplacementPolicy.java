@@ -33,9 +33,9 @@ import static org.apache.ignite.internal.processors.cache.persistence.pagemem.Pa
 import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl.PAGE_OVERHEAD;
 
 /**
- * Random-LRU page replacement implementation.
+ * Random-LRU page replacement policy implementation.
  */
-public class RandomLruPageReplacement extends PageReplacement {
+public class RandomLruPageReplacementPolicy extends PageReplacementPolicy {
     /** Number of random pages that will be picked for eviction. */
     public static final int RANDOM_PAGES_EVICT_NUM = 5;
 
@@ -45,7 +45,7 @@ public class RandomLruPageReplacement extends PageReplacement {
     /**
      * @param seg Page memory segment.
      */
-    protected RandomLruPageReplacement(PageMemoryImpl.Segment seg) {
+    protected RandomLruPageReplacementPolicy(PageMemoryImpl.Segment seg) {
         super(seg);
     }
 

@@ -25,17 +25,21 @@ import static org.apache.ignite.internal.processors.cache.persistence.pagemem.Pa
 import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl.OUTDATED_REL_PTR;
 
 /**
- * Segmented-LRU page replacement implementation.
+ * CLOCK page replacement policy implementation.
  */
-public class ClockPageReplacement extends PageReplacement {
-    /** LRU list. */
-    private volatile ClockPageReplacementFlags flags;
+public class ClockPageReplacementPolicy extends PageReplacementPolicy {
+    /** Pages hit-flags store. */
+    private final ClockPageReplacementFlags flags;
 
     /**
      * @param seg Page memory segment.
+     * @param ptr Pointer to memory region.
+     * @param pagesCnt Pages count.
      */
-    protected ClockPageReplacement(PageMemoryImpl.Segment seg) {
+    protected ClockPageReplacementPolicy(PageMemoryImpl.Segment seg, long ptr, int pagesCnt) {
         super(seg);
+
+        flags = new ClockPageReplacementFlags(pagesCnt, ptr);
     }
 
     /** {@inheritDoc} */
@@ -85,15 +89,5 @@ public class ClockPageReplacement extends PageReplacement {
         }
 
         throw seg.oomException("no pages to replace");
-    }
-
-    /** {@inheritDoc} */
-    @Override public long requiredMemory(int pagesCnt) {
-        return PageLruList.requiredMemory(pagesCnt);
-    }
-
-    /** {@inheritDoc} */
-    @Override public void init(long ptr, int pagesCnt) {
-        flags = new ClockPageReplacementFlags(pagesCnt, ptr);
     }
 }

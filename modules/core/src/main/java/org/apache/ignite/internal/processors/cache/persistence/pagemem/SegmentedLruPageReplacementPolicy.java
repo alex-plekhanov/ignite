@@ -25,17 +25,19 @@ import static org.apache.ignite.internal.processors.cache.persistence.pagemem.Pa
 import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryImpl.OUTDATED_REL_PTR;
 
 /**
- * Segmented-LRU page replacement implementation.
+ * Segmented-LRU page replacement policy implementation.
  */
-public class SegmentedLruPageReplacement extends PageReplacement {
+public class SegmentedLruPageReplacementPolicy extends PageReplacementPolicy {
     /** LRU list. */
-    private volatile PageLruList lruList;
+    private final SegmentedLruPageList lruList;
 
     /**
      * @param seg Page memory segment.
      */
-    protected SegmentedLruPageReplacement(PageMemoryImpl.Segment seg) {
+    protected SegmentedLruPageReplacementPolicy(PageMemoryImpl.Segment seg, long ptr, int pagesCnt) {
         super(seg);
+
+        lruList = new SegmentedLruPageList(pagesCnt, ptr);
     }
 
     /** {@inheritDoc} */
@@ -93,15 +95,5 @@ public class SegmentedLruPageReplacement extends PageReplacement {
         }
 
         throw seg.oomException("no pages to replace");
-    }
-
-    /** {@inheritDoc} */
-    @Override public long requiredMemory(int pagesCnt) {
-        return PageLruList.requiredMemory(pagesCnt);
-    }
-
-    /** {@inheritDoc} */
-    @Override public void init(long ptr, int pagesCnt) {
-        lruList = new PageLruList(pagesCnt, ptr);
     }
 }

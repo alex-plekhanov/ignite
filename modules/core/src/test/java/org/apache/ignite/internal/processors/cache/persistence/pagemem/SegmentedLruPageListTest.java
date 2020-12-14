@@ -32,12 +32,12 @@ import org.junit.rules.TestRule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 
-import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PageLruList.NULL_IDX;
+import static org.apache.ignite.internal.processors.cache.persistence.pagemem.SegmentedLruPageList.NULL_IDX;
 
 /**
  * Test Segmented-LRU list implementation.
  */
-public class PageLruListTest extends GridCommonAbstractTest {
+public class SegmentedLruPageListTest extends GridCommonAbstractTest {
     /** Max pages count. */
     private static final int MAX_PAGES_CNT = 20;
 
@@ -48,7 +48,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
     private static DirectMemoryRegion region;
 
     /** LRU list. */
-    PageLruList lru;
+    SegmentedLruPageList lru;
 
     /** Test watcher. */
     @Rule public TestRule testWatcher = new TestWatcher() {
@@ -61,7 +61,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
     @BeforeClass
     public static void setUp() {
         provider = new UnsafeMemoryProvider(log);
-        provider.initialize(new long[] {PageLruList.requiredMemory(MAX_PAGES_CNT)});
+        provider.initialize(new long[] {SegmentedLruPageList.requiredMemory(MAX_PAGES_CNT)});
 
         region = provider.nextRegion();
     }
@@ -69,7 +69,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
     /** */
     @Before
     public void reinitTest() {
-        GridUnsafe.setMemory(region.address(), PageLruList.requiredMemory(MAX_PAGES_CNT), (byte)0);
+        GridUnsafe.setMemory(region.address(), SegmentedLruPageList.requiredMemory(MAX_PAGES_CNT), (byte)0);
 
         lru = null;
     }
@@ -84,7 +84,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
     @Test
     public void testAdd() {
         // Check start with probationary page.
-        lru = new PageLruList(MAX_PAGES_CNT, region.address());
+        lru = new SegmentedLruPageList(MAX_PAGES_CNT, region.address());
 
         addToTail(0, false);
         assertProbationarySegment(0);
@@ -104,7 +104,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
 
         // Check start with protected page.
         reinitTest();
-        lru = new PageLruList(MAX_PAGES_CNT, region.address());
+        lru = new SegmentedLruPageList(MAX_PAGES_CNT, region.address());
 
         addToTail(0, true);
         assertProbationarySegment();
@@ -126,7 +126,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
     /** */
     @Test
     public void testRemove() {
-        lru = new PageLruList(MAX_PAGES_CNT, region.address());
+        lru = new SegmentedLruPageList(MAX_PAGES_CNT, region.address());
 
         addToTail(0, false);
         addToTail(1, true);
@@ -174,7 +174,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
     /** */
     @Test
     public void testPoll() {
-        lru = new PageLruList(MAX_PAGES_CNT, region.address());
+        lru = new SegmentedLruPageList(MAX_PAGES_CNT, region.address());
 
         assertEquals(NULL_IDX, poll());
 
@@ -193,7 +193,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
     /** */
     @Test
     public void testMoveToTail() {
-        lru = new PageLruList(MAX_PAGES_CNT, region.address());
+        lru = new SegmentedLruPageList(MAX_PAGES_CNT, region.address());
 
         addToTail(0, false);
         addToTail(1, true);
@@ -220,7 +220,7 @@ public class PageLruListTest extends GridCommonAbstractTest {
     /** */
     @Test
     public void testProtectedToProbationaryMigration() {
-        lru = new PageLruList(10, region.address());
+        lru = new SegmentedLruPageList(10, region.address());
 
         assertEquals(3, lru.protectedPagesLimit());
 

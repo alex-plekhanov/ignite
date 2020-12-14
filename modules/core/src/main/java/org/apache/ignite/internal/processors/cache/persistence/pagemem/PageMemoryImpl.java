@@ -41,6 +41,7 @@ import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.configuration.DataRegionConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
+import org.apache.ignite.configuration.PageReplacementMode;
 import org.apache.ignite.events.EventType;
 import org.apache.ignite.events.PageReplacementStartedEvent;
 import org.apache.ignite.failure.FailureContext;
@@ -99,7 +100,6 @@ import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_DELAYED_REPLACED_PAGE_WRITE;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_LOADED_PAGES_BACKWARD_SHIFT_MAP;
-import static org.apache.ignite.IgniteSystemProperties.IGNITE_PAGE_REPLACEMENT_TYPE;
 import static org.apache.ignite.IgniteSystemProperties.getBoolean;
 import static org.apache.ignite.internal.pagemem.FullPageId.NULL_PAGE;
 import static org.apache.ignite.internal.processors.cache.persistence.pagemem.PagePool.SEGMENT_INDEX_MASK;
@@ -163,9 +163,6 @@ public class PageMemoryImpl implements PageMemoryEx {
     /** @see IgniteSystemProperties#IGNITE_LOADED_PAGES_BACKWARD_SHIFT_MAP */
     public static final boolean DFLT_LOADED_PAGES_BACKWARD_SHIFT_MAP = true;
 
-    /** @see IgniteSystemProperties#IGNITE_PAGE_REPLACEMENT_TYPE */
-    public static final String DFLT_PAGE_REPLACEMENT_TYPE = "RLRU";
-
     /** Tracking io. */
     private static final TrackingPageIO trackingIO = TrackingPageIO.VERSIONS.latest();
 
@@ -189,9 +186,8 @@ public class PageMemoryImpl implements PageMemoryEx {
     private final boolean useBackwardShiftMap =
         IgniteSystemProperties.getBoolean(IGNITE_LOADED_PAGES_BACKWARD_SHIFT_MAP, DFLT_LOADED_PAGES_BACKWARD_SHIFT_MAP);
 
-    /** Page replacement implementation. */
-    private final String pageReplacementType =
-        IgniteSystemProperties.getString(IGNITE_PAGE_REPLACEMENT_TYPE, DFLT_PAGE_REPLACEMENT_TYPE);
+    /** Page replacement policy factory. */
+    private final PageReplacementPolicyFactory pageReplacementPolicyFactory;
 
     /** */
     private final ExecutorService asyncRunner;
@@ -341,6 +337,28 @@ public class PageMemoryImpl implements PageMemoryEx {
             TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(Runtime.getRuntime().availableProcessors()),
             new IgniteThreadFactory(ctx.igniteInstanceName(), "page-mem-op"));
+
+        DataRegionConfiguration memCfg = getDataRegionConfiguration();
+
+        PageReplacementMode pageReplacementMode = memCfg == null ? DataRegionConfiguration.DFLT_PAGE_REPLACEMENT_MODE :
+                memCfg.getPageReplacementMode();
+
+        switch (pageReplacementMode) {
+            case RANDOM_LRU:
+                pageReplacementPolicyFactory = new RandomLruPageReplacementPolicyFactory();
+
+                break;
+            case SEGMENTED_LRU:
+                pageReplacementPolicyFactory = new SegmentedLruPageReplacementPolicyFactory();
+
+                break;
+            case CLOCK:
+                pageReplacementPolicyFactory = new ClockPageReplacementPolicyFactory();
+
+                break;
+            default:
+                throw new IgniteException("Unexpected page replacement mode: " + pageReplacementMode);
+        }
     }
 
     /** {@inheritDoc} */
@@ -559,7 +577,7 @@ public class PageMemoryImpl implements PageMemoryEx {
             if (relPtr == OUTDATED_REL_PTR) {
                 relPtr = seg.refreshOutdatedPage(grpId, pageId, false);
 
-                seg.pageReplacement.onRemove(relPtr);
+                seg.pageReplacementPolicy.onRemove(relPtr);
             }
 
             if (relPtr == INVALID_REL_PTR)
@@ -610,7 +628,7 @@ public class PageMemoryImpl implements PageMemoryEx {
                 }
             }
 
-            seg.pageReplacement.onMiss(relPtr);
+            seg.pageReplacementPolicy.onMiss(relPtr);
 
             seg.loadedPages.put(grpId, PageIdUtils.effectivePageId(pageId), relPtr, seg.partGeneration(grpId, partId));
         }
@@ -744,7 +762,7 @@ public class PageMemoryImpl implements PageMemoryEx {
 
                 seg.acquirePage(absPtr);
 
-                seg.pageReplacement.onHit(relPtr);
+                seg.pageReplacementPolicy.onHit(relPtr);
 
                 statHolder.trackLogicalRead(absPtr + PAGE_OVERHEAD);
 
@@ -795,7 +813,7 @@ public class PageMemoryImpl implements PageMemoryEx {
                 // We can clear dirty flag after the page has been allocated.
                 setDirty(fullId, absPtr, false, false);
 
-                seg.pageReplacement.onMiss(relPtr);
+                seg.pageReplacementPolicy.onMiss(relPtr);
 
                 seg.loadedPages.put(
                     grpId,
@@ -850,13 +868,13 @@ public class PageMemoryImpl implements PageMemoryEx {
 
                 rwLock.init(absPtr + PAGE_LOCK_OFFSET, PageIdUtils.tag(pageId));
 
-                seg.pageReplacement.onRemove(relPtr);
-                seg.pageReplacement.onMiss(relPtr);
+                seg.pageReplacementPolicy.onRemove(relPtr);
+                seg.pageReplacementPolicy.onMiss(relPtr);
             }
             else {
                 absPtr = seg.absolute(relPtr);
 
-                seg.pageReplacement.onHit(relPtr);
+                seg.pageReplacementPolicy.onHit(relPtr);
             }
 
             seg.acquirePage(absPtr);
@@ -1212,7 +1230,7 @@ public class PageMemoryImpl implements PageMemoryEx {
                         true
                     );
 
-                    seg.pageReplacement.onRemove(relPtr);
+                    seg.pageReplacementPolicy.onRemove(relPtr);
 
                     seg.pool.releaseFreePage(relPtr);
                 }
@@ -1955,12 +1973,12 @@ public class PageMemoryImpl implements PageMemoryEx {
         private PagePool pool;
 
         /** */
-        private final PageReplacement pageReplacement;
+        private final PageReplacementPolicy pageReplacementPolicy;
 
         /** Bytes required to store {@link #loadedPages}. */
         private long memPerTbl;
 
-        /** Bytes required to store {@link #pageReplacement} service data. */
+        /** Bytes required to store {@link #pageReplacementPolicy} service data. */
         private long memPerRepl;
 
         /** Pages marked as dirty since the last checkpoint. */
@@ -2009,24 +2027,16 @@ public class PageMemoryImpl implements PageMemoryEx {
                 ? new RobinHoodBackwardShiftHashMap(ldPagesAddr, memPerTbl)
                 : new FullPageIdTable(ldPagesAddr, memPerTbl, true);
 
-            pages = (int)((totalMemory - memPerTbl - ldPagesMapOffInRegion)/ sysPageSize);
+            pages = (int)((totalMemory - memPerTbl - ldPagesMapOffInRegion) / sysPageSize);
 
-            if ("RLRU".equals(pageReplacementType))
-                pageReplacement = new RandomLruPageReplacement(this);
-            else if ("SLRU".equals(pageReplacementType))
-                pageReplacement = new SegmentedLruPageReplacement(this);
-            else if ("CLOCK".equals(pageReplacementType))
-                pageReplacement = new ClockPageReplacement(this);
-            else
-                throw new IgniteException("Unknown page replacement type: " + pageReplacementType);
-
-            memPerRepl = pageReplacement.requiredMemory(pages);
+            memPerRepl = pageReplacementPolicyFactory.requiredMemory(pages);
 
             DirectMemoryRegion poolRegion = region.slice(memPerTbl + memPerRepl + ldPagesMapOffInRegion);
 
             pool = new PagePool(idx, poolRegion, sysPageSize, rwLock);
 
-            pageReplacement.init(region.address() + memPerTbl + ldPagesMapOffInRegion, pool.pages());
+            pageReplacementPolicy = pageReplacementPolicyFactory.create(this,
+                    region.address() + memPerTbl + ldPagesMapOffInRegion, pool.pages());
 
             maxDirtyPages = throttlingPlc != ThrottlingPolicy.DISABLED
                 ? pool.pages() * 3L / 4
@@ -2307,7 +2317,7 @@ public class PageMemoryImpl implements PageMemoryEx {
             if (acquiredPages() >= loadedPages.size())
                 throw oomException("all pages are acquired");
 
-            return pageReplacement.replace();
+            return pageReplacementPolicy.replace();
         }
 
         /**
@@ -2549,7 +2559,7 @@ public class PageMemoryImpl implements PageMemoryEx {
 
                         GridUnsafe.setMemory(absPtr + PAGE_OVERHEAD, pageSize, (byte)0);
 
-                        seg.pageReplacement.onRemove(relPtr);
+                        seg.pageReplacementPolicy.onRemove(relPtr);
 
                         seg.pool.releaseFreePage(relPtr);
                     }

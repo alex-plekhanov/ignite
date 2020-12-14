@@ -17,59 +17,17 @@
 
 package org.apache.ignite.internal.processors.cache.persistence.pagemem;
 
-import org.apache.ignite.IgniteCheckedException;
-
 /**
- * Page replacement.
+ * {@link SegmentedLruPageReplacementPolicy} factory.
  */
-public abstract class PageReplacement {
-    /** Page memory segment. */
-    protected final PageMemoryImpl.Segment seg;
-
-    /**
-     * @param seg Page memory segment.
-     */
-    protected PageReplacement(PageMemoryImpl.Segment seg) {
-        this.seg = seg;
+public class SegmentedLruPageReplacementPolicyFactory implements PageReplacementPolicyFactory {
+    /** {@inheritDoc} */
+    @Override public long requiredMemory(int pagesCnt) {
+        return SegmentedLruPageList.requiredMemory(pagesCnt);
     }
 
-    /**
-     *
-     */
-    public void onHit(long relPtr) {
-        // No-op.
-    }
-
-    /**
-     *
-     */
-    public void onMiss(long relPtr) {
-        // No-op.
-    }
-
-    /**
-     *
-     */
-    public void onRemove(long relPtr) {
-        // No-op.
-    }
-
-    /**
-     *
-     */
-    public abstract long replace() throws IgniteCheckedException;
-
-    /**
-     *
-     */
-    public long requiredMemory(int pagesCnt) {
-        return 0L;
-    }
-
-    /**
-     *
-     */
-    public void init(long ptr, int pagesCnt) {
-        // No-op.
+    /** {@inheritDoc} */
+    @Override public PageReplacementPolicy create(PageMemoryImpl.Segment seg, long ptr, int pagesCnt) {
+        return new SegmentedLruPageReplacementPolicy(seg, ptr, pagesCnt);
     }
 }

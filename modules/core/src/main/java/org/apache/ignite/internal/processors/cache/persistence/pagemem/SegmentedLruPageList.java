@@ -31,7 +31,7 @@ import org.apache.ignite.internal.util.GridUnsafe;
  * the probationary segment, giving this page another chance to be accessed before being replaced.
  * Page to replace is polled from the least recently accessed end (head) of the probationary segment.
  */
-public class PageLruList {
+public class SegmentedLruPageList {
     /** Ratio to limit count of protected pages. */
     private static final double PROTECTED_TO_TOTAL_PAGES_RATIO = 0.3;
 
@@ -63,7 +63,7 @@ public class PageLruList {
      * @param totalPagesCnt Total pages count.
      * @param memPtr Pointer to memory region.
      */
-    PageLruList(int totalPagesCnt, long memPtr) {
+    SegmentedLruPageList(int totalPagesCnt, long memPtr) {
         linksPtr = memPtr;
         flagsPtr = memPtr + (((long)totalPagesCnt) << 3);
 
