@@ -21,7 +21,6 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.query.QueryCursor;
@@ -46,12 +45,15 @@ import static org.apache.ignite.events.EventType.EVT_PAGE_REPLACEMENT_STARTED;
  *
  * NOTE: EVT_PAGE_REPLACEMENT_STARTED event need to be enabled on server side.
  */
-public class IgnitePutGetWithPageReplacements extends IgniteCacheAbstractBenchmark<Integer, Object> {
+public class IgnitePutWithPageReplacements extends IgniteCacheAbstractBenchmark<Integer, Object> {
     /** Cache name. */
     private static final String CACHE_NAME = "CacheWithReplacement";
 
     /** In mem reg capacity. */
     private volatile int replCntr = Integer.MAX_VALUE / 2;
+
+    /** Thread to perform periodical background scans. */
+    private volatile Thread backgroundScanThread;
 
     /** {@inheritDoc} */
     @Override public void setUp(BenchmarkConfiguration cfg) throws Exception {
@@ -110,6 +112,45 @@ public class IgnitePutGetWithPageReplacements extends IgniteCacheAbstractBenchma
         }
 
         BenchmarkUtils.println("cache size=" + cacheSize);
+
+        long backgroundScanInterval = args.getLongParameter("BACKGROUND_SCAN_INTERVAL", 0L);
+
+        if (backgroundScanInterval != 0) {
+            backgroundScanThread = new Thread(() -> {
+                long iteration = 0;
+
+                while (ignite().cluster().state().active()) {
+                    iteration++;
+                    long size = 0;
+
+                    try (QueryCursor cursor = cache.query(new ScanQuery())) {
+                        for (Object o : cursor)
+                            size++;
+                    }
+
+                    BenchmarkUtils.println("Background scan iteration " + iteration + " finished, size=" + size);
+
+                    try {
+                        Thread.sleep(backgroundScanInterval);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                }
+
+            });
+
+            backgroundScanThread.start();
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override public void tearDown() throws Exception {
+        super.tearDown();
+
+        if (backgroundScanThread != null) {
+            backgroundScanThread.interrupt();
+            backgroundScanThread.join();
+        }
     }
 
     /** */
@@ -123,10 +164,8 @@ public class IgnitePutGetWithPageReplacements extends IgniteCacheAbstractBenchma
 
         Map<Integer, TestValue> putMap = new HashMap<>(portion, 1.f);
 
-        ThreadLocalRandom rnd = ThreadLocalRandom.current();
-
         for (int i = 0; i < portion; i++) {
-            int val = rnd.nextInt(args.range());
+            int val = nextRandom(args.range());
 
             putMap.put(val, new TestValue(val));
         }
