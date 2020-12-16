@@ -33,7 +33,7 @@ import org.apache.ignite.internal.util.GridUnsafe;
  */
 public class SegmentedLruPageList {
     /** Ratio to limit count of protected pages. */
-    private static final double PROTECTED_TO_TOTAL_PAGES_RATIO = 0.3;
+    private static final double PROTECTED_TO_TOTAL_PAGES_RATIO = 0.5;
 
     /** Null page index. */
     static final int NULL_IDX = -1;
@@ -63,7 +63,7 @@ public class SegmentedLruPageList {
      * @param totalPagesCnt Total pages count.
      * @param memPtr Pointer to memory region.
      */
-    SegmentedLruPageList(int totalPagesCnt, long memPtr) {
+    public SegmentedLruPageList(int totalPagesCnt, long memPtr) {
         linksPtr = memPtr;
         flagsPtr = memPtr + (((long)totalPagesCnt) << 3);
 
@@ -92,6 +92,14 @@ public class SegmentedLruPageList {
      * @param pageIdx Page index.
      */
     public synchronized void remove(int pageIdx) {
+        remove0(pageIdx, protectedPage(pageIdx));
+    }
+
+    /**
+     * @param pageIdx Page index.
+     * @param clearProtectedFlag Clear protected page flag.
+     */
+    private void remove0(int pageIdx, boolean clearProtectedFlag) {
         assert pageIdx != NULL_IDX;
 
         int prevIdx = prev(pageIdx);
@@ -118,7 +126,7 @@ public class SegmentedLruPageList {
 
         clearLinks(pageIdx);
 
-        if (protectedPage(pageIdx)) {
+        if (clearProtectedFlag) {
             protectedPagesCnt--;
 
             protectedPage(pageIdx, false);
@@ -219,8 +227,15 @@ public class SegmentedLruPageList {
         if (tailIdx == pageIdx)
             return;
 
-        remove(pageIdx);
-        addToTail(pageIdx, true);
+        remove0(pageIdx, false);
+
+        if (protectedPage(pageIdx)) {
+            link(tailIdx, pageIdx);
+
+            tailIdx = pageIdx;
+        }
+        else
+            addToTail(pageIdx, true);
     }
 
     /**

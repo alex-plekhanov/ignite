@@ -220,7 +220,7 @@ public class SegmentedLruPageListTest extends GridCommonAbstractTest {
     /** */
     @Test
     public void testProtectedToProbationaryMigration() {
-        lru = new SegmentedLruPageList(10, region.address());
+        lru = new SegmentedLruPageList(6, region.address());
 
         assertEquals(3, lru.protectedPagesLimit());
 
