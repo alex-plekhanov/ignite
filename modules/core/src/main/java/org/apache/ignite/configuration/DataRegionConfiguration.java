@@ -249,6 +249,9 @@ public final class DataRegionConfiguration implements Serializable {
      * memory exception will be thrown if the memory region usage, defined by this data region, goes beyond its
      * capacity which is {@link #getMaxSize()}.
      *
+     * Note: Page eviction is used only when persistence is disabled for data region. For persistent data regions see
+     * page replacement mode ({@link #getPageReplacementMode()}).
+     *
      * @return Memory pages eviction algorithm. {@link DataPageEvictionMode#DISABLED} used by default.
      */
     public DataPageEvictionMode getPageEvictionMode() {
@@ -268,7 +271,11 @@ public final class DataRegionConfiguration implements Serializable {
     }
 
     /**
-     * Gets memory pages replacement mode.
+     * Gets memory pages replacement mode. If persistence is enabled and Ignite store on disk more data then available
+     * data region memory ({@link #getMaxSize()}) page replacement can be started to rotate memory pages with disk.
+     * This parameter defines algorithm to find pages to replace.
+     *
+     * Note: For not persistent data regions see page eviction mode ({@link #getPageEvictionMode()}).
      *
      * @return Memory pages replacement algorithm. {@link PageReplacementMode#CLOCK} used by default.
      */

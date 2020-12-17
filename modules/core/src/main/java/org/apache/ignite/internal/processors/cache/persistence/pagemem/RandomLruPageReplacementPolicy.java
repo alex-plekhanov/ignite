@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.configuration.PageReplacementMode;
 import org.apache.ignite.internal.pagemem.FullPageId;
 import org.apache.ignite.internal.pagemem.PageIdUtils;
 import org.apache.ignite.internal.processors.cache.persistence.freelist.io.PagesListMetaIO;
@@ -34,6 +35,8 @@ import static org.apache.ignite.internal.processors.cache.persistence.pagemem.Pa
 
 /**
  * Random-LRU page replacement policy implementation.
+ *
+ * @see PageReplacementMode#RANDOM_LRU
  */
 public class RandomLruPageReplacementPolicy extends PageReplacementPolicy {
     /** Number of random pages that will be picked for eviction. */

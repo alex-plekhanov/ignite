@@ -34,28 +34,36 @@ public abstract class PageReplacementPolicy {
     }
 
     /**
+     * Existing page touched.
      *
+     * Note: This method can be invoked under segment write lock or segment read lock.
      */
     public void onHit(long relPtr) {
         // No-op.
     }
 
     /**
+     * New page added.
      *
+     * Note: This method always invoked under segment write lock.
      */
     public void onMiss(long relPtr) {
         // No-op.
     }
 
     /**
-     *
+     * Page removed from the page memory.
      */
     public void onRemove(long relPtr) {
         // No-op.
     }
 
     /**
+     * Finds page to replace.
      *
+     * Note: This method always invoked under segment write lock.
+     *
+     * @return Relative pointer to page.
      */
     public abstract long replace() throws IgniteCheckedException;
 }

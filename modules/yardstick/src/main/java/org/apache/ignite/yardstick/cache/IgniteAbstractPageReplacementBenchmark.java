@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.ignite.IgniteCache;
+import org.apache.ignite.IgniteDataStreamer;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
 import org.apache.ignite.cache.query.annotations.QuerySqlField;
@@ -41,19 +42,25 @@ import static org.apache.ignite.events.EventType.EVT_PAGE_REPLACEMENT_STARTED;
  * after proceed to fill two times more data.
  * Execute full scan.
  *
- * On test phase fill data belonging to only 1/2 of dataregion capacity, calculated on setUp phase.
+ * On test phase process data belonging to dataregion capacity (calculated on setUp phase) * REPLACE_RATIO parameter.
  *
  * NOTE: EVT_PAGE_REPLACEMENT_STARTED event need to be enabled on server side.
  */
-public class IgnitePutWithPageReplacements extends IgniteCacheAbstractBenchmark<Integer, Object> {
+public abstract class IgniteAbstractPageReplacementBenchmark extends IgniteCacheAbstractBenchmark<Integer, Object> {
     /** Cache name. */
     private static final String CACHE_NAME = "CacheWithReplacement";
+
+    /** Scan-cache name. */
+    private static final String SCAN_CACHE_NAME = "ScanCache";
 
     /** In mem reg capacity. */
     private volatile int replCntr = Integer.MAX_VALUE / 2;
 
     /** Thread to perform periodical background scans. */
     private volatile Thread backgroundScanThread;
+
+    /** Key range for given data region capacity and REPLACE_RATIO parameter. */
+    private volatile int range;
 
     /** {@inheritDoc} */
     @Override public void setUp(BenchmarkConfiguration cfg) throws Exception {
@@ -102,20 +109,20 @@ public class IgnitePutWithPageReplacements extends IgniteCacheAbstractBenchmark<
             }
         }
 
-        BenchmarkUtils.println("DataRegion fullfill complete. progress=" + progress + " replCntr=" + replCntr + ".");
-
-        int cacheSize = 0;
-
-        try (QueryCursor cursor = cache.query(new ScanQuery())) {
-            for (Object o : cursor)
-                cacheSize++;
-        }
-
-        BenchmarkUtils.println("cache size=" + cacheSize);
+        BenchmarkUtils.println("Benchmark cache fullfill complete. progress=" + progress + " replCntr=" + replCntr + ".");
 
         long backgroundScanInterval = args.getLongParameter("BACKGROUND_SCAN_INTERVAL", 0L);
 
         if (backgroundScanInterval != 0) {
+            IgniteCache<Integer, Object> scanCache = ignite().getOrCreateCache(SCAN_CACHE_NAME);
+
+            try (IgniteDataStreamer<Integer, Object> streamer = ignite().dataStreamer(SCAN_CACHE_NAME)) {
+                for (int i = 0; i < replCntr; i++)
+                    streamer.addData(i, new TestValue(i));
+            }
+
+            BenchmarkUtils.println("Scan cache fullfill complete. Size=" + replCntr + ".");
+
             backgroundScanThread = new Thread(() -> {
                 long iteration = 0;
 
@@ -123,7 +130,7 @@ public class IgnitePutWithPageReplacements extends IgniteCacheAbstractBenchmark<
                     iteration++;
                     long size = 0;
 
-                    try (QueryCursor cursor = cache.query(new ScanQuery())) {
+                    try (QueryCursor cursor = scanCache.query(new ScanQuery())) {
                         for (Object o : cursor)
                             size++;
                     }
@@ -141,6 +148,17 @@ public class IgnitePutWithPageReplacements extends IgniteCacheAbstractBenchmark<
 
             backgroundScanThread.start();
         }
+
+        int cacheSize = 0;
+
+        try (QueryCursor cursor = cache.query(new ScanQuery())) {
+            for (Object o : cursor)
+                cacheSize++;
+        }
+
+        BenchmarkUtils.println("cache size=" + cacheSize);
+
+        range = (int)(args.getDoubleParameter("REPLACE_RATIO", 1.0) * replCntr);
     }
 
     /** {@inheritDoc} */
@@ -158,27 +176,15 @@ public class IgnitePutWithPageReplacements extends IgniteCacheAbstractBenchmark<
         return ignite().getOrCreateCache(CACHE_NAME);
     }
 
-    /** {@inheritDoc} */
-    @Override public boolean test(Map<Object, Object> map) throws Exception {
-        int portion = 100;
-
-        Map<Integer, TestValue> putMap = new HashMap<>(portion, 1.f);
-
-        for (int i = 0; i < portion; i++) {
-            int val = nextRandom(args.range());
-
-            putMap.put(val, new TestValue(val));
-        }
-
-        cache().putAll(putMap);
-
-        return true;
+    /** */
+    protected int nextKey() {
+        return nextRandom(range);
     }
 
     /**
      * Class for test purpose.
      */
-    private static class TestValue implements Serializable {
+    protected static class TestValue implements Serializable {
         /** */
         private int id;
 
@@ -189,7 +195,7 @@ public class IgnitePutWithPageReplacements extends IgniteCacheAbstractBenchmark<
         /**
          * @param id ID.
          */
-        private TestValue(int id) {
+        protected TestValue(int id) {
             this.id = id;
         }
 

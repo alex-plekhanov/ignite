@@ -18,16 +18,19 @@
 package org.apache.ignite.internal.processors.cache.persistence.pagemem;
 
 import java.util.function.LongUnaryOperator;
+import org.apache.ignite.configuration.PageReplacementMode;
 import org.apache.ignite.internal.util.GridUnsafe;
 
 /**
  * Clock page replacement algorithm implementation.
+ *
+ * @see PageReplacementMode#CLOCK
  */
 public class ClockPageReplacementFlags {
     /** Total pages count. */
     private final int pagesCnt;
 
-    /** Index of next candidate. */
+    /** Index of the next candidate ("hand"). */
     private volatile int curIdx;
 
     /** Pointer to memory region to store page hit flags. */
@@ -105,7 +108,7 @@ public class ClockPageReplacementFlags {
      * @param pageIdx Page index.
      */
     public void clearFlag(int pageIdx) {
-        cas(pageIdx, flags -> flags & ~(1L << pageIdx));
+        compareAndSwapFlag(pageIdx, flags -> flags & ~(1L << pageIdx));
     }
 
     /**
@@ -114,7 +117,7 @@ public class ClockPageReplacementFlags {
      * @param pageIdx Page index.
      */
     public void setFlag(int pageIdx) {
-        cas(pageIdx, flags -> flags | (1L << pageIdx));
+        compareAndSwapFlag(pageIdx, flags -> flags | (1L << pageIdx));
     }
 
     /**
@@ -123,7 +126,7 @@ public class ClockPageReplacementFlags {
      * @param pageIdx Page index.
      * @param func Function to apply to flags.
      */
-    private void cas(int pageIdx, LongUnaryOperator func) {
+    private void compareAndSwapFlag(int pageIdx, LongUnaryOperator func) {
         long ptr = flagsPtr + ((pageIdx >> 3) & (~7L));
 
         long oldFlags;

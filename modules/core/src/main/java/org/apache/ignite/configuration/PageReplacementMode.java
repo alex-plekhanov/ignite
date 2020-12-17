@@ -25,16 +25,48 @@ import org.jetbrains.annotations.Nullable;
 public enum PageReplacementMode {
     /**
      * Random-LRU algorithm.
+     *
+     * Every time page is accessed, its timestamp gets updated. When a page fault occurs and it's required to replace
+     * some pages, the algorithm randomly chooses 5 pages from the page memory and evicts a page with the latest
+     * timestamp.
+     *
+     * This algorithm have zero maintenance cost, but not very effective in terms of finding next page to replace.
+     * Recommended to use in environments, where there are no page replacements (large enough data region to store all
+     * amount of data) or page replacements are rare.
      */
     RANDOM_LRU,
 
     /**
      * Segmented-LRU algorithm.
+     *
+     * Segmented-LRU algorithm is a scan-resistant variation of the Least Recently Used (LRU) algorithm.
+     * Segmented-LRU pages list is divided into two segments, a probationary segment and a protected segment. Pages in
+     * each segment are ordered from the least to the most recently accessed. New pages are added to the most recently
+     * accessed end (tail) of the probationary segment. Existing pages are removed from wherever they currently reside
+     * and added to the most recently accessed end of the protected segment. Pages in the protected segment have thus
+     * been accessed at least twice. The protected segment is finite, so migration of a page from the probationary
+     * segment to the protected segment may force the migration of the LRU page in the protected segment to the most
+     * recently used end of the probationary segment, giving this page another chance to be accessed before being
+     * replaced. Page to replace is polled from the least recently accessed end (head) of the probationary segment.
+     *
+     * This algorithm require additional memory to store pages list and need to update this list on each page access,
+     * but have near to optimal page to replace selection policy. So, there can be a little performance drop in
+     * environments without page replacement (compared to random-LRU and CLOCK), but in environments with high rate
+     * of page replacement and large amount of one-time scans segmented-LRU can outperform random-LRU and CLOCK.
      */
     SEGMENTED_LRU,
 
     /**
      * CLOCK algorithm.
+     *
+     * The clock algorithm keeps a circular list of pages in memory, with the "hand" pointing to the last examined page
+     * frame in the list. When a page fault occurs and no empty frames exist, then the hit flag of page is inspected at
+     * the hand's location. If hit flag is 0, the new page is put in place of the page the "hand" points to, and the
+     * hand is advanced one position. Otherwise, the hit flag is cleared, then the clock hand is incremented and the
+     * process is repeated until a page is replaced.
+     *
+     * This algorithm have near to zero maintenance cost and replacement policy efficiency between random-LRU and
+     * segmented-LRU.
      */
     CLOCK;
 

@@ -795,6 +795,17 @@ public class IgniteBenchmarkArguments {
     }
 
     /**
+     * @param name Parameter name.
+     * @param dflt Default value.
+     * @return value.
+     */
+    public double getDoubleParameter(String name, double dflt) {
+        String val = params.get(name);
+
+        return val != null ? Double.parseDouble(val) : dflt;
+    }
+
+    /**
      * @return Additional dynamic system properties.
      */
     public Map<String, String> systemProperties() {

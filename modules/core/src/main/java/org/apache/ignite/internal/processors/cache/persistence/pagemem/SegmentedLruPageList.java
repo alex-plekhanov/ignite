@@ -17,19 +17,13 @@
 
 package org.apache.ignite.internal.processors.cache.persistence.pagemem;
 
+import org.apache.ignite.configuration.PageReplacementMode;
 import org.apache.ignite.internal.util.GridUnsafe;
 
 /**
  * Pages Segmented-LRU (SLRU) list implementation.
  *
- * SLRU list is divided into two segments, a probationary segment and a protected segment. Pages in each segment
- * are ordered from the least to the most recently accessed. New pages are added to the most recently accessed end
- * (tail) of the probationary segment. Existing pages are removed from wherever they currently reside and added to
- * the most recently accessed end of the protected segment. Pages in the protected segment have thus been accessed at
- * least twice. The protected segment is finite, so migration of a page from the probationary segment to the protected
- * segment may force the migration of the LRU page in the protected segment to the most recently used end of
- * the probationary segment, giving this page another chance to be accessed before being replaced.
- * Page to replace is polled from the least recently accessed end (head) of the probationary segment.
+ * @see PageReplacementMode#SEGMENTED_LRU
  */
 public class SegmentedLruPageList {
     /** Ratio to limit count of protected pages. */

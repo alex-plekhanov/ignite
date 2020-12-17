@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.cache.persistence.pagemem;
 
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.configuration.PageReplacementMode;
 import org.apache.ignite.internal.pagemem.FullPageId;
 import org.apache.ignite.internal.pagemem.PageIdUtils;
 
@@ -26,6 +27,8 @@ import static org.apache.ignite.internal.processors.cache.persistence.pagemem.Pa
 
 /**
  * CLOCK page replacement policy implementation.
+ *
+ * @see PageReplacementMode#CLOCK
  */
 public class ClockPageReplacementPolicy extends PageReplacementPolicy {
     /** Pages hit-flags store. */
