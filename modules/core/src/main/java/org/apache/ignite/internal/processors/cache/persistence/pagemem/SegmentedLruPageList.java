@@ -50,6 +50,9 @@ public class SegmentedLruPageList {
     /** Pointer to memory region to store links. */
     private final long linksPtr;
 
+    /** Pointer to memory region with offset for next links. */
+    private final long linksPtrNextOff;
+
     /** Pointer to memory region to store protected flags. */
     private final long flagsPtr;
 
@@ -59,6 +62,7 @@ public class SegmentedLruPageList {
      */
     public SegmentedLruPageList(int totalPagesCnt, long memPtr) {
         linksPtr = memPtr;
+        linksPtrNextOff = memPtr + 4;
         flagsPtr = memPtr + (((long)totalPagesCnt) << 3);
 
         GridUnsafe.setMemory(linksPtr, ((long)totalPagesCnt) << 3, (byte)0xFF);
@@ -170,6 +174,7 @@ public class SegmentedLruPageList {
             protectedPage(pageIdx, true);
 
             // Move one page from protected segment to probationary segment if there are too many protected pages.
+/*
             if (protectedPagesCnt >= protectedPagesLimit) {
                 probTailIdx = probTailIdx != NULL_IDX ? next(probTailIdx) : headIdx;
 
@@ -178,9 +183,30 @@ public class SegmentedLruPageList {
                 protectedPage(probTailIdx, false);
             }
             else
+*/
                 protectedPagesCnt++;
         }
         else {
+            if (protectedPagesCnt > protectedPagesLimit) {
+                int moveCnt = Math.min(protectedPagesCnt - protectedPagesLimit, 100);
+
+                probTailIdx = probTailIdx != NULL_IDX ? next(probTailIdx) : headIdx;
+
+                assert probTailIdx != NULL_IDX;
+
+                protectedPage(probTailIdx, false);
+
+                for (int i = 0; i < moveCnt - 1; i++) {
+                    probTailIdx = next(probTailIdx);
+
+                    assert probTailIdx != NULL_IDX;
+
+                    protectedPage(probTailIdx, false);
+                }
+
+                protectedPagesCnt -= moveCnt;
+            }
+
             if (probTailIdx == NULL_IDX) {
                 // First page in the probationary list - insert to the head.
                 assert prev(headIdx) == NULL_IDX : "Unexpected LRU page index [pageIdx=" + pageIdx +
@@ -267,7 +293,7 @@ public class SegmentedLruPageList {
      * @param pageIdx Page index.
      */
     int next(int pageIdx) {
-        return GridUnsafe.getInt(linksPtr + (((long)pageIdx) << 3) + 4);
+        return GridUnsafe.getInt(linksPtrNextOff + (((long)pageIdx) << 3));
     }
 
     /**
@@ -298,7 +324,7 @@ public class SegmentedLruPageList {
      * @param nextIdx Next page index.
      */
     private void next(int pageIdx, int nextIdx) {
-        GridUnsafe.putInt(linksPtr + (((long)pageIdx) << 3) + 4, nextIdx);
+        GridUnsafe.putInt(linksPtrNextOff + (((long)pageIdx) << 3), nextIdx);
     }
 
     /**
