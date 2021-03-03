@@ -22,9 +22,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicLongArray;
 import org.apache.ignite.internal.processors.metric.AbstractMetric;
 import org.apache.ignite.internal.processors.metric.ConfigurableHistogramMetric;
+import org.apache.ignite.internal.processors.metric.MetricRegistry;
 import org.apache.ignite.internal.util.typedef.internal.A;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteBiTuple;
+
+import static org.apache.ignite.internal.processors.metric.impl.MetricUtils.metricName;
 
 /**
  * Histogram to show count of pages last accessed in each time interval.
@@ -62,18 +65,19 @@ public class PageTimestampHistogram extends AbstractMetric implements Configurab
     private volatile AtomicLongArray buckets;
 
     /**
-     * Default constructor.
+     * @param mreg Metric registry.
      */
-    public PageTimestampHistogram() {
-        this(DFLT_BUCKETS_INTERVAL, DFLT_BUCKETS_CNT);
+    public PageTimestampHistogram(MetricRegistry mreg) {
+        this(mreg, DFLT_BUCKETS_INTERVAL, DFLT_BUCKETS_CNT);
     }
 
     /**
+     * @param mreg Metric registry.
      * @param bucketsInterval Buckets interval.
      * @param bucketsCnt Buckets count.
      */
-    PageTimestampHistogram(long bucketsInterval, int bucketsCnt) {
-        super("PageTimestampHistogram", "Histogram of pages last access time");
+    PageTimestampHistogram(MetricRegistry mreg, long bucketsInterval, int bucketsCnt) {
+        super(metricName(mreg.name(), "PageTimestampHistogram"), "Histogram of pages last access time");
 
         reinit(bucketsInterval, bucketsCnt);
 
@@ -86,10 +90,10 @@ public class PageTimestampHistogram extends AbstractMetric implements Configurab
 
     /** {@inheritDoc} */
     @Override public long[] bounds() {
-        long[] boundsIncludingLast = histogram().get1();
+        long[] boundsIncludingFirst = histogram().get1();
 
-        // Exclude upper bound as it required by methods contract.
-        return Arrays.copyOf(boundsIncludingLast, boundsIncludingLast.length - 1);
+        // Exclude lower bound as it required by methods contract.
+        return Arrays.copyOfRange(boundsIncludingFirst, 1, boundsIncludingFirst.length);
     }
 
     /** {@inheritDoc} */

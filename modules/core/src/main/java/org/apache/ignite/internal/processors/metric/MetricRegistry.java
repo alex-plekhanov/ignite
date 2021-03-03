@@ -120,7 +120,12 @@ public class MetricRegistry implements ReadOnlyMetricRegistry {
      * @param metric Metric.
      */
     public void register(Metric metric) {
-        addMetric(metric.name(), metric);
+        String name = metric.name();
+
+        if (name.startsWith(regName))
+            name = name.substring(regName.length() + 1);
+
+        addMetric(name, metric);
     }
 
     /**

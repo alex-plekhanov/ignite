@@ -206,7 +206,7 @@ public class DataRegionMetricsImpl implements DataRegionMetrics {
             .value(memPlcCfg.getMaxSize());
 
         if (persistenceEnabled) {
-            pageTsHistogram = new PageTimestampHistogram();
+            pageTsHistogram = new PageTimestampHistogram(mreg);
 
             mreg.register(pageTsHistogram);
         }
