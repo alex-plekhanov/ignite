@@ -82,6 +82,7 @@ import org.apache.ignite.internal.processors.cache.distributed.dht.topology.Evic
 import org.apache.ignite.internal.processors.cache.persistence.defragmentation.LinkMapTest;
 import org.apache.ignite.internal.processors.cache.persistence.pagemem.ClockPageReplacementFlagsTest;
 import org.apache.ignite.internal.processors.cache.persistence.pagemem.PagePoolTest;
+import org.apache.ignite.internal.processors.cache.persistence.pagemem.PageTimestampHistogramTest;
 import org.apache.ignite.internal.processors.cache.persistence.pagemem.SegmentedLruPageListTest;
 import org.apache.ignite.internal.processors.cache.query.continuous.DiscoveryDataDeserializationFailureHanderTest;
 import org.apache.ignite.internal.processors.cache.transactions.AtomicOperationsInTxTest;
@@ -311,7 +312,8 @@ import org.junit.runners.Suite;
 
     // Other tests
     CacheLockCandidatesThreadTest.class,
-    RemoveAllDeadlockTest.class
+    RemoveAllDeadlockTest.class,
+    PageTimestampHistogramTest.class
 })
 public class IgniteBasicTestSuite {
 }
