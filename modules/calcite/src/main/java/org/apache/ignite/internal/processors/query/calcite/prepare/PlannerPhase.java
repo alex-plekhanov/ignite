@@ -56,6 +56,7 @@ import org.apache.ignite.internal.processors.query.calcite.rule.logical.ExposeIn
 import org.apache.ignite.internal.processors.query.calcite.rule.logical.FilterScanMergeRule;
 import org.apache.ignite.internal.processors.query.calcite.rule.logical.LogicalOrToUnionRule;
 import org.apache.ignite.internal.processors.query.calcite.rule.logical.ProjectScanMergeRule;
+import org.apache.ignite.internal.processors.query.calcite.rule.logical.ScalarInToUnionRule;
 
 import static org.apache.ignite.internal.processors.query.calcite.prepare.IgnitePrograms.cbo;
 import static org.apache.ignite.internal.processors.query.calcite.prepare.IgnitePrograms.hep;
@@ -155,6 +156,7 @@ public enum PlannerPhase {
                     FilterScanMergeRule.INDEX_SCAN,
 
                     LogicalOrToUnionRule.INSTANCE,
+                    ScalarInToUnionRule.INSTANCE,
 
                     CorrelatedNestedLoopJoinRule.INSTANCE,
                     NestedLoopJoinConverterRule.INSTANCE,
