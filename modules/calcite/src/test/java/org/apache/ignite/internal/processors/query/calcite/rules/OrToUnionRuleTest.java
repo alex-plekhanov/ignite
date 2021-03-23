@@ -171,6 +171,66 @@ public class OrToUnionRuleTest extends GridCommonAbstractTest {
     }
 
     /**
+     * Check 'IN -> UNION'.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testInToUnion() throws Exception {
+        checkQuery("SELECT * " +
+            "FROM products " +
+            "WHERE subcat_id in (11, 12)")
+            .matches(containsUnion(true))
+            .matches(containsIndexScan("PUBLIC", "PRODUCTS", "IDX_SUBCAT_ID"))
+            .returns(1, "Photo", 1, "Camera Media", 11, "Media 1")
+            .returns(2, "Photo", 1, "Camera Media", 11, "Media 2")
+            .returns(3, "Photo", 1, "Camera Lens", 12, "Lens 1")
+            .returns(4, "Photo", 1, "Other", 12, "Charger 1")
+            .returns(8, null, 0, "Camera Lens", 11, "Zeiss")
+            .check();
+    }
+
+    /**
+     * Check 'IN' with 'OR' on the same columnt.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testInWithOrToUnion() throws Exception {
+        checkQuery("SELECT * " +
+            "FROM products " +
+            "WHERE name <> 'test' AND category <> 'test' AND (subcat_id in (11, 12) OR subcat_id BETWEEN 32 AND 35) AND subcat_id <> 34")
+            .matches(containsUnion(true))
+            .matches(containsIndexScan("PUBLIC", "PRODUCTS", "IDX_SUBCAT_ID"))
+            .returns(1, "Photo", 1, "Camera Media", 11, "Media 1")
+            .returns(2, "Photo", 1, "Camera Media", 11, "Media 2")
+            .returns(3, "Photo", 1, "Camera Lens", 12, "Lens 1")
+            .returns(4, "Photo", 1, "Other", 12, "Charger 1")
+            .returns(8, null, 0, "Camera Lens", 11, "Zeiss")
+            .returns(14, null, 0, null, 32, null)
+            .returns(15, null, 0, null, 33, null)
+            .returns(17, null, 0, null, 35, null)
+            .check();
+    }
+
+    /**
+     * Check 'IN' with 'OR' on the same columnt.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testInWithOrToUnion2() throws Exception {
+        checkQuery("SELECT * " +
+            "FROM products " +
+            "WHERE subcat_id BETWEEN 32 AND 34")
+            .matches(containsIndexScan("PUBLIC", "PRODUCTS", "IDX_SUBCAT_ID"))
+            .returns(14, null, 0, null, 32, null)
+            .returns(15, null, 0, null, 33, null)
+            .returns(16, null, 0, null, 34, null)
+            .check();
+    }
+
+    /**
      * Check 'OR -> UNION' rule is applied for mixed conditions on indexed columns.
      *
      * @throws Exception If failed.
