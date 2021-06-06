@@ -28,10 +28,11 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
@@ -46,9 +47,11 @@ import org.apache.ignite.internal.processors.query.IgniteSQLException;
 import org.apache.ignite.internal.processors.query.QueryUtils;
 import org.apache.ignite.internal.processors.query.calcite.prepare.IgnitePlanner;
 import org.apache.ignite.internal.processors.query.calcite.prepare.PlanningContext;
+import org.apache.ignite.internal.processors.query.calcite.sql.IgniteSqlCreateIndex;
 import org.apache.ignite.internal.processors.query.calcite.sql.IgniteSqlCreateTable;
 import org.apache.ignite.internal.processors.query.calcite.sql.IgniteSqlCreateTableOption;
 import org.apache.ignite.internal.processors.query.calcite.sql.IgniteSqlCreateTableOptionEnum;
+import org.apache.ignite.internal.processors.query.calcite.sql.IgniteSqlDropIndex;
 import org.apache.ignite.internal.util.typedef.F;
 
 import static org.apache.calcite.sql.type.SqlTypeName.BOOLEAN;
@@ -123,6 +126,12 @@ public class DdlSqlToCommandConverter {
 
         if (ddlNode instanceof SqlDropTable)
             return convertDropTable((SqlDropTable)ddlNode, ctx);
+
+        if (ddlNode instanceof IgniteSqlCreateIndex)
+            return convertCreateIndex((IgniteSqlCreateIndex)ddlNode, ctx);
+
+        if (ddlNode instanceof IgniteSqlDropIndex)
+            return convertDropIndex((IgniteSqlDropIndex)ddlNode, ctx);
 
         throw new IgniteSQLException("Unsupported operation [" +
             "sqlNodeKind=" + ddlNode.getKind() + "; " +
@@ -220,6 +229,59 @@ public class DdlSqlToCommandConverter {
         dropTblCmd.ifExists(dropTblNode.ifExists);
 
         return dropTblCmd;
+    }
+
+    /**
+     * Converts a given CreateIndex AST to a CreateIndex command.
+     *
+     * @param createIdxNode Root node of the given AST.
+     * @param ctx Planning context.
+     */
+    private CreateIndexCommand convertCreateIndex(IgniteSqlCreateIndex createIdxNode, PlanningContext ctx) {
+        CreateIndexCommand createIdxCmd = new CreateIndexCommand();
+
+        createIdxCmd.schemaName(deriveSchemaName(createIdxNode.tableName(), ctx));
+        createIdxCmd.tableName(deriveObjectName(createIdxNode.tableName(), ctx, "tableName"));
+        createIdxCmd.indexName(createIdxNode.indexName().getSimple());
+        createIdxCmd.ifNotExists(createIdxNode.ifNotExists());
+
+        List<Boolean> asc = new ArrayList<>(createIdxNode.columnList().size());
+        List<String> cols = new ArrayList<>(createIdxNode.columnList().size());
+
+        for (SqlNode col : createIdxNode.columnList().getList()) {
+            if (col.getKind() == SqlKind.DESCENDING) {
+                col = ((SqlCall)col).getOperandList().get(0);
+
+                asc.add(Boolean.FALSE);
+            }
+            else
+                asc.add(Boolean.TRUE);
+
+            cols.add(((SqlIdentifier)col).getSimple());
+        }
+
+        createIdxCmd.columns();
+
+        //IgnitePlanner planner = ctx.planner();
+
+        return createIdxCmd;
+    }
+
+    /**
+     * Converts a given DropIndex AST to a DropIndex command.
+     *
+     * @param dropIdxNode Root node of the given AST.
+     * @param ctx Planning context.
+     */
+    private DropIndexCommand convertDropIndex(IgniteSqlDropIndex dropIdxNode, PlanningContext ctx) {
+        DropIndexCommand dropIdxCmd = new DropIndexCommand();
+
+        //dropIdxCmd.schemaName(deriveSchemaName(dropIdxNode.tableName(), ctx));
+        //dropIdxCmd.tableName(deriveObjectName(dropIdxNode.tableName(), ctx, "tableName"));
+        dropIdxCmd.indexName(dropIdxNode.indexName().getSimple());
+        dropIdxCmd.ifExists(dropIdxNode.ifExists());
+
+        return dropIdxCmd;
     }
 
     /** Derives a schema name from the compound identifier. */
