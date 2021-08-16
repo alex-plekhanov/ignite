@@ -44,7 +44,7 @@ public interface IgniteTable extends TranslatableTable {
     /**
      * @return Table description.
      */
-    TableDescriptor descriptor();
+    TableDescriptor<?> descriptor();
 
     /** {@inheritDoc} */
     default @Override RelDataType getRowType(RelDataTypeFactory typeFactory) {

@@ -19,12 +19,11 @@ package org.apache.ignite.internal.processors.query.calcite.schema;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.processors.cache.GridCacheContext;
-import org.apache.ignite.internal.processors.cache.persistence.CacheDataRow;
 import org.apache.ignite.internal.processors.query.calcite.exec.ExecutionContext;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
 
 /** */
-public interface ColumnDescriptor {
+public interface ColumnDescriptor<DataRow> {
     /** */
     boolean field();
 
@@ -47,7 +46,7 @@ public interface ColumnDescriptor {
     Class<?> storageType();
 
     /** */
-    Object value(ExecutionContext<?> ectx, GridCacheContext<?, ?> cctx, CacheDataRow src)
+    Object value(ExecutionContext<?> ectx, GridCacheContext<?, ?> cctx, DataRow src)
         throws IgniteCheckedException;
 
     /** */

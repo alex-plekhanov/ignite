@@ -43,8 +43,11 @@ import org.apache.ignite.internal.processors.query.schema.SchemaChangeListener;
 import org.apache.ignite.internal.processors.subscription.GridInternalSubscriptionProcessor;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgnitePredicate;
+import org.apache.ignite.spi.systemview.view.SystemView;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import static org.apache.ignite.internal.processors.metric.impl.MetricUtils.toSqlName;
 
 /**
  * Holds actual schema and mutates it on schema change, requested by Ignite.
@@ -234,11 +237,11 @@ public class SchemaHolderImpl extends AbstractService implements SchemaHolder, S
         GridQueryIndexDescriptor idxDesc,
         IgniteTable tbl
     ) {
-        TableDescriptor tblDesc = tbl.descriptor();
+        TableDescriptor<?> tblDesc = tbl.descriptor();
         List<RelFieldCollation> collations = new ArrayList<>(idxDesc.fields().size());
 
         for (String idxField : idxDesc.fields()) {
-            ColumnDescriptor fieldDesc = tblDesc.columnDescriptor(idxField);
+            ColumnDescriptor<?> fieldDesc = tblDesc.columnDescriptor(idxField);
 
             assert fieldDesc != null;
 
@@ -271,6 +274,17 @@ public class SchemaHolderImpl extends AbstractService implements SchemaHolder, S
         IgniteSchema schema = igniteSchemas.computeIfAbsent(schemaName, IgniteSchema::new);
 
         schema.addFunction(name.toUpperCase(), IgniteScalarFunction.create(method));
+
+        rebuild();
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onSystemViewCreated(String schemaName, SystemView<?> sysView) {
+        IgniteSchema schema = igniteSchemas.computeIfAbsent(schemaName, IgniteSchema::new);
+
+        IgniteSystemViewImpl<?> view = new IgniteSystemViewImpl<>(new SystemViewDescriptorImpl<>(sysView));
+
+        schema.addTable(toSqlName(sysView.name()), view);
 
         rebuild();
     }

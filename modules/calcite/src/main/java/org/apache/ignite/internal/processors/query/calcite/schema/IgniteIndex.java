@@ -80,9 +80,9 @@ public class IgniteIndex {
         @Nullable ImmutableBitSet requiredColumns) {
         UUID localNodeId = execCtx.localNodeId();
         if (group.nodeIds().contains(localNodeId) && idx != null) {
-            return new IndexScan<>(execCtx, table().descriptor(), idx.unwrap(InlineIndex.class), collation.getKeys(),
-                group.partitions(localNodeId), filters, lowerIdxConditions, upperIdxConditions, rowTransformer,
-                requiredColumns);
+            return new IndexScan<>(execCtx, (TableDescriptorImpl)table().descriptor(), idx.unwrap(InlineIndex.class),
+                collation.getKeys(), group.partitions(localNodeId), filters, lowerIdxConditions, upperIdxConditions,
+                rowTransformer, requiredColumns);
         }
 
         return Collections.emptyList();

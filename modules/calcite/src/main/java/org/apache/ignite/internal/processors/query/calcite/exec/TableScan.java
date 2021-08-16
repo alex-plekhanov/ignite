@@ -57,7 +57,7 @@ public class TableScan<Row> implements Iterable<Row>, AutoCloseable {
     private final ExecutionContext<Row> ectx;
 
     /** */
-    private final TableDescriptor desc;
+    private final TableDescriptor<CacheDataRow> desc;
 
     /** */
     private final RowFactory<Row> factory;
@@ -83,7 +83,7 @@ public class TableScan<Row> implements Iterable<Row>, AutoCloseable {
     /** */
     public TableScan(
         ExecutionContext<Row> ectx,
-        TableDescriptor desc,
+        TableDescriptor<CacheDataRow> desc,
         int[] parts,
         Predicate<Row> filters,
         Function<Row, Row> rowTransformer,

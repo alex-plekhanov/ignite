@@ -27,7 +27,6 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.processors.cache.GridCacheContext;
 import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
-import org.apache.ignite.internal.processors.cache.persistence.CacheDataRow;
 import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 import org.apache.ignite.internal.processors.query.calcite.exec.ExecutionContext;
 import org.apache.ignite.internal.processors.query.calcite.exec.RowHandler;
@@ -41,7 +40,7 @@ import org.jetbrains.annotations.Nullable;
  *
  */
 @SuppressWarnings("rawtypes")
-public interface TableDescriptor extends RelProtoDataType, InitializerExpressionFactory {
+public interface TableDescriptor<DataRow> extends RelProtoDataType, InitializerExpressionFactory {
     /**
      * @return Underlying cache context info.
      */
@@ -110,15 +109,15 @@ public interface TableDescriptor extends RelProtoDataType, InitializerExpression
     boolean isUpdateAllowed(RelOptTable tbl, int colIdx);
 
     /**
-     * Checks whether a provided cache row belongs to described table.
+     * Checks whether a provided data row belongs to described table.
      *
      * @param row Cache row.
      * @return {@code True} If a provided cache row matches a defined query type.
      */
-    boolean match(CacheDataRow row);
+    boolean match(DataRow row);
 
     /**
-     * Converts a cache row to relational node row.
+     * Converts a data row to relational node row.
      *
      * @param ectx Execution context.
      * @param row Cache row.
@@ -126,7 +125,7 @@ public interface TableDescriptor extends RelProtoDataType, InitializerExpression
      * @return Relational node row.
      * @throws IgniteCheckedException If failed.
      */
-    <Row> Row toRow(ExecutionContext<Row> ectx, CacheDataRow row, RowHandler.RowFactory<Row> factory,
+    <Row> Row toRow(ExecutionContext<Row> ectx, DataRow row, RowHandler.RowFactory<Row> factory,
                     @Nullable ImmutableBitSet requiredColunms) throws IgniteCheckedException;
 
     /**
@@ -148,7 +147,7 @@ public interface TableDescriptor extends RelProtoDataType, InitializerExpression
      * @param fieldName Field name.
      * @return Column descriptor.
      */
-    ColumnDescriptor columnDescriptor(String fieldName);
+    ColumnDescriptor<DataRow> columnDescriptor(String fieldName);
 
     /**
      * @return Type descriptor.

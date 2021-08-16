@@ -44,6 +44,7 @@ import org.apache.ignite.internal.processors.cache.distributed.dht.topology.Grid
 import org.apache.ignite.internal.processors.cache.distributed.dht.topology.GridDhtPartitionState;
 import org.apache.ignite.internal.processors.cache.distributed.dht.topology.GridDhtPartitionTopology;
 import org.apache.ignite.internal.processors.cache.mvcc.MvccSnapshot;
+import org.apache.ignite.internal.processors.cache.persistence.CacheDataRow;
 import org.apache.ignite.internal.processors.query.calcite.exec.RowHandler.RowFactory;
 import org.apache.ignite.internal.processors.query.calcite.schema.TableDescriptor;
 import org.apache.ignite.internal.util.lang.GridCursor;
@@ -65,7 +66,7 @@ public class IndexScan<Row> extends AbstractIndexScan<Row, IndexRow> {
     private final CacheObjectContext coCtx;
 
     /** */
-    private final TableDescriptor desc;
+    private final TableDescriptor<CacheDataRow> desc;
 
     /** */
     private final RowFactory<Row> factory;
@@ -102,7 +103,7 @@ public class IndexScan<Row> extends AbstractIndexScan<Row, IndexRow> {
      */
     public IndexScan(
         ExecutionContext<Row> ectx,
-        TableDescriptor desc,
+        TableDescriptor<CacheDataRow> desc,
         InlineIndex idx,
         ImmutableIntList idxFieldMapping,
         int[] parts,

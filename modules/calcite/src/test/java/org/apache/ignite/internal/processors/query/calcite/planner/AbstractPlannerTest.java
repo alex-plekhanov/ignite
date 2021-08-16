@@ -64,7 +64,6 @@ import org.apache.ignite.failure.FailureContext;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.GridCacheContext;
 import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
-import org.apache.ignite.internal.processors.cache.persistence.CacheDataRow;
 import org.apache.ignite.internal.processors.failure.FailureProcessor;
 import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 import org.apache.ignite.internal.processors.query.calcite.exec.ExecutionContext;
@@ -615,7 +614,7 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
         private IgniteStatisticsImpl statistics;
 
         /** */
-        private final TableDescriptor desc;
+        private final TableDescriptor<Object> desc;
 
         /** */
         TestTable(RelDataType type) {
@@ -784,7 +783,7 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
     }
 
     /** */
-    static class TestTableDescriptor implements TableDescriptor {
+    static class TestTableDescriptor implements TableDescriptor<Object> {
         /** */
         private final Supplier<IgniteDistribution> distributionSupp;
 
@@ -828,12 +827,12 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
         }
 
         /** {@inheritDoc} */
-        @Override public boolean match(CacheDataRow row) {
+        @Override public boolean match(Object row) {
             throw new AssertionError();
         }
 
         /** {@inheritDoc} */
-        @Override public <Row> Row toRow(ExecutionContext<Row> ectx, CacheDataRow row, RowHandler.RowFactory<Row> factory,
+        @Override public <Row> Row toRow(ExecutionContext<Row> ectx, Object row, RowHandler.RowFactory<Row> factory,
             @Nullable ImmutableBitSet requiredColunms) throws IgniteCheckedException {
             throw new AssertionError();
         }
@@ -845,7 +844,7 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
         }
 
         /** {@inheritDoc} */
-        @Override public ColumnDescriptor columnDescriptor(String fieldName) {
+        @Override public ColumnDescriptor<Object> columnDescriptor(String fieldName) {
             RelDataTypeField field = rowType.getField(fieldName, false, false);
             return new TestColumnDescriptor(field.getIndex(), fieldName);
         }
@@ -883,7 +882,7 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
     }
 
     /** */
-    static class TestColumnDescriptor implements ColumnDescriptor {
+    static class TestColumnDescriptor implements ColumnDescriptor<Object> {
         /** */
         private final int idx;
 
@@ -933,7 +932,7 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
 
         /** {@inheritDoc} */
         @Override public Object value(ExecutionContext<?> ectx, GridCacheContext<?, ?> cctx,
-            CacheDataRow src) throws IgniteCheckedException {
+            Object src) throws IgniteCheckedException {
             throw new AssertionError();
         }
 
