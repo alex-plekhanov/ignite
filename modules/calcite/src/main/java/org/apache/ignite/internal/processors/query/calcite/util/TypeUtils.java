@@ -51,6 +51,8 @@ import org.apache.ignite.internal.util.typedef.F;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import static org.apache.calcite.sql.type.NonNullableAccessors.getCharset;
+import static org.apache.calcite.sql.type.NonNullableAccessors.getCollation;
 import static org.apache.ignite.internal.processors.query.calcite.util.Commons.transform;
 
 /** */
@@ -297,5 +299,23 @@ public class TypeUtils {
 
         // Taking into account DST, offset can be changed after converting from UTC to time-zone.
         return ts - tz.getOffset(ts - tz.getOffset(ts));
+    }
+
+    /**
+     * Transforms char type to varchar with the same precession, nullability, collation and charset.
+     */
+    public static RelDataType charTypeToVarying(RelDataTypeFactory typeFactory, RelDataType typeToTransform) {
+        if (typeToTransform.getSqlTypeName() != SqlTypeName.CHAR)
+            return typeToTransform;
+
+        SqlTypeName retTypeName = SqlTypeName.VARCHAR;
+
+        return typeFactory.createTypeWithNullability(
+            typeFactory.createTypeWithCharsetAndCollation(
+                typeFactory.createSqlType(retTypeName, typeToTransform.getPrecision()),
+                getCharset(typeToTransform),
+                getCollation(typeToTransform)),
+            typeToTransform.isNullable()
+        );
     }
 }

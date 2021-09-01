@@ -64,6 +64,14 @@ public class FunctionsTest extends GridCommonAbstractTest {
 
     /** */
     @Test
+    public void testCaseDifferentStringLength() {
+        checkQuery("SELECT COALESCE('T', 'TT')").returns("T").check();
+        checkQuery("SELECT DECODE(1, 1, 'T', 2, 'TT')").returns("T").check();
+        checkQuery("SELECT CASE WHEN 1=1 THEN 'T' ELSE 'TT' END").returns("T").check();
+    }
+
+    /** */
+    @Test
     public void testLength() {
         checkQuery("SELECT LENGTH('TEST')").returns(4).check();
         checkQuery("SELECT LENGTH(NULL)").returns(NULL_RESULT).check();

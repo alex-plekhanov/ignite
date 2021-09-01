@@ -58,6 +58,7 @@ import org.apache.ignite.internal.processors.query.calcite.schema.IgniteTableImp
 import org.apache.ignite.internal.processors.query.calcite.schema.TableDescriptor;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
 import org.apache.ignite.internal.processors.query.calcite.util.IgniteResource;
+import org.apache.ignite.internal.processors.query.calcite.util.TypeUtils;
 import org.apache.ignite.internal.util.typedef.F;
 import org.jetbrains.annotations.Nullable;
 
@@ -270,6 +271,22 @@ public class IgniteSqlValidator extends SqlValidatorImpl {
     /** {@inheritDoc} */
     @Override public boolean isSystemField(RelDataTypeField field) {
         return isSystemFieldName(field.getName());
+    }
+
+    /** {@inheritDoc} */
+    @Override public RelDataType deriveType(SqlValidatorScope scope, SqlNode expr) {
+        RelDataType type = super.deriveType(scope, expr);
+
+        if (expr instanceof SqlCall && (expr.getKind() == SqlKind.CASE || expr.getKind() == SqlKind.DECODE) &&
+            type.getSqlTypeName() == SqlTypeName.CHAR) {
+            RelDataType varType = TypeUtils.charTypeToVarying(typeFactory(), type);
+
+            setValidatedNodeType(expr, type);
+
+            return varType;
+        }
+        else
+            return type;
     }
 
     /** */
