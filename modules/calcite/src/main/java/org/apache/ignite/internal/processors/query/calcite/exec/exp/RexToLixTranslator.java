@@ -69,6 +69,7 @@ import org.apache.calcite.sql.validate.SqlConformance;
 import org.apache.calcite.util.BuiltInMethod;
 import org.apache.calcite.util.ControlFlowException;
 import org.apache.calcite.util.Pair;
+import org.apache.ignite.internal.processors.query.calcite.prepare.IgniteRexBuilder;
 
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.CASE;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.SEARCH;
@@ -174,7 +175,7 @@ public class RexToLixTranslator implements RexVisitor<RexToLixTranslator.Result>
                 storageTypes.add(outputPhysType.getJavaFieldType(i));
         }
         return new RexToLixTranslator(program, typeFactory, root, inputGetter,
-            list, new RexBuilder(typeFactory), conformance, null)
+            list, new IgniteRexBuilder(typeFactory), conformance, null)
             .setCorrelates(correlates)
             .translateList(program.getProjectList(), storageTypes);
     }

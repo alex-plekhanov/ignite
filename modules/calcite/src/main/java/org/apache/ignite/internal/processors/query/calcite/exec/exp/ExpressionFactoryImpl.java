@@ -29,7 +29,6 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Ordering;
 import com.google.common.primitives.Primitives;
@@ -64,6 +63,7 @@ import org.apache.ignite.internal.processors.query.calcite.exec.exp.RexToLixTran
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.agg.AccumulatorWrapper;
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.agg.AccumulatorsFactory;
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.agg.AggregateType;
+import org.apache.ignite.internal.processors.query.calcite.prepare.IgniteRexBuilder;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.processors.query.calcite.util.IgniteMethod;
@@ -100,7 +100,7 @@ public class ExpressionFactoryImpl<Row> implements ExpressionFactory<Row> {
         this.typeFactory = typeFactory;
         this.conformance = conformance;
 
-        rexBuilder = new RexBuilder(this.typeFactory);
+        rexBuilder = new IgniteRexBuilder(this.typeFactory);
         emptyType = new RelDataTypeFactory.Builder(this.typeFactory).build();
     }
 

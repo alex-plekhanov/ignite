@@ -89,7 +89,7 @@ public final class BaseQueryContext extends AbstractQueryContext {
         RelDataTypeSystem typeSys = CALCITE_CONNECTION_CONFIG.typeSystem(RelDataTypeSystem.class, FRAMEWORK_CONFIG.getTypeSystem());
         TYPE_FACTORY = new IgniteTypeFactory(typeSys);
 
-        DFLT_REX_BUILDER = new RexBuilder(TYPE_FACTORY);
+        DFLT_REX_BUILDER = new IgniteRexBuilder(TYPE_FACTORY);
 
         CLUSTER = RelOptCluster.create(EMPTY_PLANNER, DFLT_REX_BUILDER);
 
@@ -136,7 +136,7 @@ public final class BaseQueryContext extends AbstractQueryContext {
 
         qryCancel = unwrap(GridQueryCancel.class);
 
-        rexBuilder = new RexBuilder(typeFactory);
+        rexBuilder = new IgniteRexBuilder(typeFactory);
     }
 
     /**

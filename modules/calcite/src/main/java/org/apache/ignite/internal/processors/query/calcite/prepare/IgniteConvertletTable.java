@@ -18,24 +18,16 @@
 package org.apache.ignite.internal.processors.query.calcite.prepare;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.avatica.util.DateTimeUtils;
 import org.apache.calcite.avatica.util.TimeUnit;
 import org.apache.calcite.rel.type.RelDataType;
-import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
-import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlIntervalQualifier;
 import org.apache.calcite.sql.SqlLiteral;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlNodeList;
-import org.apache.calcite.sql.SqlUtil;
-import org.apache.calcite.sql.fun.SqlCase;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
@@ -44,10 +36,7 @@ import org.apache.calcite.sql2rel.ReflectiveConvertletTable;
 import org.apache.calcite.sql2rel.SqlRexContext;
 import org.apache.calcite.sql2rel.SqlRexConvertlet;
 import org.apache.calcite.sql2rel.StandardConvertletTable;
-import org.apache.ignite.internal.processors.query.calcite.util.TypeUtils;
 import org.checkerframework.checker.nullness.qual.Nullable;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * Ignite convertlet table.
@@ -68,68 +57,6 @@ public class IgniteConvertletTable extends ReflectiveConvertletTable {
         SqlRexConvertlet res = super.get(call);
 
         return res == null ? StandardConvertletTable.INSTANCE.get(call) : res;
-    }
-
-    /**
-     * Converts a CASE expression.
-     */
-    public RexNode convertCase(SqlRexContext cx, SqlCase call) {
-        SqlNodeList whenList = call.getWhenOperands();
-        SqlNodeList thenList = call.getThenOperands();
-        assert whenList.size() == thenList.size();
-
-        RexBuilder rexBuilder = cx.getRexBuilder();
-        final List<RexNode> exprList = new ArrayList<>();
-        final RelDataTypeFactory typeFactory = rexBuilder.getTypeFactory();
-        final RexLiteral unknownLiteral = rexBuilder.makeNullLiteral(typeFactory.createSqlType(SqlTypeName.BOOLEAN));
-        final RexLiteral nullLiteral = rexBuilder.makeNullLiteral(typeFactory.createSqlType(SqlTypeName.NULL));
-
-        for (int i = 0; i < whenList.size(); i++) {
-            if (SqlUtil.isNullLiteral(whenList.get(i), false))
-                exprList.add(unknownLiteral);
-            else
-                exprList.add(cx.convertExpression(whenList.get(i)));
-
-            if (SqlUtil.isNullLiteral(thenList.get(i), false))
-                exprList.add(nullLiteral);
-            else
-                exprList.add(cx.convertExpression(thenList.get(i)));
-        }
-
-        SqlNode elseOperand = call.getElseOperand();
-
-        if (SqlUtil.isNullLiteral(elseOperand, false))
-            exprList.add(nullLiteral);
-        else
-            exprList.add(cx.convertExpression(requireNonNull(elseOperand, "elseOperand")));
-
-        RelDataType type = rexBuilder.deriveReturnType(call.getOperator(), exprList);
-
-        if (type.getSqlTypeName() == SqlTypeName.CHAR)
-            type = TypeUtils.charTypeToVarying(typeFactory, type);
-
-        for (int i : elseArgs(exprList.size()))
-            exprList.set(i, rexBuilder.ensureType(type, exprList.get(i), false));
-
-        return rexBuilder.makeCall(type, SqlStdOperatorTable.CASE, exprList);
-    }
-
-    /**
-     * ELSE operands for CASE operator.
-     */
-    private static List<Integer> elseArgs(int cnt) {
-        // If list is odd, e.g. [0, 1, 2, 3, 4] we get [1, 3, 4]
-        // If list is even, e.g. [0, 1, 2, 3, 4, 5] we get [2, 4, 5]
-        final List<Integer> list = new ArrayList<>();
-        for (int i = cnt % 2;;) {
-            list.add(i);
-            i += 2;
-            if (i >= cnt) {
-                list.add(i - 1);
-                break;
-            }
-        }
-        return list;
     }
 
     /** Convertlet that handles the {@code TIMESTAMPDIFF} function. */
