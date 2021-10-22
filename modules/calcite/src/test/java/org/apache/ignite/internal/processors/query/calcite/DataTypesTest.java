@@ -17,6 +17,8 @@
 
 package org.apache.ignite.internal.processors.query.calcite;
 
+import java.time.Duration;
+import java.time.Period;
 import java.util.List;
 import java.util.stream.Collectors;
 import com.google.common.collect.ImmutableSet;
@@ -93,8 +95,24 @@ public class DataTypesTest extends GridCommonAbstractTest {
     @Test
     public void testIntervals() {
         executeSql("CREATE TABLE test(k INT PRIMARY KEY, v INT)");
+        executeSql("INSERT INTO test(k, v) VALUES (1, 2)");
+        System.out.println(">>>> " + executeSql("SELECT typeof(k) FROM test").get(0).get(0));
+/*
+        executeSql("CREATE TABLE test(k INTERVAL PRIMARY KEY, v INTERVAL)");
         executeSql("INSERT INTO test(k, v) VALUES (INTERVAL 10 MONTHS, INTERVAL 10 HOURS)");
 
+        Duration.ofSeconds(10);
+        Period.ofMonths(10);
+
+*/
+        assertEquals(Duration.ofSeconds(1), eval("INTERVAL 1 SECONDS"));
+        assertEquals(Duration.ofMinutes(2), eval("INTERVAL 2 MINUTES"));
+        assertEquals(Duration.ofHours(3), eval("INTERVAL 3 HOURS"));
+        assertEquals(Duration.ofDays(4), eval("INTERVAL 4 DAYS"));
+        assertEquals(Period.ofMonths(5), eval("INTERVAL 5 MONTHS"));
+        assertEquals(Period.ofYears(6), eval("INTERVAL 6 YEARS"));
+
+/*
         assertEquals(10L, eval("INTERVAL 10 SECONDS"));
         assertEquals(10L, eval("INTERVAL 10 MINUTES"));
         assertEquals(10L, eval("INTERVAL 10 HOURS"));
@@ -104,6 +122,7 @@ public class DataTypesTest extends GridCommonAbstractTest {
         assertEquals(14L, eval("INTERVAL '1-2' YEAR TO MONTH"));
         assertEquals(26L, eval("INTERVAL '1 2' DAY TO HOUR"));
         assertEquals(26, eval("CAST((INTERVAL '26' DAYS) AS INT)"));
+*/
         //assertEquals(26, eval("CAST((INTERVAL '1 2' DAY TO HOUR) AS INT)"));
     }
 

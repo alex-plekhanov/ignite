@@ -21,12 +21,15 @@ import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Period;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -42,7 +45,6 @@ import org.apache.calcite.rel.type.RelDataTypeFactoryImpl;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.runtime.SqlFunctions;
 import org.apache.calcite.sql.type.IntervalSqlType;
-import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.util.Pair;
@@ -285,6 +287,12 @@ public class TypeUtils {
             return SqlFunctions.toLong((java.util.Date)val, DataContext.Variable.TIME_ZONE.get(ectx));
         else if (storageType == java.util.Date.class)
             return SqlFunctions.toLong((java.util.Date)val, DataContext.Variable.TIME_ZONE.get(ectx));
+        else if (storageType == Duration.class) {
+            return TimeUnit.SECONDS.toMillis(((Duration)val).getSeconds())
+                + TimeUnit.NANOSECONDS.toMillis(((Duration)val).getNano());
+        }
+        else if (storageType == Period.class)
+            return (int)((Period)val).toTotalMonths();
         else
             return val;
     }
@@ -301,6 +309,10 @@ public class TypeUtils {
             return new Timestamp(fromLocalTs(ectx, (Long)val));
         else if (storageType == java.util.Date.class && val instanceof Long)
             return new java.util.Date(fromLocalTs(ectx, (Long)val));
+        else if (storageType == Duration.class && val instanceof Long)
+            return Duration.ofMillis((Long)val);
+        else if (storageType == Period.class && val instanceof Integer)
+            return Period.of((Integer)val / 12, (Integer)val % 12, 0);
         else if (valType instanceof IntervalSqlType && (val instanceof Long || val instanceof Integer)) {
             long val0 = val instanceof Long ? (Long)val : (Integer)val;
 
