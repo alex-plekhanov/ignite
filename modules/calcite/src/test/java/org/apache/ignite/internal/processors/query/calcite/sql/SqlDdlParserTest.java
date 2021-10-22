@@ -55,6 +55,7 @@ import static org.junit.Assert.assertThat;
  * Test suite to verify parsing of the DDL command.
  */
 public class SqlDdlParserTest extends GridCommonAbstractTest {
+
     /**
      * Very simple case where only table name and a few columns are presented.
      */

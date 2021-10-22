@@ -140,8 +140,13 @@ public interface TableDescriptor extends RelProtoDataType, InitializerExpression
      * @return Cache key-value tuple;
      * @throws IgniteCheckedException If failed.
      */
-    <Row> IgniteBiTuple toTuple(ExecutionContext<Row> ectx, Row row, TableModify.Operation op, @Nullable Object arg)
-        throws IgniteCheckedException;
+    <Row> IgniteBiTuple toTuple(
+        ExecutionContext<Row> ectx,
+        Row row,
+        RelDataType rowType,
+        TableModify.Operation op,
+        @Nullable Object arg
+    ) throws IgniteCheckedException;
 
     /**
      * Returns column descriptor for given field name.

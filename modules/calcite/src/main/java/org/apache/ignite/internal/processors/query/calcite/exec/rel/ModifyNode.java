@@ -115,7 +115,7 @@ public class ModifyNode<Row> extends AbstractNode<Row> implements SingleNode<Row
             case DELETE:
             case UPDATE:
             case INSERT:
-                tuples.add(desc.toTuple(context(), row, op, cols));
+                tuples.add(desc.toTuple(context(), row, source().rowType(), op, cols));
 
                 flushTuples(false);
 

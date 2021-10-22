@@ -838,8 +838,13 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
         }
 
         /** {@inheritDoc} */
-        @Override public <Row> IgniteBiTuple toTuple(ExecutionContext<Row> ectx, Row row, TableModify.Operation op,
-            @Nullable Object arg) throws IgniteCheckedException {
+        @Override public <Row> IgniteBiTuple toTuple(
+            ExecutionContext<Row> ectx,
+            Row row,
+            RelDataType rowType,
+            TableModify.Operation op,
+            @Nullable Object arg
+        ) {
             throw new AssertionError();
         }
 

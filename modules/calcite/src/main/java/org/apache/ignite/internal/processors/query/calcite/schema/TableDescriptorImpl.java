@@ -307,15 +307,20 @@ public class TableDescriptorImpl extends NullInitializerExpressionFactory
     }
 
     /** {@inheritDoc} */
-    @Override public <Row> IgniteBiTuple toTuple(ExecutionContext<Row> ectx, Row row,
-        TableModify.Operation op, Object arg) throws IgniteCheckedException {
+    @Override public <Row> IgniteBiTuple toTuple(
+        ExecutionContext<Row> ectx,
+        Row row,
+        RelDataType rowType,
+        TableModify.Operation op,
+        Object arg
+    ) throws IgniteCheckedException {
         switch (op) {
             case INSERT:
-                return insertTuple(row, ectx);
+                return insertTuple(row, rowType, ectx);
             case DELETE:
-                return deleteTuple(row, ectx);
+                return deleteTuple(row, rowType, ectx);
             case UPDATE:
-                return updateTuple(row, (List<String>) arg, ectx);
+                return updateTuple(row, rowType, (List<String>) arg, ectx);
             case MERGE:
                 throw new UnsupportedOperationException();
             default:
@@ -324,9 +329,10 @@ public class TableDescriptorImpl extends NullInitializerExpressionFactory
     }
 
     /** */
-    private <Row> IgniteBiTuple insertTuple(Row row, ExecutionContext<Row> ectx) throws IgniteCheckedException {
-        Object key = insertKey(row, ectx);
-        Object val = insertVal(row, ectx);
+    private <Row> IgniteBiTuple insertTuple(Row row, RelDataType rowType, ExecutionContext<Row> ectx)
+        throws IgniteCheckedException {
+        Object key = insertKey(row, rowType, ectx);
+        Object val = insertVal(row, rowType, ectx);
 
         if (cacheContext().binaryMarshaller()) {
             if (key instanceof BinaryObjectBuilder)
@@ -342,13 +348,16 @@ public class TableDescriptorImpl extends NullInitializerExpressionFactory
     }
 
     /** */
-    private <Row> Object insertKey(Row row, ExecutionContext<Row> ectx) throws IgniteCheckedException {
+    private <Row> Object insertKey(Row row, RelDataType rowType, ExecutionContext<Row> ectx) throws IgniteCheckedException {
         RowHandler<Row> handler = ectx.rowHandler();
 
         Object key = handler.get(keyField, row);
 
-        if (key != null)
-            return TypeUtils.fromInternal(ectx, key, descriptors[QueryUtils.KEY_COL].storageType());
+        if (key != null) {
+            RelDataType keyType = rowType.getFieldList().get(keyField).getType();
+
+            return TypeUtils.fromInternal(ectx, key, keyType, descriptors[QueryUtils.KEY_COL].storageType());
+        }
 
         // skip _key and _val
         for (int i = 2; i < descriptors.length; i++) {
@@ -363,7 +372,9 @@ public class TableDescriptorImpl extends NullInitializerExpressionFactory
                 if (key == null)
                     key = newVal(typeDesc.keyTypeName(), typeDesc.keyClass());
 
-                desc.set(key, TypeUtils.fromInternal(ectx, fieldVal, desc.storageType()));
+                RelDataType fieldType = rowType.getFieldList().get(i).getType();
+
+                desc.set(key, TypeUtils.fromInternal(ectx, fieldVal, fieldType, desc.storageType()));
             }
         }
 
@@ -374,7 +385,7 @@ public class TableDescriptorImpl extends NullInitializerExpressionFactory
     }
 
     /** */
-    private <Row> Object insertVal(Row row, ExecutionContext<Row> ectx) throws IgniteCheckedException {
+    private <Row> Object insertVal(Row row, RelDataType rowType, ExecutionContext<Row> ectx) throws IgniteCheckedException {
         RowHandler<Row> handler = ectx.rowHandler();
 
         Object val = handler.get(valField, row);
@@ -388,12 +399,17 @@ public class TableDescriptorImpl extends NullInitializerExpressionFactory
 
                 Object fieldVal = handler.get(i, row);
 
-                if (desc.field() && !desc.key() && fieldVal != null)
-                    desc.set(val, TypeUtils.fromInternal(ectx, fieldVal, desc.storageType()));
+                if (desc.field() && !desc.key() && fieldVal != null) {
+                    RelDataType fieldType = rowType.getFieldList().get(i).getType();
+                    desc.set(val, TypeUtils.fromInternal(ectx, fieldVal, fieldType, desc.storageType()));
+                }
             }
         }
-        else
-            val = TypeUtils.fromInternal(ectx, val, descriptors[QueryUtils.VAL_COL].storageType());
+        else {
+            RelDataType valType = rowType.getFieldList().get(valField).getType();
+
+            val = TypeUtils.fromInternal(ectx, val, valType, descriptors[QueryUtils.VAL_COL].storageType());
+        }
 
         return val;
     }
@@ -440,7 +456,7 @@ public class TableDescriptorImpl extends NullInitializerExpressionFactory
     }
 
     /** */
-    private <Row> IgniteBiTuple updateTuple(Row row, List<String> updateColList, ExecutionContext<Row> ectx)
+    private <Row> IgniteBiTuple updateTuple(Row row, RelDataType rowType, List<String> updateColList, ExecutionContext<Row> ectx)
         throws IgniteCheckedException {
         RowHandler<Row> handler = ectx.rowHandler();
 
@@ -456,10 +472,12 @@ public class TableDescriptorImpl extends NullInitializerExpressionFactory
 
             Object fieldVal = handler.get(i + offset, row);
 
+            RelDataType fieldType = rowType.getFieldList().get(i + offset).getType();
+
             if (desc.field())
-                desc.set(val, TypeUtils.fromInternal(ectx, fieldVal, desc.storageType()));
+                desc.set(val, TypeUtils.fromInternal(ectx, fieldVal, fieldType, desc.storageType()));
             else
-                val = TypeUtils.fromInternal(ectx, fieldVal, desc.storageType());
+                val = TypeUtils.fromInternal(ectx, fieldVal, fieldType, desc.storageType());
         }
 
         if (cacheContext().binaryMarshaller() && val instanceof BinaryObjectBuilder)
@@ -489,9 +507,12 @@ public class TableDescriptorImpl extends NullInitializerExpressionFactory
     }
 
     /** */
-    private <Row> IgniteBiTuple deleteTuple(Row row, ExecutionContext<Row> ectx) {
-        Object key = TypeUtils.fromInternal(ectx,
-            ectx.rowHandler().get(QueryUtils.KEY_COL, row), descriptors[QueryUtils.KEY_COL].storageType());
+    private <Row> IgniteBiTuple deleteTuple(Row row, RelDataType rowType, ExecutionContext<Row> ectx) {
+        Object key = TypeUtils.fromInternal(
+            ectx,
+            ectx.rowHandler().get(QueryUtils.KEY_COL, row),
+            rowType.getFieldList().get(QueryUtils.KEY_COL).getType(),
+            descriptors[QueryUtils.KEY_COL].storageType());
         return F.t(Objects.requireNonNull(key), null);
     }
 

@@ -64,6 +64,34 @@ public class FunctionsTest extends GridCommonAbstractTest {
 
     /** */
     @Test
+    public void testMinusDate() {
+/*
+        IgniteCache<Integer, CalciteQueryProcessorTest.Developer> cache = grid(0).getOrCreateCache(
+            new CacheConfiguration<Integer, CalciteQueryProcessorTest.Developer>("test")
+                .setBackups(1)
+                .setIndexedTypes(Integer.class, CalciteQueryProcessorTest.Developer.class)
+        );
+
+        cache.put(1, new CalciteQueryProcessorTest.Developer("a", 1));
+
+        checkQuery("SELECT name FROM \"test\".Developer").returns("a").check();
+*/
+/*
+        qryEngine.query(null, "PUBLIC", "CREATE TABLE test1 (a DATE, b CHAR(10))");
+        qryEngine.query(null, "PUBLIC", "INSERT INTO test1 values (DATE '2021-01-01', 'aaa')");
+        checkQuery("SELECT a, b FROM test1").returns("a").check();
+*/
+
+        //checkQuery("SELECT TYPEOF((DATE '2021-01-02'  - DATE '2021-01-01') DAY)").returns(1).check();
+        //checkQuery("SELECT (DATE '2021-01-02'  - DATE '2021-01-01') DAYS").returns(1L).check();
+        checkQuery("SELECT INTERVAL 1 HOUR").returns(1L).check();
+        checkQuery("SELECT INTERVAL 1 MONTH").returns(1L).check();
+        checkQuery("SELECT INTERVAL 1 YEAR").returns(1L).check();
+        //checkQuery("SELECT CAST((INTERVAL 1 HOUR) AS INT)").returns(1L).check();
+    }
+
+    /** */
+    @Test
     public void testLength() {
         checkQuery("SELECT LENGTH('TEST')").returns(4).check();
         checkQuery("SELECT LENGTH(NULL)").returns(NULL_RESULT).check();

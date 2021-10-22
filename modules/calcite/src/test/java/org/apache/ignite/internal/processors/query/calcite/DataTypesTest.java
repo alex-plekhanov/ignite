@@ -87,6 +87,31 @@ public class DataTypesTest extends GridCommonAbstractTest {
         }
     }
 
+    /**
+     * Test intraval data types.
+     */
+    @Test
+    public void testIntervals() {
+        executeSql("CREATE TABLE test(k INT PRIMARY KEY, v INT)");
+        executeSql("INSERT INTO test(k, v) VALUES (INTERVAL 10 MONTHS, INTERVAL 10 HOURS)");
+
+        assertEquals(10L, eval("INTERVAL 10 SECONDS"));
+        assertEquals(10L, eval("INTERVAL 10 MINUTES"));
+        assertEquals(10L, eval("INTERVAL 10 HOURS"));
+        assertEquals(10L, eval("INTERVAL 10 DAYS"));
+        assertEquals(10L, eval("INTERVAL 10 MONTHS"));
+        assertEquals(10L, eval("INTERVAL 10 YEARS"));
+        assertEquals(14L, eval("INTERVAL '1-2' YEAR TO MONTH"));
+        assertEquals(26L, eval("INTERVAL '1 2' DAY TO HOUR"));
+        assertEquals(26, eval("CAST((INTERVAL '26' DAYS) AS INT)"));
+        //assertEquals(26, eval("CAST((INTERVAL '1 2' DAY TO HOUR) AS INT)"));
+    }
+
+    /** */
+    public Object eval(String exp) {
+        return executeSql("SELECT " + exp).get(0).get(0);
+    }
+
     /** */
     public List<List<?>> executeSql(String sql, Object... params) {
         return qryEngine.query(null, "PUBLIC", sql, params).get(0).getAll();

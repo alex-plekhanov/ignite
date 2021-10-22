@@ -981,7 +981,8 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
         private QueryInfo(ExecutionContext<Row> ctx, MultiStepPlan plan, Node<Row> root) {
             this.ctx = ctx;
 
-            RootNode<Row> rootNode = new RootNode<>(ctx, plan.fieldsMetadata().rowType(), this::tryClose);
+            RootNode<Row> rootNode = new RootNode<>(ctx, root.rowType(), this::tryClose);
+            //RootNode<Row> rootNode = new RootNode<>(ctx, plan.fieldsMetadata().rowType(), this::tryClose);
             rootNode.register(root);
 
             this.root = rootNode;

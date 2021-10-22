@@ -18,6 +18,8 @@
 package org.apache.ignite.internal.processors.query.calcite.util;
 
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -39,6 +41,8 @@ import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeFactoryImpl;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.runtime.SqlFunctions;
+import org.apache.calcite.sql.type.IntervalSqlType;
+import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.util.Pair;
@@ -56,11 +60,17 @@ import static org.apache.ignite.internal.processors.query.calcite.util.Commons.t
 /** */
 public class TypeUtils {
     /** */
-    private static final EnumSet<SqlTypeName> CONVERTABLE_SQL_TYPES = EnumSet.of(
-        SqlTypeName.DATE,
-        SqlTypeName.TIME,
-        SqlTypeName.TIMESTAMP
-    );
+    private static final EnumSet<SqlTypeName> CONVERTABLE_SQL_TYPES;
+
+    static {
+        CONVERTABLE_SQL_TYPES = EnumSet.of(
+            SqlTypeName.DATE,
+            SqlTypeName.TIME,
+            SqlTypeName.TIMESTAMP
+        );
+
+        CONVERTABLE_SQL_TYPES.addAll(SqlTypeName.INTERVAL_TYPES);
+    }
 
     /** */
     private static final Set<Type> CONVERTABLE_TYPES = ImmutableSet.of(
@@ -235,9 +245,9 @@ public class TypeUtils {
 
     /** */
     private static Function<Object, Object> fieldConverter(ExecutionContext<?> ectx, RelDataType fieldType) {
-        if (CONVERTABLE_SQL_TYPES.contains(fieldType.getSqlTypeName())) {
-            Type storageType = ectx.getTypeFactory().getJavaClass(fieldType);
-            return v -> fromInternal(ectx, v, storageType);
+        if (isConvertableType(fieldType)) {
+            Type storageType = ectx.getTypeFactory().getResultClass(fieldType);
+            return v -> fromInternal(ectx, v, fieldType, storageType);
         }
         return Function.identity();
     }
@@ -255,7 +265,7 @@ public class TypeUtils {
     /** */
     private static boolean hasConvertableFields(RelDataType resultType) {
         return RelOptUtil.getFieldTypeList(resultType).stream()
-            .anyMatch(t -> CONVERTABLE_SQL_TYPES.contains(t.getSqlTypeName()));
+            .anyMatch(TypeUtils::isConvertableType);
     }
 
     /** */
@@ -280,7 +290,7 @@ public class TypeUtils {
     }
 
     /** */
-    public static Object fromInternal(ExecutionContext<?> ectx, Object val, Type storageType) {
+    public static Object fromInternal(ExecutionContext<?> ectx, Object val, RelDataType valType, Type storageType) {
         if (val == null)
             return null;
         else if (storageType == java.sql.Date.class && val instanceof Integer)
@@ -291,6 +301,13 @@ public class TypeUtils {
             return new Timestamp(fromLocalTs(ectx, (Long)val));
         else if (storageType == java.util.Date.class && val instanceof Long)
             return new java.util.Date(fromLocalTs(ectx, (Long)val));
+        else if (valType instanceof IntervalSqlType && (val instanceof Long || val instanceof Integer)) {
+            long val0 = val instanceof Long ? (Long)val : (Integer)val;
+
+            BigDecimal endUnitMul = valType.getSqlTypeName().getEndUnit().multiplier;
+
+            return BigDecimal.valueOf(val0).divide(endUnitMul, RoundingMode.DOWN).longValue();
+        }
         else
             return val;
     }
