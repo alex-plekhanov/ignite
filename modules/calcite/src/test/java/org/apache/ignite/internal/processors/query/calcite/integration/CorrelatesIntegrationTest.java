@@ -51,4 +51,9 @@ public class CorrelatesIntegrationTest extends AbstractBasicIntegrationTest {
             .returns(4)
             .check();
     }
+
+    @Test
+    public void test() {
+        assertQuery("SELECT (SELECT 1 FROM (SELECT 1) WHERE 1 = 0)").returns(new Object[]{null}).check();
+    }
 }

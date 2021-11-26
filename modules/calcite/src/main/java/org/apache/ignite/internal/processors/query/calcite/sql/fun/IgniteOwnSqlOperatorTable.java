@@ -16,12 +16,16 @@
  */
 package org.apache.ignite.internal.processors.query.calcite.sql.fun;
 
+import org.apache.calcite.sql.SqlAggFunction;
 import org.apache.calcite.sql.SqlFunction;
 import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.fun.SqlSingleValueAggFunction;
 import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
+
+import static org.apache.calcite.linq4j.Nullness.castNonNull;
 
 /**
  * Operator table that contains Ignite own functions and operators.
@@ -46,6 +50,9 @@ public class IgniteOwnSqlOperatorTable extends ReflectiveSqlOperatorTable {
             null,
             OperandTypes.CHARACTER,
             SqlFunctionCategory.NUMERIC);
+
+    public static final SqlAggFunction SINGLE_VALUE_NULLABLE =
+        new SqlSingleValueAggFunction(castNonNull(null));
 
     /**
      *

@@ -52,6 +52,7 @@ public class IgniteConvertletTable extends ReflectiveConvertletTable {
         registerOp(SqlStdOperatorTable.TIMESTAMP_DIFF, new TimestampDiffConvertlet());
 
         addAlias(IgniteOwnSqlOperatorTable.LENGTH, SqlStdOperatorTable.CHAR_LENGTH);
+        addAlias(SqlStdOperatorTable.SINGLE_VALUE, IgniteOwnSqlOperatorTable.SINGLE_VALUE_NULLABLE);
     }
 
     /** {@inheritDoc} */
