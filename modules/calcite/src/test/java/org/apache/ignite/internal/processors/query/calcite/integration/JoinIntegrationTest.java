@@ -676,9 +676,14 @@ public class JoinIntegrationTest extends AbstractBasicIntegrationTest {
      */
     @Test
     public void testJoinWithSubqueryInCondition() {
-        sql("CREATE TABLE tbl (a INT)");
-        sql("INSERT INTO tbl VALUES (1), (2), (100), (101)");
-        assertQuery("SELECT * FROM tbl t1 LEFT JOIN tbl t2 ON (SELECT t2.a)<100").check();
+        executeSql("CREATE TABLE tbl (a INT)");
+        executeSql("INSERT INTO tbl VALUES (1), (2), (100), (101)");
+        try {
+            assertQuery("SELECT * FROM tbl t1 LEFT JOIN tbl t2 ON (SELECT t2.a)<100").check();
+        }
+        finally {
+            executeSql("DROP TABLE tbl");
+        }
     }
 
     /** {@inheritDoc} */
