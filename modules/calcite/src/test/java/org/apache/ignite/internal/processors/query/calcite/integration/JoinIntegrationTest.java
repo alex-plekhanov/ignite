@@ -671,6 +671,16 @@ public class JoinIntegrationTest extends AbstractBasicIntegrationTest {
             .check();
     }
 
+    /**
+     *
+     */
+    @Test
+    public void testJoinWithSubqueryInCondition() {
+        sql("CREATE TABLE tbl (a INT)");
+        sql("INSERT INTO tbl VALUES (1), (2), (100), (101)");
+        assertQuery("SELECT * FROM tbl t1 LEFT JOIN tbl t2 ON (SELECT t2.a)<100").check();
+    }
+
     /** {@inheritDoc} */
     @Override protected QueryChecker assertQuery(String qry) {
         return super.assertQuery(qry.replace("select", "select "

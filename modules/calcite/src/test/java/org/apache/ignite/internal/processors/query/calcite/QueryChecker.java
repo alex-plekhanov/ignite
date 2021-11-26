@@ -360,6 +360,8 @@ public abstract class QueryChecker {
         if (exactPlan != null)
             assertEquals(exactPlan, actualPlan);
 
+        System.out.println(actualPlan);
+
         // Check result.
         List<FieldsQueryCursor<List<?>>> cursors =
             engine.query(null, "PUBLIC", qry, params);
