@@ -94,6 +94,16 @@ public class DataTypesTest extends AbstractBasicIntegrationTest {
         }
     }
 
+    @Test
+    public void testIncorrectDates() {
+        Object res = executeSql("SELECT CAST(V AS DATE) FROM (VALUES ('1993-20-14')) AS T(V)");
+        //Object res = executeSql("SELECT CAST('1993-20-14' AS DATE)"); // DateTimeUtils.dateStringToUnixDate
+        //Object res = executeSql("SELECT CAST('1993-02-29' AS DATE)");
+        //Object res = executeSql("SELECT COUNT(1, 2)"); // Treats 1,2 as ROW constructor
+        //Object res = executeSql("SELECT '%' LIKE '%' ESCAPE '%'"); // Optimizes .. LIKE '%' to TRUE
+        System.out.println(res);
+    }
+
     /** */
     @Test
     public void testUnicodeStrings() {
