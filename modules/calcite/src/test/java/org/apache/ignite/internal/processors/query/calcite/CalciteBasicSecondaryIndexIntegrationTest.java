@@ -527,6 +527,15 @@ public class CalciteBasicSecondaryIndexIntegrationTest extends GridCommonAbstrac
 
     /** */
     @Test
+    public void testIndexedDateFieldIsNullFilter() {
+        assertQuery("SELECT * FROM Birthday WHERE birthday IS NULL")
+            .matches(containsIndexScan("PUBLIC", "BIRTHDAY", DATE_IDX))
+            .returns(2, "Beethoven", null)
+            .check();
+    }
+
+    /** */
+    @Test
     public void testNonIndexedFieldGreaterThanFilter() {
         assertQuery("SELECT * FROM Developer WHERE age>?")
             .withParams(50)

@@ -72,6 +72,7 @@ import org.jetbrains.annotations.Nullable;
 import static org.apache.calcite.sql.SqlKind.EQUALS;
 import static org.apache.calcite.sql.SqlKind.GREATER_THAN;
 import static org.apache.calcite.sql.SqlKind.GREATER_THAN_OR_EQUAL;
+import static org.apache.calcite.sql.SqlKind.IS_NULL;
 import static org.apache.calcite.sql.SqlKind.LESS_THAN;
 import static org.apache.calcite.sql.SqlKind.LESS_THAN_OR_EQUAL;
 
@@ -154,6 +155,7 @@ public class RexUtils {
     /** Supported index operations. */
     private static final Set<SqlKind> TREE_INDEX_COMPARISON =
         EnumSet.of(
+            IS_NULL,
             EQUALS,
             LESS_THAN, GREATER_THAN,
             GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL);
@@ -199,7 +201,7 @@ public class RexUtils {
             RexNode bestLower = null;
 
             for (RexCall pred : collFldPreds) {
-                if (U.assertionsEnabled()) {
+                if (U.assertionsEnabled() && pred.operands.size() == 2) {
                     RexNode cond = RexUtil.removeCast(pred.operands.get(1));
 
                     assert idxOpSupports(cond) : cond;
@@ -208,6 +210,7 @@ public class RexUtils {
                 boolean lowerBoundBelow = !fc.getDirection().isDescending();
                 SqlOperator op = pred.getOperator();
                 switch (op.kind) {
+                    case IS_NULL:
                     case EQUALS:
                         bestUpper = pred;
                         bestLower = pred;
@@ -334,18 +337,23 @@ public class RexUtils {
         Map<Integer, List<RexCall>> res = new HashMap<>(conjunctions.size());
 
         for (RexNode rexNode : conjunctions) {
-            if (!isBinaryComparison(rexNode))
-                continue;
-
             RexCall predCall = (RexCall)rexNode;
-            RexSlot ref = (RexSlot)extractRef(predCall);
+            RexSlot ref;
 
-            if (ref == null)
+            if (isBinaryComparison(rexNode)) {
+                ref = (RexSlot)extractRefFromBinary(predCall);
+
+                if (ref == null)
+                    continue;
+
+                // Let RexLocalRef be on the left side.
+                if (refOnTheRight(predCall))
+                    predCall = (RexCall)RexUtil.invert(builder(cluster), predCall);
+            }
+            else if (isUnaryComparison(rexNode))
+                ref = (RexSlot)extractRefFromUnary(predCall);
+            else
                 continue;
-
-            // Let RexLocalRef be on the left side.
-            if (refOnTheRight(predCall))
-                predCall = (RexCall)RexUtil.invert(builder(cluster), predCall);
 
             List<RexCall> fldPreds = res.computeIfAbsent(ref.getIndex(), k -> new ArrayList<>(conjunctions.size()));
 
@@ -355,7 +363,7 @@ public class RexUtils {
     }
 
     /** */
-    private static RexNode extractRef(RexCall call) {
+    private static RexNode extractRefFromBinary(RexCall call) {
         assert isBinaryComparison(call);
 
         RexNode leftOp = call.getOperands().get(0);
@@ -368,6 +376,20 @@ public class RexUtils {
             return leftOp;
         else if ((rightOp instanceof RexLocalRef || rightOp instanceof RexInputRef) && idxOpSupports(leftOp))
             return rightOp;
+
+        return null;
+    }
+
+    /** */
+    private static RexNode extractRefFromUnary(RexCall call) {
+        assert isUnaryComparison(call);
+
+        RexNode op = call.getOperands().get(0);
+
+        op = RexUtil.removeCast(op);
+
+        if ((op instanceof RexLocalRef || op instanceof RexInputRef))
+            return op;
 
         return null;
     }
@@ -386,6 +408,13 @@ public class RexUtils {
         return TREE_INDEX_COMPARISON.contains(exp.getKind()) &&
             (exp instanceof RexCall) &&
             ((RexCall)exp).getOperands().size() == 2;
+    }
+
+    /** */
+    public static boolean isUnaryComparison(RexNode exp) {
+        return TREE_INDEX_COMPARISON.contains(exp.getKind()) &&
+            (exp instanceof RexCall) &&
+            ((RexCall)exp).getOperands().size() == 1;
     }
 
     /** */
@@ -423,15 +452,20 @@ public class RexUtils {
 
             RexCall call = (RexCall)pred;
             RexSlot ref = (RexSlot)RexUtil.removeCast(call.operands.get(0));
-            RexNode cond = RexUtil.removeCast(call.operands.get(1));
-
-            assert idxOpSupports(cond) : cond;
 
             int index = mapping == null ? ref.getIndex() : mapping.getSourceOpt(ref.getIndex());
 
             assert index != -1;
 
-            res.set(index, makeCast(builder, cond, types.get(index)));
+            if (call.operands.size() == 2) {
+                RexNode cond = RexUtil.removeCast(call.operands.get(1));
+
+                assert idxOpSupports(cond) : cond;
+
+                res.set(index, makeCast(builder, cond, types.get(index)));
+            }
+            else if (call.getKind() == IS_NULL)
+                res.set(index, builder.makeNullLiteral(types.get(index)));
         }
 
         return res;
