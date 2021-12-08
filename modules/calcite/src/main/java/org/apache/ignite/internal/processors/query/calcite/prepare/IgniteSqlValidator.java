@@ -36,6 +36,7 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
+import org.apache.calcite.sql.SqlMerge;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlOperatorTable;
@@ -53,9 +54,9 @@ import org.apache.calcite.sql.validate.SqlValidatorScope;
 import org.apache.calcite.sql.validate.SqlValidatorTable;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.ignite.internal.processors.query.QueryUtils;
+import org.apache.ignite.internal.processors.query.calcite.schema.CacheTableDescriptor;
+import org.apache.ignite.internal.processors.query.calcite.schema.IgniteCacheTable;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteTable;
-import org.apache.ignite.internal.processors.query.calcite.schema.IgniteTableImpl;
-import org.apache.ignite.internal.processors.query.calcite.schema.TableDescriptor;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
 import org.apache.ignite.internal.processors.query.calcite.util.IgniteResource;
 import org.apache.ignite.internal.util.typedef.F;
@@ -109,6 +110,8 @@ public class IgniteSqlValidator extends SqlValidatorImpl {
 
     /** {@inheritDoc} */
     @Override public void validateInsert(SqlInsert insert) {
+        validateTableModify(insert.getTargetTable());
+
         if (insert.getTargetColumnList() == null)
             insert.setOperand(3, inferColumnList(insert));
 
@@ -117,9 +120,33 @@ public class IgniteSqlValidator extends SqlValidatorImpl {
 
     /** {@inheritDoc} */
     @Override public void validateUpdate(SqlUpdate call) {
+        validateTableModify(call.getTargetTable());
+
         validateUpdateFields(call);
 
         super.validateUpdate(call);
+    }
+
+    /** {@inheritDoc} */
+    @Override public void validateDelete(SqlDelete call) {
+        validateTableModify(call.getTargetTable());
+
+        super.validateDelete(call);
+    }
+
+    /** {@inheritDoc} */
+    @Override public void validateMerge(SqlMerge call) {
+        validateTableModify(call.getTargetTable());
+
+        super.validateMerge(call);
+    }
+
+    /** Validates table modify operation. */
+    private void validateTableModify(SqlNode table) {
+        final SqlValidatorTable targetTable = getCatalogReader().getTable(((SqlIdentifier)table).names);
+
+        if (!targetTable.unwrap(IgniteTable.class).isModifiable())
+            throw newValidationError(table, IgniteResource.INSTANCE.modifyTableNotSupported(table.toString()));
     }
 
     /** {@inheritDoc} */
@@ -191,7 +218,7 @@ public class IgniteSqlValidator extends SqlValidatorImpl {
         SqlValidatorTable table = namespace.getTable();
 
         if (table != null) {
-            IgniteTableImpl igniteTable = table.unwrap(IgniteTableImpl.class);
+            IgniteCacheTable igniteTable = table.unwrap(IgniteCacheTable.class);
 
             if (igniteTable != null)
                 igniteTable.ensureCacheStarted();
@@ -304,7 +331,7 @@ public class IgniteSqlValidator extends SqlValidatorImpl {
         if (table == null)
             return null;
 
-        final TableDescriptor desc = table.unwrap(TableDescriptor.class);
+        final CacheTableDescriptor desc = table.unwrap(CacheTableDescriptor.class);
 
         if (desc == null)
             return null;
@@ -329,7 +356,7 @@ public class IgniteSqlValidator extends SqlValidatorImpl {
         if (table == null)
             return;
 
-        final TableDescriptor desc = table.unwrap(TableDescriptor.class);
+        final CacheTableDescriptor desc = table.unwrap(CacheTableDescriptor.class);
 
         if (desc == null)
             return;
