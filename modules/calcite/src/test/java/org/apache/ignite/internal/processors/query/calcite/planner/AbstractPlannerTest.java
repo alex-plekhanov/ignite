@@ -772,7 +772,7 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
 
         /** {@inheritDoc} */
         @Override public boolean isModifiable() {
-            return false;
+            return true;
         }
 
         /** */
