@@ -22,8 +22,13 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.sql.SqlExplainLevel;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteExchange;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteRel;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
 import org.apache.ignite.internal.processors.query.calcite.rel.set.IgniteMapIntersect;
 import org.apache.ignite.internal.processors.query.calcite.rel.set.IgniteMapMinus;
 import org.apache.ignite.internal.processors.query.calcite.rel.set.IgniteMapSetOp;
@@ -107,6 +112,31 @@ public class SetOpPlannerTest extends AbstractPlannerTest {
             "SELECT * FROM random_tbl1 " +
             setOp() +
             "SELECT * FROM random_tbl2 ";
+
+        IgniteRel rel = physicalPlan(sql, publicSchema);
+
+        log().error(RelOptUtil.toString(rel, SqlExplainLevel.ALL_ATTRIBUTES));
+
+        log().error("Count of IgniteTableSpool from TraitUtils "
+            + IgniteTableSpool.CONVERT_TRAIT.get());
+
+        log().error("Count of IgniteExchange from TraitUtils "
+            + IgniteExchange.CONVERT_TRAIT.get());
+
+/*
+        assertPlan(sql, publicSchema, isInstanceOf(setOp.reduce).and(n -> !n.all())
+            .and(hasChildThat(isInstanceOf(setOp.map)
+                .and(input(0, isTableScan("random_tbl1")))
+                .and(input(1, isTableScan("random_tbl2")))
+            ))
+        );
+*/
+    }
+
+    @Test
+    public void testCnt() throws Exception {
+        String sql =
+            "SELECT COUNT(DISTINCT SALARY) FROM random_tbl1";
 
         assertPlan(sql, publicSchema, isInstanceOf(setOp.reduce).and(n -> !n.all())
             .and(hasChildThat(isInstanceOf(setOp.map)

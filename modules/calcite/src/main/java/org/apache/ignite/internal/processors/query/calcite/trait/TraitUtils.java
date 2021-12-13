@@ -64,6 +64,7 @@ import org.jetbrains.annotations.Nullable;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static org.apache.calcite.plan.RelOptUtil.permutationPushDownProject;
+import static org.apache.calcite.rel.RelDistribution.Type.ANY;
 import static org.apache.calcite.rel.RelDistribution.Type.BROADCAST_DISTRIBUTED;
 import static org.apache.calcite.rel.RelDistribution.Type.HASH_DISTRIBUTED;
 import static org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions.any;
@@ -114,10 +115,14 @@ public class TraitUtils {
 
         if (converter == RelCollationTraitDef.INSTANCE)
             return convertCollation(planner, (RelCollation)toTrait, rel);
-        else if (converter == DistributionTraitDef.INSTANCE)
+        else if (converter == DistributionTraitDef.INSTANCE) {
+            IgniteExchange.CONVERT_TRAIT.incrementAndGet();
             return convertDistribution(planner, (IgniteDistribution)toTrait, rel);
-        else if (converter == RewindabilityTraitDef.INSTANCE)
+        }
+        else if (converter == RewindabilityTraitDef.INSTANCE) {
+            IgniteTableSpool.CONVERT_TRAIT.incrementAndGet();
             return convertRewindability(planner, (RewindabilityTrait)toTrait, rel);
+        }
         else
             return convertOther(planner, converter, toTrait, rel);
     }
@@ -142,6 +147,11 @@ public class TraitUtils {
 
         if (fromTrait.satisfies(toTrait))
             return rel;
+
+        if (fromTrait.getType() == ANY) {
+            System.out.println(">>>>> ANY to " + toTrait.getType().name());
+            //return RelOptRule.convert(rel, rel.getTraitSet().replace(toTrait));
+        }
 
         // right now we cannot create a multi-column affinity
         // key object, thus this conversion is impossible

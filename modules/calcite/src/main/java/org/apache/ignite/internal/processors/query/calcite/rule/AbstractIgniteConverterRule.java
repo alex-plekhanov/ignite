@@ -19,10 +19,14 @@ package org.apache.ignite.internal.processors.query.calcite.rule;
 
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptPlanner;
+import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.PhysicalNode;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.sql.SqlExplainFormat;
+import org.apache.calcite.sql.SqlExplainLevel;
+import org.apache.calcite.util.trace.CalciteTrace;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 
 /** */
@@ -40,7 +44,14 @@ public abstract class AbstractIgniteConverterRule<T extends RelNode> extends Con
 
     /** {@inheritDoc} */
     @Override public final RelNode convert(RelNode rel) {
-        return convert(rel.getCluster().getPlanner(), rel.getCluster().getMetadataQuery(), (T)rel);
+//        CalciteTrace.getSqlToRelTracer().error(
+//            RelOptUtil.dumpPlan(this.getClass().getName() + " input: ", rel,
+//                SqlExplainFormat.TEXT, SqlExplainLevel.EXPPLAN_ATTRIBUTES) );
+        RelNode res = convert(rel.getCluster().getPlanner(), rel.getCluster().getMetadataQuery(), (T)rel);
+//        CalciteTrace.getSqlToRelTracer().error(
+//            RelOptUtil.dumpPlan(this.getClass().getName() + " output: ", res,
+//                SqlExplainFormat.TEXT, SqlExplainLevel.EXPPLAN_ATTRIBUTES) );
+        return res;
     }
 
     /**

@@ -145,6 +145,22 @@
         <level value="INFO"/>
     </category>
 
+<!--    <category name="org.apache.calcite.plan.volcano.task">-->
+<!--        <level value="DEBUG"/>-->
+<!--    </category>-->
+
+    <category name="org.apache.calcite.plan.AbstractRelOptPlanner.rule_execution_summary">
+        <level value="DEBUG"/>
+    </category>
+
+    <category name="org.apache.calcite.plan.AbstractRelOptPlanner">
+        <level value="DEBUG"/>
+    </category>
+
+    <category name="org.apache.calcite.sql2rel">
+        <level value="DEBUG"/>
+    </category>
+
     <!-- Default settings. -->
     <root>
         <!-- Print at info by default. -->

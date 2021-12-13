@@ -25,6 +25,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import org.apache.calcite.plan.AbstractRelOptPlanner;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelCollations;
@@ -62,8 +63,10 @@ import org.apache.ignite.internal.processors.query.calcite.prepare.PlanningConte
 import org.apache.ignite.internal.processors.query.calcite.prepare.QueryTemplate;
 import org.apache.ignite.internal.processors.query.calcite.prepare.Splitter;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteExchange;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteFilter;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteRel;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteIndex;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteSchema;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
@@ -73,6 +76,7 @@ import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactor
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeSystem;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.GridTestKernalContext;
 import org.apache.ignite.thread.IgniteStripedThreadPoolExecutor;
 import org.junit.Assert;
@@ -799,6 +803,8 @@ public class PlannerTest extends AbstractPlannerTest {
 
         IgniteRel phys = physicalPlan(sql, ctx);
 
+        System.out.println(RelOptUtil.toString(phys));
+
         assertNotNull(phys);
 
         MultiStepPlan plan = new MultiStepQueryPlan(new QueryTemplate(new Splitter().go(phys)), null);
@@ -1206,6 +1212,139 @@ public class PlannerTest extends AbstractPlannerTest {
                     "    IgniteTableScan(table=[[PUBLIC, EMP]])\n" +
                     "    IgniteTableScan(table=[[PUBLIC, DEPT]], filters=[=(CAST(+($t0, $cor2.DEPTNO)):INTEGER, 2)])\n",
                 RelOptUtil.toString(phys));
+
+            checkSplitAndSerialization(phys, publicSchema);
+        }
+    }
+
+    @Test
+    public void testMultipleJoin() throws Exception {
+        IgniteTypeFactory f = new IgniteTypeFactory(IgniteTypeSystem.INSTANCE);
+
+        TestTable t1 = new TestTable(
+            new RelDataTypeFactory.Builder(f)
+                .add("A", f.createJavaType(Integer.class))
+                .add("B", f.createJavaType(Integer.class))
+                .build()) {
+
+            @Override public IgniteDistribution distribution() {
+                return IgniteDistributions.broadcast();
+            }
+        };
+
+
+        TestTable t2 = new TestTable(
+            new RelDataTypeFactory.Builder(f)
+                .add("A", f.createJavaType(Integer.class))
+                .add("C", f.createJavaType(Integer.class))
+                .build()) {
+
+            @Override public IgniteDistribution distribution() {
+                return IgniteDistributions.broadcast();
+            }
+        };
+
+
+
+        TestTable t3 = new TestTable(
+            new RelDataTypeFactory.Builder(f)
+                .add("B", f.createJavaType(Integer.class))
+                .add("C", f.createJavaType(Integer.class))
+                .build()) {
+
+            @Override public IgniteDistribution distribution() {
+                return IgniteDistributions.broadcast();
+            }
+        };
+
+        TestTable t4 = new TestTable(
+            new RelDataTypeFactory.Builder(f)
+                .add("A", f.createJavaType(Integer.class))
+                .add("C", f.createJavaType(Integer.class))
+                .build()) {
+
+            @Override public IgniteDistribution distribution() {
+                return IgniteDistributions.broadcast();
+            }
+        };
+
+        IgniteSchema publicSchema = new IgniteSchema("PUBLIC");
+
+        publicSchema.addTable("T1", t1);
+        publicSchema.addTable("T2", t2);
+        publicSchema.addTable("T3", t3);
+        publicSchema.addTable("T4", t4);
+
+        SchemaPlus schema = createRootSchema(false)
+            .add("PUBLIC", publicSchema);
+
+        String sql = "SELECT * FROM T1 JOIN T2 ON T1.A = T2.A JOIN T3 ON T3.B = T1.B AND T3.C = T2.C ";
+
+        PlanningContext ctx = PlanningContext.builder()
+            .parentContext(BaseQueryContext.builder()
+                .frameworkConfig(newConfigBuilder(FRAMEWORK_CONFIG)
+                    .defaultSchema(schema)
+                    .costFactory(new IgniteCostFactory(1, 100, 1, 1))
+                    .build())
+                .logger(log)
+                .build()
+            )
+            .query(sql)
+            .build();
+
+        RelRoot relRoot;
+
+        try (IgnitePlanner planner = ctx.planner()) {
+            assertNotNull(planner);
+
+            String qry = ctx.query();
+
+            assertNotNull(qry);
+
+            // Parse
+            SqlNode sqlNode = planner.parse(qry);
+
+            // Validate
+            sqlNode = planner.validate(sqlNode);
+
+            // Convert to Relational operators graph
+            relRoot = planner.rel(sqlNode);
+
+            RelNode rel = relRoot.rel;
+
+            assertNotNull(rel);
+
+            // Transformation chain
+            RelTraitSet desired = rel.getCluster().traitSet()
+                .replace(IgniteConvention.INSTANCE)
+                .replace(IgniteDistributions.single())
+                .replace(CorrelationTrait.UNCORRELATED)
+                .simplify();
+
+            GridTestUtils.runAsync(() -> {
+               while(true) {
+                   log().error(planner.dumpRulesAttemptInfo());
+                   log().error("Count of IgniteTableSpool from RewindTraitDef "
+                       + IgniteTableSpool.REWINDABILITY_TRAIT_DEF.get());
+
+                   log().error("Count of IgniteTableSpool from TraitUtils "
+                       + IgniteTableSpool.CONVERT_TRAIT.get());
+
+                   log().error("Count of IgniteExchange from TraitUtils "
+                       + IgniteExchange.CONVERT_TRAIT.get());
+
+                   try {
+                       Thread.sleep(1000);
+                   }
+                   catch (InterruptedException e) {
+                       break;
+                   }
+               }
+            });
+
+            IgniteRel phys = planner.transform(PlannerPhase.OPTIMIZATION, desired, rel);
+
+            assertNotNull(phys);
 
             checkSplitAndSerialization(phys, publicSchema);
         }

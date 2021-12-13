@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.query.calcite.rel;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -40,6 +41,8 @@ import static org.apache.ignite.internal.processors.query.calcite.trait.TraitUti
  * without otherwise changing its content.
  */
 public class IgniteExchange extends Exchange implements IgniteRel {
+    public static AtomicInteger CONVERT_TRAIT = new AtomicInteger(0);
+
     /**
      * Creates an Exchange.
      *

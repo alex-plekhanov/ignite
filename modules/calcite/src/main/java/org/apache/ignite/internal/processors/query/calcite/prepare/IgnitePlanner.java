@@ -60,12 +60,15 @@ import org.apache.calcite.tools.Program;
 import org.apache.calcite.tools.RuleSets;
 import org.apache.calcite.tools.ValidationException;
 import org.apache.calcite.util.Pair;
+import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.processors.query.IgniteSQLException;
 import org.apache.ignite.internal.processors.query.calcite.metadata.IgniteMetadata;
 import org.apache.ignite.internal.processors.query.calcite.metadata.RelMetadataQueryEx;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
+import org.apache.ignite.internal.util.IgniteUtils;
 
 /**
  * Query planer.
@@ -282,6 +285,23 @@ public class IgnitePlanner implements Planner, RelOptTable.ViewExpander {
         ((VolcanoPlanner)planner).dump(new PrintWriter(w));
 
         return w.toString();
+    }
+
+    /** */
+    public String dumpRulesAttemptInfo() {
+        StringWriter w = new StringWriter();
+
+        Object ruleAttemtpsListener = IgniteUtils.field(planner, "ruleAttemptsListener");
+
+        if (ruleAttemtpsListener != null) {
+            try {
+                return IgniteUtils.invoke(null, ruleAttemtpsListener, "dump");
+            }
+            catch (IgniteCheckedException e) {
+                throw new IgniteException(e);
+            }
+        }
+        return "";
     }
 
     /** */

@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.query.calcite.trait;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitDef;
 import org.apache.calcite.rel.RelNode;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
 
 /** */
 public class RewindabilityTraitDef extends RelTraitDef<RewindabilityTrait> {
@@ -38,6 +39,7 @@ public class RewindabilityTraitDef extends RelTraitDef<RewindabilityTrait> {
 
     /** {@inheritDoc} */
     @Override public RelNode convert(RelOptPlanner planner, RelNode rel, RewindabilityTrait toTrait, boolean allowInfiniteCostConverters) {
+        IgniteTableSpool.REWINDABILITY_TRAIT_DEF.incrementAndGet();
         return TraitUtils.convertRewindability(planner, toTrait, rel);
     }
 
