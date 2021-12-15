@@ -115,14 +115,10 @@ public class TraitUtils {
 
         if (converter == RelCollationTraitDef.INSTANCE)
             return convertCollation(planner, (RelCollation)toTrait, rel);
-        else if (converter == DistributionTraitDef.INSTANCE) {
-            IgniteExchange.CONVERT_TRAIT.incrementAndGet();
+        else if (converter == DistributionTraitDef.INSTANCE)
             return convertDistribution(planner, (IgniteDistribution)toTrait, rel);
-        }
-        else if (converter == RewindabilityTraitDef.INSTANCE) {
-            IgniteTableSpool.CONVERT_TRAIT.incrementAndGet();
+        else if (converter == RewindabilityTraitDef.INSTANCE)
             return convertRewindability(planner, (RewindabilityTrait)toTrait, rel);
-        }
         else
             return convertOther(planner, converter, toTrait, rel);
     }
@@ -149,7 +145,7 @@ public class TraitUtils {
             return rel;
 
         if (fromTrait.getType() == ANY) {
-            System.out.println(">>>>> ANY to " + toTrait.getType().name());
+            //System.out.println(">>>>> ANY to " + toTrait.getType().name());
             //return RelOptRule.convert(rel, rel.getTraitSet().replace(toTrait));
         }
 
@@ -162,6 +158,8 @@ public class TraitUtils {
         if (fromTrait.getType() == BROADCAST_DISTRIBUTED && toTrait.getType() == HASH_DISTRIBUTED)
             return new IgniteTrimExchange(rel.getCluster(), traits, rel, toTrait);
         else {
+            IgniteExchange.CONVERT_TRAIT.incrementAndGet();
+
             return new IgniteExchange(
                 rel.getCluster(),
                 traits
@@ -187,6 +185,8 @@ public class TraitUtils {
         RelTraitSet traits = rel.getTraitSet()
             .replace(toTrait)
             .replace(CorrelationTrait.UNCORRELATED);
+
+        IgniteTableSpool.CONVERT_TRAIT.incrementAndGet();
 
         return new IgniteTableSpool(
             rel.getCluster(),

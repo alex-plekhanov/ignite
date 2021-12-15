@@ -51,8 +51,7 @@ public interface IgniteMapSetOp extends IgniteSetOp {
         if (rewindable)
             return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.REWINDABLE), inputTraits));
 
-        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY),
-            Commons.transform(inputTraits, t -> t.replace(RewindabilityTrait.ONE_WAY))));
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inputTraits));
     }
 
     /** {@inheritDoc} */

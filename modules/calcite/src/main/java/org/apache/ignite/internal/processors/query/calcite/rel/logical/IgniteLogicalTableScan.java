@@ -27,6 +27,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.ignite.internal.processors.query.calcite.rel.ProjectableFilterableTableScan;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteTable;
+import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.jetbrains.annotations.Nullable;
 
 /** */
@@ -40,8 +41,7 @@ public class IgniteLogicalTableScan extends ProjectableFilterableTableScan {
         @Nullable RexNode cond,
         @Nullable ImmutableBitSet requiredColumns
     ) {
-        traits = traits.replace(tbl.unwrap(IgniteTable.class).distribution());
-
+        //traits = traits.replace(tbl.unwrap(IgniteTable.class).distribution());
         return new IgniteLogicalTableScan(cluster, traits, tbl, proj, cond, requiredColumns);
     }
 

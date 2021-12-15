@@ -44,6 +44,7 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.mapping.Mappings;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCost;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteTable;
+import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.processors.query.calcite.util.RexUtils;
@@ -74,6 +75,8 @@ public abstract class ProjectableFilterableTableScan extends TableScan {
         @Nullable ImmutableBitSet reqColumns
     ) {
         super(cluster, traitSet, hints, table);
+
+        this.traitSet = traitSet.replace(RewindabilityTrait.REWINDABLE);
 
         projects = proj;
         condition = cond;

@@ -112,16 +112,21 @@ public abstract class AbstractIgniteJoin extends Join implements TraitsAwareIgni
         RewindabilityTrait leftRewindability = TraitUtils.rewindability(left);
         RewindabilityTrait rightRewindability = TraitUtils.rewindability(right);
 
+/*
         List<Pair<RelTraitSet, List<RelTraitSet>>> pairs = new ArrayList<>();
 
         pairs.add(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY),
             ImmutableList.of(left.replace(RewindabilityTrait.ONE_WAY), right.replace(RewindabilityTrait.ONE_WAY))));
+*/
 
         if (leftRewindability.rewindable() && rightRewindability.rewindable())
-            pairs.add(Pair.of(nodeTraits.replace(RewindabilityTrait.REWINDABLE),
-                ImmutableList.of(left.replace(RewindabilityTrait.REWINDABLE), right.replace(RewindabilityTrait.REWINDABLE))));
+            return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.REWINDABLE),
+                ImmutableList.of(left, right)));
+        else
+            return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY),
+                ImmutableList.of(left, right)));
 
-        return ImmutableList.copyOf(pairs);
+        //return ImmutableList.copyOf(pairs);
     }
 
     /** {@inheritDoc} */
