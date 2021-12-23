@@ -72,6 +72,7 @@ import org.apache.calcite.sql.validate.SqlUserDefinedTableFunction;
 import org.apache.calcite.sql.validate.SqlUserDefinedTableMacro;
 import org.apache.calcite.util.BuiltInMethod;
 import org.apache.calcite.util.Util;
+import org.apache.ignite.calcite.CalciteQueryEngineConfiguration;
 
 import static org.apache.calcite.adapter.enumerable.EnumUtils.generateCollatorExpression;
 import static org.apache.calcite.linq4j.tree.ExpressionType.Add;
@@ -225,6 +226,7 @@ import static org.apache.calcite.sql.fun.SqlStdOperatorTable.TRUNCATE;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.UNARY_MINUS;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.UNARY_PLUS;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.UPPER;
+import static org.apache.ignite.internal.processors.query.calcite.sql.fun.IgniteOwnSqlOperatorTable.QUERY_ENGINE;
 import static org.apache.ignite.internal.processors.query.calcite.sql.fun.IgniteOwnSqlOperatorTable.SYSTEM_RANGE;
 import static org.apache.ignite.internal.processors.query.calcite.sql.fun.IgniteOwnSqlOperatorTable.TYPEOF;
 
@@ -521,6 +523,7 @@ public class RexImpTable {
         map.put(LOCALTIME, systemFunctionImplementor);
         map.put(LOCALTIMESTAMP, systemFunctionImplementor);
         map.put(TYPEOF, systemFunctionImplementor);
+        map.put(QUERY_ENGINE, systemFunctionImplementor);
     }
 
     /** */
@@ -1688,6 +1691,8 @@ public class RexImpTable {
 
                 return Expressions.constant(call.getOperands().get(0).getType().toString());
             }
+            else if (op == QUERY_ENGINE)
+                return Expressions.constant(CalciteQueryEngineConfiguration.ENGINE_NAME);
 
             throw new AssertionError("unknown function " + op);
         }

@@ -48,6 +48,9 @@ public class SqlConfiguration {
     /** Enable validation of key & values against sql schema. */
     private boolean validationEnabled;
 
+    /** SQL query engines configuration. */
+    private QueryEngineConfiguration[] enginesConfiguration;
+
     /**
      * Defines the default query timeout.
      *
@@ -174,6 +177,26 @@ public class SqlConfiguration {
         this.validationEnabled = validationEnabled;
 
         return this;
+    }
+
+    /**
+     * TODO
+     *
+     * @return {@code this} for chaining.
+     */
+    public SqlConfiguration setQueryEnginesConfiguration(QueryEngineConfiguration... enginesConfiguration) {
+        this.enginesConfiguration = enginesConfiguration == null ? null : enginesConfiguration.clone();
+
+        return this;
+    }
+
+    /**
+     * Gets query engines configuration.
+     *
+     * @return Query engines configuration.
+     */
+    public QueryEngineConfiguration[] getQueryEnginesConfiguration() {
+        return enginesConfiguration == null ? null : enginesConfiguration.clone();
     }
 
     /** {@inheritDoc} */
