@@ -21,14 +21,24 @@ package org.apache.ignite.configuration;
  * Interface for the configuration of the query engine.
  */
 public interface QueryEngineConfiguration {
-    /** Is this query engine used by default. */
-    public boolean isDefault();
-
     /**
-     * Sets default flag.
+     * Sets whether this query engine should be used by default.
+     * <p>
+     * There can be only one query engine configuration with the default flag.
+     * <p>
+     * If there is no configuration with the default flag, the query engine provided by the ignite-indexing module
+     * will be used by default (if configured). If there is no configuration for the ignite-indexing module engine
+     * exists, the first engine from the query engines configuration will be used.
      *
      * @param isDflt {@code True} if this query engine should be used by default.
      * @return {@code this} for chaining.
      */
     public QueryEngineConfiguration setDefault(boolean isDflt);
+
+    /**
+     * Is this query engine should be used by default.
+     *
+     * @return {@code True} if this query engine is default.
+     */
+    public boolean isDefault();
 }

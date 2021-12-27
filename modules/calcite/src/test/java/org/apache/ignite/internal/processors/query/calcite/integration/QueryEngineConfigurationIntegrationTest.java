@@ -134,10 +134,38 @@ public class QueryEngineConfigurationIntegrationTest extends GridCommonAbstractT
             checkEngine(cache, INDEXING_ENGINE, "SELECT /*+ QUERY_ENGINE('" + INDEXING_ENGINE +
                 "') */ QUERY_ENGINE()");
 
+            // NL in hints processing.
+            checkEngine(cache, CALCITE_ENGINE, "SELECT /*+ \n QUERY_ENGINE  ( \n'" + CALCITE_ENGINE +
+                "'\n)\n */ QUERY_ENGINE()");
+
+            // Not hint comments processing.
+            checkEngine(cache, INDEXING_ENGINE, "SELECT /*+ SOME_HINT('') */ /* QUERY_ENGINE('" + CALCITE_ENGINE +
+                "') */ QUERY_ENGINE()");
+
             // Unknown engine.
             GridTestUtils.assertThrowsWithCause(
                 () -> cache.query(new SqlFieldsQuery("SELECT /*+ QUERY_ENGINE('noop') */ QUERY_ENGINE()")).getAll(),
                 IgniteException.class);
+        }
+    }
+
+    /** */
+    @Test
+    @SuppressWarnings("ThrowableNotThrown")
+    public void testEngineWithoutConfiguration() throws Exception {
+        try (Ignite ignite = startGrid(createConfiguration())) {
+            IgniteCache<?, ?> cache = ignite.createCache("test");
+
+            // Hint can't be used when engines is not configured.
+            GridTestUtils.assertThrowsWithCause(
+                () -> cache.query(new SqlFieldsQuery(
+                    "SELECT /*+ QUERY_ENGINE('" + INDEXING_ENGINE + "') */ QUERY_ENGINE()")).getAll(),
+                IgniteException.class);
+
+            // JDBC connection property can't be used when engines is not configured.
+            GridTestUtils.assertThrowsWithCause(
+                () -> DriverManager.getConnection(jdbcUrl + "?queryEngine=" + INDEXING_ENGINE),
+                SQLException.class);
         }
     }
 
@@ -209,7 +237,7 @@ public class QueryEngineConfigurationIntegrationTest extends GridCommonAbstractT
 
     /** */
     private void checkJdbcEngine(String engineName, String url, String sql) throws Exception {
-        try (Connection conn = DriverManager.getConnection(url)){
+        try (Connection conn = DriverManager.getConnection(url)) {
             conn.setSchema("PUBLIC");
             try (Statement stmt = conn.createStatement()) {
                 try (ResultSet rs = stmt.executeQuery(sql)) {

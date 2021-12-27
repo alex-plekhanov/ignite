@@ -180,8 +180,19 @@ public class SqlConfiguration {
     }
 
     /**
-     * TODO
+     * Sets query engines configuration.
+     * <p>
+     * There are several engines to execute SQL queries can be configured. If configured more than one engine, exact
+     * engine to execute the query can be chosen in run-time by {@code queryEngine} JDBC connection property or by
+     * {@code QUERY_ENGINE('engineName')} SQL query hint. If no query engine is explicitly chosen, default query engine
+     * will be used (see {@link QueryEngineConfiguration#setDefault(boolean)}).
+     * </p>
+     * </p>
+     * When this property is not set, the query engine cannot be chosen in run-time, and the engine provided by the
+     * ignite-indexing module will be used for all queries.
+     * </p>
      *
+     * @param enginesConfiguration Query engines configuration.
      * @return {@code this} for chaining.
      */
     public SqlConfiguration setQueryEnginesConfiguration(QueryEngineConfiguration... enginesConfiguration) {

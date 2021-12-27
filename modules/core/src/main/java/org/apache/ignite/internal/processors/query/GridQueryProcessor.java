@@ -175,9 +175,13 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     /** Queries detail metrics eviction frequency. */
     private static final int QRY_DETAIL_METRICS_EVICTION_FREQ = 3_000;
 
+    /** Pattern of query hint. */
+    public static final Pattern QRY_HINT_PATTERN = Pattern.compile("/\\*\\+((?:.|[\\n\\r])*?)\\*/");
+
     /** Pattern of hint to choose query engine. */
-    public static final Pattern QRY_ENGINE_HINT_PATTERN =
-        Pattern.compile("/\\*\\+.*QUERY_ENGINE\\('([a-z0-9]+)'\\).*\\*/", CASE_INSENSITIVE);
+    public static final Pattern QRY_ENGINE_PATTERN =
+        Pattern.compile("QUERY_ENGINE[\\s]*\\([\\s]*'([a-z0-9]+)'[\\s]*\\)",
+            CASE_INSENSITIVE);
 
     /** */
     private static final ThreadLocal<AffinityTopologyVersion> requestTopVer = new ThreadLocal<>();
@@ -3029,16 +3033,19 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * Finds query engine to execute given query.
      */
     private QueryEngine engineForQuery(SqlClientContext cliCtx, SqlFieldsQuery qry) {
-        if (qryEnginesCfg == null) // Query engines not configured.
-            return null;
-
         String engineName = null;
 
         // Check hint.
-        Matcher matcher = QRY_ENGINE_HINT_PATTERN.matcher(qry.getSql());
+        Matcher hintMatcher = QRY_HINT_PATTERN.matcher(qry.getSql());
 
-        if (matcher.find())
-            engineName = matcher.group(1);
+        if (hintMatcher.find()) {
+            String hint = hintMatcher.group(1);
+
+            Matcher engineMatcher = QRY_ENGINE_PATTERN.matcher(hint);
+
+            if (engineMatcher.find())
+                engineName = engineMatcher.group(1);
+        }
 
         // Check engine in client context.
         if (engineName == null && cliCtx != null)
@@ -3046,6 +3053,9 @@ public class GridQueryProcessor extends GridProcessorAdapter {
 
         if (engineName == null)
             return dfltQryEngine;
+
+        if (qryEnginesCfg == null) // Query engines not configured.
+            throw new IgniteException("Query engines not configured, but specified engine: " + engineName);
 
         // There are one or two query engines in array, it's faster to iterate in a loop than use hash map.
         for (int i = 0; i < qryEnginesCfg.length; i++) {
