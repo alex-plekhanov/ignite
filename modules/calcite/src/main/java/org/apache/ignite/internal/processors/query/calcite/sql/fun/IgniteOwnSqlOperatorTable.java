@@ -65,7 +65,7 @@ public class IgniteOwnSqlOperatorTable extends ReflectiveSqlOperatorTable {
             SqlFunctionCategory.SYSTEM);
 
     /**
-     * Query engine name
+     * Query engine name.
      */
     public static final SqlFunction QUERY_ENGINE =
         new SqlFunction(
