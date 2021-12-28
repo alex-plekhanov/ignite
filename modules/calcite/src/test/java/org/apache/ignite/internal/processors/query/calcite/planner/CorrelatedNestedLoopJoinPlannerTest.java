@@ -26,8 +26,10 @@ import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.util.ImmutableIntList;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteCorrelatedNestedLoopJoin;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteIndexScan;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteRel;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSort;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteSchema;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistribution;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
@@ -170,5 +172,14 @@ public class CorrelatedNestedLoopJoinPlannerTest extends AbstractPlannerTest {
         assertNotNull(phys);
 
         checkSplitAndSerialization(phys, publicSchema);
+    }
+
+    @Test
+    public void testJoinWithCorrelatedExpressionInFilter() throws Exception {
+        IgniteSchema publicSchema = createSchema(
+            createTable("TEST", IgniteDistributions.single(), "I", Integer.class));
+
+        assertPlan("SELECT i, (SELECT s1.i FROM test s1, test s2 WHERE s1.i=s2.i AND s1.i=4-i1.i) AS j " +
+            "FROM test i1 ORDER BY i NULLS FIRST", publicSchema, isInstanceOf(IgniteSort.class));
     }
 }

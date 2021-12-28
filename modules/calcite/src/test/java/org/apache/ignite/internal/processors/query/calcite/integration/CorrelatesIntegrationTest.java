@@ -18,6 +18,9 @@
 package org.apache.ignite.internal.processors.query.calcite.integration;
 
 import org.apache.ignite.internal.processors.query.calcite.QueryChecker;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSort;
+import org.apache.ignite.internal.processors.query.calcite.schema.IgniteSchema;
+import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
 import org.junit.Test;
 
 /**
@@ -48,6 +51,42 @@ public class CorrelatesIntegrationTest extends AbstractBasicIntegrationTest {
         assertQuery("SELECT (SELECT t1.i1 + t1.i2 + t0.i2 FROM test t1 WHERE i1 = 1) FROM test t0")
             .matches(QueryChecker.containsSubPlan("IgniteTableSpool"))
             .returns(3)
+            .returns(4)
+            .check();
+    }
+
+    @Test
+    public void testJoinWithCorrelatedExpressionInFilter() throws Exception {
+        sql("CREATE TABLE test(i INTEGER)");
+        sql("INSERT INTO test VALUES (1), (2), (3), NULL");
+
+        assertQuery("SELECT i, (SELECT s1.i FROM test s1, test s2 WHERE s1.i=s2.i AND s1.i=4-i1.i) AS j FROM test i1 ORDER BY i NULLS FIRST")
+            .ordered()
+            .returns(null, null)
+            .returns(1, 3)
+            .returns(2, 2)
+            .returns(3, 1)
+            .check();
+
+        assertQuery("SELECT i, (SELECT s1.i FROM test s1 INNER JOIN test s2 ON s1.i=s2.i AND s1.i=4-i1.i) AS j FROM test i1 ORDER BY i NULLS FIRST;")
+            .ordered()
+            .returns(null, null)
+            .returns(1, 3)
+            .returns(2, 2)
+            .returns(3, 1)
+            .check();
+
+        assertQuery("SELECT i, (SELECT i FROM test WHERE i IS NOT NULL EXCEPT SELECT i FROM test WHERE i<>i1.i) AS j FROM test i1 WHERE i IS NOT NULL ORDER BY i;")
+            .ordered()
+            .returns(1, 1)
+            .returns(2, 2)
+            .returns(3, 3)
+            .check();
+
+        assertQuery("SELECT (SELECT 4 EXCEPT SELECT test.i) FROM test")
+            .returns(4)
+            .returns(4)
+            .returns(4)
             .returns(4)
             .check();
     }
