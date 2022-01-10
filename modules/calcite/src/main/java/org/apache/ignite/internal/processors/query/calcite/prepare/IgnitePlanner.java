@@ -21,7 +21,9 @@ import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Context;
@@ -38,12 +40,19 @@ import org.apache.calcite.plan.RelTraitDef;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.plan.volcano.VolcanoPlanner;
 import org.apache.calcite.prepare.CalciteCatalogReader;
+import org.apache.calcite.rel.RelHomogeneousShuttle;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelRoot;
+import org.apache.calcite.rel.RelShuttle;
+import org.apache.calcite.rel.core.CorrelationId;
+import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.metadata.CachingRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexCorrelVariable;
 import org.apache.calcite.rex.RexExecutor;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
@@ -336,6 +345,88 @@ public class IgnitePlanner implements Planner, RelOptTable.ViewExpander {
         boolean ordered = !root.collation.getFieldCollations().isEmpty();
         boolean dml = SqlKind.DML.contains(root.kind);
         return root.withRel(converter.trimUnusedFields(dml || ordered, root.rel));
+    }
+
+    /**
+     * When rewriting sub-queries to {@code LogicalCorrelate} instances, correlate nodes with the same correlation ids
+     * can be created (if there was more then one sub-query using the same correlate table). It's not a problem, when
+     * rows are processed one by one (like in the enumerable convension), but Ignite execution nodes process batches
+     * of rows, and execution nodes in some cases can get unexpected values for correlated variables.
+     *
+     * This method replaces collisions by variables in correlates, for example:
+     *
+     * LogicalCorrelate(correlation=[$cor0])                       LogicalCorrelate(correlation=[$cor0])
+     *   LogicalCorrelate(correlation=[$cor0])    transforms to      LogicalCorrelate(correlation=[$cor1])
+     *     ... condition=[=($cor0.A, $0)] ...                          ... condition=[=($cor1.A, $0)] ...
+     *   ... condition=[=($cor0.A, $0)] ...                          ... condition=[=($cor0.A, $0)] ...
+     *
+     * @param rel Relational expression tree.
+     * @return Relational expression without collisions in correlates.
+     */
+    public RelNode replaceCorrelatesCollisions(RelNode rel) {
+        RelShuttle relShuttle = new RelHomogeneousShuttle() {
+            /** */
+            private final Map<CorrelationId, CorrelationId> replaceMap = new HashMap<>();
+
+            /** Count of correlation IDs to replace. */
+            private int corrsCnt;
+
+            /** */
+            private final RexShuttle rexShuttle = new RexShuttle() {
+                @Override public RexNode visitCorrelVariable(RexCorrelVariable variable) {
+                    CorrelationId newCorId = replaceMap.get(variable.id);
+
+                    if (newCorId != null)
+                        return cluster().getRexBuilder().makeCorrel(variable.getType(), newCorId);
+                    else
+                        return variable;
+                }
+            };
+
+            /** {@inheritDoc} */
+            @Override public RelNode visit(LogicalCorrelate correlate) {
+                CorrelationId corId = correlate.getCorrelationId();
+
+                if (replaceMap.containsKey(corId)) {
+                    CorrelationId newCorId = cluster().createCorrel();
+                    CorrelationId oldCorId = replaceMap.put(corId, newCorId);
+
+                    corrsCnt++;
+
+                    try {
+                        correlate = correlate.copy(
+                            correlate.getTraitSet(),
+                            correlate.getLeft(),
+                            correlate.getRight(),
+                            newCorId,
+                            correlate.getRequiredColumns(),
+                            correlate.getJoinType()
+                        );
+
+                        return super.visit(correlate);
+                    }
+                    finally {
+                        corrsCnt--;
+
+                        replaceMap.put(corId, oldCorId);
+                    }
+                }
+                else {
+                    replaceMap.put(corId, null);
+
+                    return super.visit(correlate);
+                }
+            }
+
+            /** {@inheritDoc} */
+            @Override public RelNode visit(RelNode other) {
+                RelNode next = super.visit(other);
+
+                return corrsCnt == 0 ? next : next.accept(rexShuttle);
+            }
+        };
+
+        return relShuttle.visit(rel);
     }
 
     /** */
