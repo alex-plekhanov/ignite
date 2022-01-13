@@ -68,4 +68,40 @@ public class CorrelatesIntegrationTest extends AbstractBasicIntegrationTest {
             .returns(12, 2)
             .check();
     }
+
+    /**
+     *
+     */
+    @Test
+    public void testCorrelates() {
+        assertQuery("SELECT (SELECT (SELECT CONCAT(t1.a, t2.a) AS a) FROM (VALUES('2')) AS t2(a)) FROM (VALUES ('1')) AS t1(a)")
+            .returns(3)
+            .check();
+
+/*
+        assertQuery("SELECT (SELECT (SELECT t1.a + t2.a) FROM (VALUES(2)) AS t2(a)) FROM (VALUES (1)) AS t1(a)")
+            .returns(3)
+            .check();
+*/
+/*
+        assertQuery("SELECT (SELECT (SELECT t.a)) FROM (VALUES (1)) AS t(a)")
+            .returns(1)
+            .check();
+*/
+/*
+        assertQuery("SELECT (SELECT (SELECT t.b)) FROM (VALUES (1, 2)) AS t(a, b)")
+            .returns(2)
+            .check();
+*/
+/*
+
+        sql("CREATE TABLE test (i INTEGER)");
+        sql("INSERT INTO test VALUES (1), (2)");
+
+        assertQuery("SELECT (SELECT (SELECT t.i)) FROM test t")
+            .returns(1)
+            .returns(2)
+            .check();
+*/
+    }
 }

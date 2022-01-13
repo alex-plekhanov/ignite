@@ -31,6 +31,7 @@ import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql2rel.RelDecorrelator;
 import org.apache.calcite.util.Pair;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.processors.query.calcite.rel.AbstractIndexScan;
@@ -74,7 +75,9 @@ public class PlannerHelper {
             // Transformation chain
             rel = planner.transform(PlannerPhase.HEP_DECORRELATE, rel.getTraitSet(), rel);
 
-            rel = planner.replaceCorrelatesCollisions(rel);
+            //rel = RelDecorrelator.decorrelateQuery(rel);
+
+            //rel = planner.replaceCorrelatesCollisions(rel);
 
             rel = planner.trimUnusedFields(root.withRel(rel)).rel;
 
