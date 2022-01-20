@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteDataStreamer;
+import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.cache.query.annotations.QuerySqlField;
@@ -35,6 +36,7 @@ import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
@@ -62,6 +64,10 @@ public class JmhSqlBenchmark {
 
     /** Size of batch. */
     private static final int BATCH_SIZE = 1000;
+
+    /** Query engine. */
+    @Param({"H2", "CALCITE"})
+    private String engine;
 
     /** Ignite client. */
     private Ignite client;
@@ -120,6 +126,48 @@ public class JmhSqlBenchmark {
         assert res.size() == BATCH_SIZE;
     }
 
+    /**
+     * Query with group by and aggregate.
+     */
+    @Benchmark
+    public void queryGroupBy() {
+        List<?> res = executeSql("SELECT fldBatch, AVG(fld) FROM Item GROUP BY fldBatch");
+
+        assert res.size() == KEYS_CNT / BATCH_SIZE;
+    }
+
+    /**
+     * Query with indexed field group by and aggregate.
+     */
+    @Benchmark
+    public void queryGroupByIndexed() {
+        List<?> res = executeSql("SELECT fldIdxBatch, AVG(fld) FROM Item GROUP BY fldIdxBatch");
+
+        assert res.size() == KEYS_CNT / BATCH_SIZE;
+    }
+
+    /**
+     * Query with sorting (full set).
+     */
+    @Benchmark
+    public void queryOrderByFull() {
+        List<?> res = executeSql("SELECT name, fld FROM Item ORDER BY fld DESC");
+
+        assert res.size() == KEYS_CNT;
+    }
+
+    /**
+     * Query with sorting (batch).
+     */
+    @Benchmark
+    public void queryOrderByBatch() {
+        int key = ThreadLocalRandom.current().nextInt(KEYS_CNT);
+
+        List<?> res = executeSql("SELECT name, fld FROM Item WHERE fldIdxBatch=? ORDER BY fld DESC", key / BATCH_SIZE);
+
+        assert res.size() == BATCH_SIZE;
+    }
+
     /** */
     private List<?> executeSql(String sql, Object... args) {
         List<List<?>> res = cache.query(new SqlFieldsQuery(sql).setArgs(args)).getAll();
@@ -132,6 +180,11 @@ public class JmhSqlBenchmark {
      */
     @Setup(Level.Trial)
     public void setup() {
+        if ("CALCITE".equals(engine))
+            System.setProperty(IgniteSystemProperties.IGNITE_EXPERIMENTAL_SQL_ENGINE, "true");
+        else
+            System.clearProperty(IgniteSystemProperties.IGNITE_EXPERIMENTAL_SQL_ENGINE);
+
         for (int i = 0; i < SRV_NODES_CNT; i++)
             servers[i] = Ignition.start(new IgniteConfiguration().setIgniteInstanceName("server" + i));
 
@@ -166,7 +219,6 @@ public class JmhSqlBenchmark {
     public static void main(String[] args) throws Exception {
         final Options options = new OptionsBuilder()
             .include(JmhSqlBenchmark.class.getSimpleName())
-            .jvmArgs("-DIGNITE_EXPERIMENTAL_SQL_ENGINE=true")
             .build();
 
         new Runner(options).run();
