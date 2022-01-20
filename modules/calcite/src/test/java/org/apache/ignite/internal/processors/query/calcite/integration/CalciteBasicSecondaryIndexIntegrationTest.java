@@ -1116,8 +1116,10 @@ public class CalciteBasicSecondaryIndexIntegrationTest extends AbstractBasicInte
         long ts = System.currentTimeMillis();
 
         for (int i = 0; i < 100_000; i++) {
-            executeSql("SELECT name FROM Developer WHERE id = ?", i);
-            doSleep(10);
+            //client.cache("Developer").query(new SqlFieldsQuery("SELECT name FROM Developer WHERE depId = ?").setArgs(i)).getAll();
+
+            executeSql("SELECT name FROM Developer WHERE depId = ?", i);
+            //doSleep(10);
         }
 
         log.info(">>>> Finished: " + (System.currentTimeMillis() - ts));

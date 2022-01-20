@@ -22,11 +22,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
-
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
@@ -40,9 +38,6 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 
 /** */
 public class Query<RowT> implements RunningQuery {
-    /** Completable futures empty array. */
-    private static final CompletableFuture<?>[] COMPLETABLE_FUTURES_EMPTY_ARRAY = new CompletableFuture<?>[0];
-
     /** */
     private final UUID initNodeId;
 
@@ -66,6 +61,9 @@ public class Query<RowT> implements RunningQuery {
 
     /** */
     protected final ExchangeService exch;
+
+    /** */
+    protected final AtomicInteger finishedFragments = new AtomicInteger();
 
     /** Logger. */
     protected final IgniteLogger log;
@@ -179,6 +177,32 @@ public class Query<RowT> implements RunningQuery {
     public void onNodeLeft(UUID nodeId) {
         if (initNodeId.equals(nodeId))
             cancel();
+    }
+
+    /**
+     * Callback after the last batch of the query fragment from the node is processed.
+     */
+    public void onInboundExchangeFinished(UUID nodeId, long exchangeId) {
+        // No-op.
+    }
+
+    /**
+     * Callback after the last batch of the query fragment is sent.
+     */
+    public void onOutboundExchangeFinished(long exchangeId) {
+        if (finishedFragments.incrementAndGet() == fragments.size()) {
+            QueryState state0;
+
+            synchronized (mux) {
+                state0 = state;
+
+                if (state0 == QueryState.EXECUTING)
+                    state = QueryState.CLOSED;
+            }
+
+            if (state0 == QueryState.EXECUTING)
+                tryClose();
+        }
     }
 
     /** {@inheritDoc} */

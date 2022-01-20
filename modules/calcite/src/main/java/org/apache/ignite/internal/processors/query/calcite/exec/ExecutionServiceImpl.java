@@ -592,6 +592,8 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
 
         qry.addFragment(new RunningFragment<>(plan.root(), node, ectx));
 
+        node.init();
+
         try {
             messageService().send(origNodeId, new QueryStartResponse(qry.id(), ectx.fragmentId()));
         }
@@ -600,8 +602,6 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
 
             throw wrpEx;
         }
-
-        node.init();
     }
 
     /** */
