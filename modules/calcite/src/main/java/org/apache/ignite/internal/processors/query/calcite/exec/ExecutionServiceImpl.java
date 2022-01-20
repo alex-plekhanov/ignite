@@ -552,6 +552,8 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
                 plan.remotes(fragment));
 
             Throwable ex = null;
+            byte[] parametersMarshalled = null;
+
             for (UUID nodeId : fragmentDesc.nodeIds()) {
                 if (ex != null)
                     qry.onResponse(nodeId, fragment.fragmentId(), ex);
@@ -564,9 +566,15 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
                             ectx.topologyVersion(),
                             fragmentDesc,
                             fragmentsPerNode.get(nodeId).intValue(),
-                            qry.parameters());
+                            qry.parameters(),
+                            parametersMarshalled
+                        );
 
                         messageService().send(nodeId, req);
+
+                        // Avoid double marshaling.
+                        if (parametersMarshalled == null)
+                            parametersMarshalled = req.parametersMarshalled();
                     }
                     catch (Throwable e) {
                         qry.onResponse(nodeId, fragment.fragmentId(), ex = e);

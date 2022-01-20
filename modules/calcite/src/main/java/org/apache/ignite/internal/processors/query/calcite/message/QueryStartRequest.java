@@ -64,7 +64,8 @@ public class QueryStartRequest implements MarshalableMessage, ExecutionContextAw
         AffinityTopologyVersion ver,
         FragmentDescription fragmentDesc,
         int totalFragmentsCnt,
-        Object[] params
+        Object[] params,
+        byte[] paramsBytes
     ) {
         this.qryId = qryId;
         this.schema = schema;
@@ -73,6 +74,7 @@ public class QueryStartRequest implements MarshalableMessage, ExecutionContextAw
         this.fragmentDesc = fragmentDesc;
         this.totalFragmentsCnt = totalFragmentsCnt;
         this.params = params;
+        this.paramsBytes = paramsBytes;
     }
 
     /** */
@@ -129,6 +131,14 @@ public class QueryStartRequest implements MarshalableMessage, ExecutionContextAw
     @SuppressWarnings("AssignmentOrReturnOfFieldWithMutableType")
     public Object[] parameters() {
         return params;
+    }
+
+    /**
+     * @return Query parameters marshalled.
+     */
+    @SuppressWarnings("AssignmentOrReturnOfFieldWithMutableType")
+    public byte[] parametersMarshalled() {
+        return paramsBytes;
     }
 
     /** {@inheritDoc} */
