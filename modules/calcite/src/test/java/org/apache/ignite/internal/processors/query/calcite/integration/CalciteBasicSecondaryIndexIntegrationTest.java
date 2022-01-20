@@ -26,7 +26,6 @@ import org.apache.ignite.cache.QueryIndexType;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.cache.query.annotations.QuerySqlField;
 import org.apache.ignite.configuration.CacheConfiguration;
-import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.processors.query.GridQueryProcessor;
 import org.apache.ignite.internal.processors.query.calcite.CalciteQueryProcessorTest;
 import org.apache.ignite.internal.util.typedef.F;
@@ -50,11 +49,6 @@ import static org.hamcrest.CoreMatchers.not;
  * Basic index tests.
  */
 public class CalciteBasicSecondaryIndexIntegrationTest extends AbstractBasicIntegrationTest {
-    /** */
-    @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
-        return super.getConfiguration(igniteInstanceName).setFailureDetectionTimeout(60_000L);
-    }
-
     /** */
     private static final String DEPID_IDX = "DEPID_IDX";
 
@@ -1108,21 +1102,6 @@ public class CalciteBasicSecondaryIndexIntegrationTest extends AbstractBasicInte
             .returns(3)
             .returns(5)
             .check();
-    }
-
-    /** */
-    @Test
-    public void testBatch() {
-        long ts = System.currentTimeMillis();
-
-        for (int i = 0; i < 100_000; i++) {
-            //client.cache("Developer").query(new SqlFieldsQuery("SELECT name FROM Developer WHERE depId = ?").setArgs(i)).getAll();
-
-            executeSql("SELECT name FROM Developer WHERE depId = ?", i);
-            //doSleep(10);
-        }
-
-        log.info(">>>> Finished: " + (System.currentTimeMillis() - ts));
     }
 
     /**

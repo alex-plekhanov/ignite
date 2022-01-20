@@ -368,7 +368,7 @@ public class ColocationGroup implements MarshalableMessage {
     }
 
     /** */
-    private static class CompactedIntArray {
+    public static class CompactedIntArray {
         /** */
         protected static final int BUF_POS_MASK = Integer.SIZE - 1;
 
@@ -421,7 +421,7 @@ public class ColocationGroup implements MarshalableMessage {
         }
 
         /** */
-        private static class Builder {
+        public static class Builder {
             /** Current bit position. */
             private int bitPos = Integer.SIZE; // Skip first element.
 
