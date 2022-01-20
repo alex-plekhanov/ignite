@@ -98,7 +98,8 @@ public class RootQuery<RowT> extends Query<RowT> {
             qryCtx != null ? qryCtx.unwrap(GridQueryCancel.class) : null,
             exch,
             unregister,
-            log
+            log,
+            0 // Total fragments count not used for RootQuery.
         );
 
         this.sql = sql;

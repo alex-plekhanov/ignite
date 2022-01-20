@@ -18,8 +18,11 @@
 package org.apache.ignite.internal.processors.query.calcite.exec;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.apache.calcite.plan.Context;
 import org.apache.calcite.plan.Contexts;
@@ -534,7 +537,12 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
 
         qry.run(ectx, plan, node);
 
-        // start remote execution
+        Map<UUID, Long> fragmentsPerNode = fragments.stream()
+            .filter(f -> f != F.first(fragments))
+            .flatMap(f -> f.mapping().nodeIds().stream())
+            .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+
+        // Start remote execution.
         for (int i = 1; i < fragments.size(); i++) {
             fragment = fragments.get(i);
             fragmentDesc = new FragmentDescription(
@@ -555,6 +563,7 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
                             fragment.serialized(),
                             ectx.topologyVersion(),
                             fragmentDesc,
+                            fragmentsPerNode.get(nodeId).intValue(),
                             qry.parameters());
 
                         messageService().send(nodeId, req);
@@ -624,7 +633,8 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
                     null,
                     exchangeSvc,
                     (q) -> qryReg.unregister(q.id()),
-                    log
+                    log,
+                    msg.totalFragmentsCount()
                 )
             );
 

@@ -63,6 +63,9 @@ public class Query<RowT> implements RunningQuery {
     protected final ExchangeService exch;
 
     /** */
+    protected final int totalFragmentsCnt;
+
+    /** */
     protected final AtomicInteger finishedFragments = new AtomicInteger();
 
     /** Logger. */
@@ -75,7 +78,8 @@ public class Query<RowT> implements RunningQuery {
         GridQueryCancel cancel,
         ExchangeService exch,
         Consumer<Query<RowT>> unregister,
-        IgniteLogger log
+        IgniteLogger log,
+        int totalFragmentsCnt
     ) {
         this.id = id;
         this.unregister = unregister;
@@ -86,6 +90,7 @@ public class Query<RowT> implements RunningQuery {
         this.cancel = cancel != null ? cancel : new GridQueryCancel();
 
         fragments = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        this.totalFragmentsCnt = totalFragmentsCnt;
     }
 
     /** */
@@ -190,7 +195,7 @@ public class Query<RowT> implements RunningQuery {
      * Callback after the last batch of the query fragment is sent.
      */
     public void onOutboundExchangeFinished(long exchangeId) {
-        if (finishedFragments.incrementAndGet() == fragments.size()) {
+        if (finishedFragments.incrementAndGet() == totalFragmentsCnt) {
             QueryState state0;
 
             synchronized (mux) {
