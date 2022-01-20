@@ -605,41 +605,6 @@ public class DirectByteBufferStreamImplV2 implements DirectByteBufferStream {
         writeLongArray(val != null ? val.toLongArray() : null);
     }
 
-    /** */
-    private void writeLong0(long val) {
-        lastFinished = buf.remaining() >= 8;
-
-        if (lastFinished) {
-            int pos = buf.position();
-
-            long off = baseOff + pos;
-
-            if (BIG_ENDIAN)
-                GridUnsafe.putLongLE(heapArr, off, val);
-            else
-                GridUnsafe.putLong(heapArr, off, val);
-
-            buf.position(pos + 8);
-        }
-    }
-
-    /** */
-    private long readLong0() {
-        lastFinished = buf.remaining() >= 8;
-
-        if (lastFinished) {
-            int pos = buf.position();
-
-            buf.position(pos + 8);
-
-            long off = baseOff + pos;
-
-            return BIG_ENDIAN ? GridUnsafe.getLongLE(heapArr, off) : GridUnsafe.getLong(heapArr, off);
-        }
-        else
-            return 0;
-    }
-
     /** {@inheritDoc} */
     @Override public void writeUuid(UUID val) {
         switch (uuidState) {
@@ -652,7 +617,7 @@ public class DirectByteBufferStreamImplV2 implements DirectByteBufferStream {
                 uuidState++;
 
             case 1:
-                writeLong0(val.getMostSignificantBits());
+                writeLong(val.getMostSignificantBits());
 
                 if (!lastFinished)
                     return;
@@ -660,7 +625,7 @@ public class DirectByteBufferStreamImplV2 implements DirectByteBufferStream {
                 uuidState++;
 
             case 2:
-                writeLong0(val.getLeastSignificantBits());
+                writeLong(val.getLeastSignificantBits());
 
                 if (!lastFinished)
                     return;
@@ -1136,7 +1101,7 @@ public class DirectByteBufferStreamImplV2 implements DirectByteBufferStream {
                 uuidState++;
 
             case 1:
-                uuidMost = readLong0();
+                uuidMost = readLong();
 
                 if (!lastFinished)
                     return null;
@@ -1144,7 +1109,7 @@ public class DirectByteBufferStreamImplV2 implements DirectByteBufferStream {
                 uuidState++;
 
             case 2:
-                uuidLeast = readLong0();
+                uuidLeast = readLong();
 
                 if (!lastFinished)
                     return null;

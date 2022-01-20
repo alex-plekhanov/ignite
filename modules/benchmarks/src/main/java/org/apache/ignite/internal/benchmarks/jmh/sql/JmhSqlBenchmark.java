@@ -45,7 +45,7 @@ import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 /**
- * Compare put with expiry policy and without expiry policy
+ * Benchmark SQL queries.
  */
 @State(Scope.Benchmark)
 @Fork(1)
