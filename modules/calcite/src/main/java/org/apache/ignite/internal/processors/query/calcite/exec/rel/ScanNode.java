@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.query.calcite.exec.rel;
 
 import java.util.Iterator;
 import java.util.List;
+
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.ignite.internal.processors.query.calcite.exec.ExecutionContext;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
@@ -39,9 +40,6 @@ public class ScanNode<Row> extends AbstractNode<Row> implements SingleNode<Row> 
     /** */
     private boolean inLoop;
 
-    /** */
-    private boolean firstReq = true;
-
     /**
      * @param ctx Execution context.
      * @param src Source.
@@ -60,20 +58,8 @@ public class ScanNode<Row> extends AbstractNode<Row> implements SingleNode<Row> 
 
         requested = rowsCnt;
 
-        if (!inLoop) {
-            if (firstReq) {
-                try {
-                    push(); // Make first request sync to reduce latency in simple cases.
-                }
-                catch (Throwable e) {
-                    onError(e);
-                }
-
-                firstReq = false;
-            }
-            else
-                context().execute(this::push, this::onError);
-        }
+        if (!inLoop)
+            context().execute(this::push, this::onError);
     }
 
     /** {@inheritDoc} */
