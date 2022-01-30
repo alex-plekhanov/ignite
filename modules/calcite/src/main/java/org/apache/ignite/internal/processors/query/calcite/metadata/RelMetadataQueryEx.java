@@ -20,8 +20,10 @@ package org.apache.ignite.internal.processors.query.calcite.metadata;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
+import org.apache.calcite.rel.metadata.MetadataHandlerProvider;
 import org.apache.calcite.rel.metadata.RelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.ignite.internal.processors.query.calcite.prepare.MappingQueryContext;
@@ -57,6 +59,13 @@ public class RelMetadataQueryEx extends RelMetadataQuery {
     /** */
     private IgniteMetadata.FragmentMappingMetadata.Handler sourceDistributionHandler;
 
+    /** */
+    private static final IgniteMetadata.CumulativeRewindCostMetadata.Handler CUMULATIVE_REWIND_COST_HANDLER =
+        initialHandler(IgniteMetadata.CumulativeRewindCostMetadata.Handler.class);
+
+    /** */
+    private IgniteMetadata.CumulativeRewindCostMetadata.Handler cumulativeRewindCostHandler;
+
     /**
      * Factory method.
      *
@@ -84,6 +93,7 @@ public class RelMetadataQueryEx extends RelMetadataQuery {
     /** */
     private RelMetadataQueryEx() {
         sourceDistributionHandler = SOURCE_DISTRIBUTION_INITIAL_HANDLER;
+        cumulativeRewindCostHandler = CUMULATIVE_REWIND_COST_HANDLER;
     }
 
     /**
@@ -96,8 +106,19 @@ public class RelMetadataQueryEx extends RelMetadataQuery {
         for (;;) {
             try {
                 return sourceDistributionHandler.fragmentMapping(rel, this, ctx);
-            } catch (JaninoRelMetadataProvider.NoHandler e) {
+            } catch (MetadataHandlerProvider.NoHandler e) {
                 sourceDistributionHandler = revise(e.relClass, IgniteMetadata.FragmentMappingMetadata.DEF);
+            }
+        }
+    }
+
+    /** TODO */
+    public RelOptCost getCumulativeRewindCost(RelNode rel) {
+        for (;;) {
+            try {
+                return cumulativeRewindCostHandler.getCumulativeRewindCost(rel, this);
+            } catch (MetadataHandlerProvider.NoHandler e) {
+                cumulativeRewindCostHandler = revise(e.relClass, IgniteMetadata.CumulativeRewindCostMetadata.DEF);
             }
         }
     }

@@ -32,7 +32,7 @@ import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteC
 /**
  * Relational operator that returns the contents of a table.
  */
-public class IgniteTableSpool extends Spool implements IgniteRel {
+public class IgniteTableSpool extends IgniteSpool {
     /** */
     public IgniteTableSpool(
         RelOptCluster cluster,

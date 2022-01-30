@@ -22,9 +22,11 @@ import java.util.List;
 
 import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelRoot;
+import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.core.Spool;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rex.RexBuilder;
@@ -38,14 +40,17 @@ import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteIndexScan;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteProject;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteRel;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSortedIndexSpool;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableModify;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableScan;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
 import org.apache.ignite.internal.processors.query.calcite.schema.ColumnDescriptor;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteTable;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
+import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.processors.query.calcite.util.HintUtils;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 /** */
 public class PlannerHelper {
@@ -89,6 +94,19 @@ public class PlannerHelper {
                 .simplify();
 
             IgniteRel igniteRel = planner.transform(PlannerPhase.OPTIMIZATION, desired, rel);
+
+            RelVisitor v = new RelVisitor() {
+                @Override public void visit(RelNode node, int ordinal, @Nullable RelNode parent) {
+                    if (node instanceof IgniteSortedIndexSpool) {
+                        RelCollation coll = TraitUtils.collation(node.getInput(0));
+                        if (coll == null || coll.isDefault())
+                            throw new AssertionError("GOT IT!");
+                    }
+                    super.visit(node, ordinal, parent);
+                }
+            };
+
+            v.go(igniteRel);
 
             if (!root.isRefTrivial()) {
                 final List<RexNode> projects = new ArrayList<>();

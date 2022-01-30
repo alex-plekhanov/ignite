@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.query.calcite.metadata;
 
 import com.google.common.collect.ImmutableList;
+import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.ChainedRelMetadataProvider;
 import org.apache.calcite.rel.metadata.DefaultRelMetadataProvider;
@@ -39,6 +40,7 @@ public class IgniteMetadata {
             ImmutableList.of(
                 // Ignite specific providers
                 IgniteMdFragmentMapping.SOURCE,
+                IgniteMdCumulativeRewindCost.SOURCE,
 
                 // Ignite overriden providers
                 IgniteMdDistribution.SOURCE,
@@ -68,6 +70,22 @@ public class IgniteMetadata {
         interface Handler extends MetadataHandler<FragmentMappingMetadata> {
             /** */
             FragmentMapping fragmentMapping(RelNode r, RelMetadataQuery mq, MappingQueryContext ctx);
+        }
+    }
+
+    /** */
+    public interface CumulativeRewindCostMetadata extends Metadata {
+        /** */
+        MetadataDef<CumulativeRewindCostMetadata> DEF = MetadataDef.of(CumulativeRewindCostMetadata.class,
+            CumulativeRewindCostMetadata.Handler.class, IgniteMethod.CUMULATIVE_REWIND_COST.method());
+
+        /** TODO. */
+        RelOptCost getCumulativeRewindCost();
+
+        /** Handler API. */
+        interface Handler extends MetadataHandler<CumulativeRewindCostMetadata> {
+            /** TODO */
+            RelOptCost getCumulativeRewindCost(RelNode r, RelMetadataQuery mq);
         }
     }
 }

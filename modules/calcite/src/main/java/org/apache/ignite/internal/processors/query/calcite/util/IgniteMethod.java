@@ -23,6 +23,7 @@ import org.apache.ignite.internal.processors.query.calcite.exec.ExecutionContext
 import org.apache.ignite.internal.processors.query.calcite.exec.RowHandler;
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.BiScalar;
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.SingleScalar;
+import org.apache.ignite.internal.processors.query.calcite.metadata.IgniteMetadata.CumulativeRewindCostMetadata;
 import org.apache.ignite.internal.processors.query.calcite.metadata.IgniteMetadata.FragmentMappingMetadata;
 import org.apache.ignite.internal.processors.query.calcite.prepare.MappingQueryContext;
 
@@ -46,7 +47,9 @@ public enum IgniteMethod {
     /** See {@link BiScalar#execute(ExecutionContext, Object, Object, Object)} */
     BI_SCALAR_EXECUTE(BiScalar.class, "execute", ExecutionContext.class, Object.class, Object.class, Object.class),
     /** See {@link FragmentMappingMetadata#fragmentMapping(MappingQueryContext)} */
-    FRAGMENT_MAPPING(FragmentMappingMetadata.class, "fragmentMapping", MappingQueryContext.class);
+    FRAGMENT_MAPPING(FragmentMappingMetadata.class, "fragmentMapping", MappingQueryContext.class),
+    /** See {@link CumulativeRewindCostMetadata#getCumulativeRewindCost()} */
+    CUMULATIVE_REWIND_COST(CumulativeRewindCostMetadata.class, "getCumulativeRewindCost");
 
     /** */
     private final Method method;

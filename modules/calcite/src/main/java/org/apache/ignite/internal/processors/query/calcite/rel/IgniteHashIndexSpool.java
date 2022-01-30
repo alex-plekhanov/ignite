@@ -39,7 +39,7 @@ import org.apache.ignite.internal.util.typedef.F;
  * Relational operator that returns the hashed contents of a table
  * and allow to lookup rows by specified keys.
  */
-public class IgniteHashIndexSpool extends Spool implements IgniteRel {
+public class IgniteHashIndexSpool extends IgniteSpool {
     /** Search row. */
     private final List<RexNode> searchRow;
 
