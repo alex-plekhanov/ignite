@@ -159,7 +159,8 @@ public class PlannerHelper {
                     rel.getCluster(),
                     rel.getInput().getTraitSet(),
                     Spool.Type.EAGER,
-                    rel.getInput()
+                    rel.getInput(),
+                    rel.getCluster().getRexBuilder().makeLiteral(true)
                 );
 
                 rel.replaceInput(0, spool);

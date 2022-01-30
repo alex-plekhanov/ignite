@@ -29,10 +29,10 @@ import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.Filter;
+import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.Spool;
 import org.apache.calcite.rex.RexNode;
-import org.apache.ignite.internal.processors.query.calcite.rel.IgniteFilter;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteCorrelatedNestedLoopJoin;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSortedIndexSpool;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
@@ -46,24 +46,24 @@ import org.immutables.value.Value;
  * Rule that pushes filter into the spool.
  */
 @Value.Enclosing
-public class FilterSpoolMergeToSortedIndexSpoolRule extends RelRule<FilterSpoolMergeToSortedIndexSpoolRule.Config> {
+public class CorrelatedNestedLoopSortedIndexSpoolRule extends RelRule<CorrelatedNestedLoopSortedIndexSpoolRule.Config> {
     /** Instance. */
     public static final RelOptRule INSTANCE = Config.DEFAULT.toRule();
 
     /** */
-    private FilterSpoolMergeToSortedIndexSpoolRule(Config cfg) {
+    private CorrelatedNestedLoopSortedIndexSpoolRule(Config cfg) {
         super(cfg);
     }
 
     /** {@inheritDoc} */
     @Override public void onMatch(RelOptRuleCall call) {
-        final IgniteFilter filter = call.rel(0);
-        final IgniteTableSpool spool = call.rel(1);
+        final IgniteCorrelatedNestedLoopJoin join = call.rel(0);
+        final IgniteTableSpool spool = call.rel(2);
 
         RelOptCluster cluster = spool.getCluster();
 
         RelTraitSet trait = spool.getTraitSet();
-        CorrelationTrait filterCorr = TraitUtils.correlation(filter);
+        CorrelationTrait filterCorr = TraitUtils.correlation(spool);
 
         if (filterCorr.correlated())
             trait = trait.replace(filterCorr);
@@ -75,7 +75,7 @@ public class FilterSpoolMergeToSortedIndexSpoolRule extends RelRule<FilterSpoolM
         IndexConditions idxCond = RexUtils.buildSortedIndexConditions(
             cluster,
             inCollation,
-            filter.getCondition(),
+            spool.condition(),
             spool.getRowType(),
             null
         );
@@ -122,14 +122,17 @@ public class FilterSpoolMergeToSortedIndexSpoolRule extends RelRule<FilterSpoolM
             searchCollation = RelCollations.of(collationFields);
         }
 
-        RelNode res = new IgniteSortedIndexSpool(
+        RelNode sortedSpool = new IgniteSortedIndexSpool(
             cluster,
             trait.replace(traitCollation),
             convert(input, input.getTraitSet().replace(traitCollation)),
             searchCollation,
-            filter.getCondition(),
+            spool.condition(),
             idxCond
         );
+
+        RelNode res = join.copy(join.getTraitSet(), join.getCondition(), join.getLeft(), sortedSpool, join.getJoinType(),
+            join.isSemiJoinDone());
 
         call.transformTo(res);
     }
@@ -139,24 +142,23 @@ public class FilterSpoolMergeToSortedIndexSpoolRule extends RelRule<FilterSpoolM
     @Value.Immutable
     public interface Config extends RelRule.Config {
         /** */
-        Config DEFAULT = ImmutableFilterSpoolMergeToSortedIndexSpoolRule.Config.of()
+        Config DEFAULT = ImmutableCorrelatedNestedLoopSortedIndexSpoolRule.Config.of()
             .withDescription("FilterSpoolMergeToSortedIndexSpoolRule")
-            .withOperandFor(IgniteFilter.class, IgniteTableSpool.class);
+            .withOperandFor(IgniteCorrelatedNestedLoopJoin.class, IgniteTableSpool.class);
 
         /** Defines an operand tree for the given classes. */
-        default Config withOperandFor(Class<? extends Filter> filterClass, Class<? extends Spool> spoolClass) {
+        default Config withOperandFor(Class<? extends Join> joinCls, Class<? extends Spool> spoolCls) {
             return withOperandSupplier(
-                o0 -> o0.operand(filterClass)
-                    .oneInput(o1 -> o1.operand(spoolClass)
-                        .anyInputs()
-                    )
-            )
+                o0 -> o0.operand(joinCls)
+                    .inputs(
+                        o1 -> o1.operand(RelNode.class).anyInputs(),
+                        o2 -> o2.operand(spoolCls).anyInputs()))
                 .as(Config.class);
         }
 
         /** {@inheritDoc} */
-        @Override default FilterSpoolMergeToSortedIndexSpoolRule toRule() {
-            return new FilterSpoolMergeToSortedIndexSpoolRule(this);
+        @Override default CorrelatedNestedLoopSortedIndexSpoolRule toRule() {
+            return new CorrelatedNestedLoopSortedIndexSpoolRule(this);
         }
     }
 }

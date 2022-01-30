@@ -39,15 +39,12 @@ import org.apache.ignite.internal.util.typedef.F;
  * Relational operator that returns the hashed contents of a table
  * and allow to lookup rows by specified keys.
  */
-public class IgniteHashIndexSpool extends Spool implements IgniteRel {
+public class IgniteHashIndexSpool extends IgniteSpool {
     /** Search row. */
     private final List<RexNode> searchRow;
 
     /** Keys (number of the columns at the input row) to build hash index. */
     private final ImmutableBitSet keys;
-
-    /** Condition (used to calculate selectivity). */
-    private final RexNode cond;
 
     /** */
     public IgniteHashIndexSpool(
@@ -57,12 +54,11 @@ public class IgniteHashIndexSpool extends Spool implements IgniteRel {
         List<RexNode> searchRow,
         RexNode cond
     ) {
-        super(cluster, traits, input, Type.LAZY, Type.EAGER);
+        super(cluster, traits, input, Type.LAZY, Type.EAGER, cond);
 
         assert !F.isEmpty(searchRow);
 
         this.searchRow = searchRow;
-        this.cond = cond;
 
         keys = ImmutableBitSet.of(RexUtils.notNullKeys(searchRow));
     }
@@ -88,12 +84,12 @@ public class IgniteHashIndexSpool extends Spool implements IgniteRel {
 
     /** */
     @Override public IgniteRel clone(RelOptCluster cluster, List<IgniteRel> inputs) {
-        return new IgniteHashIndexSpool(cluster, getTraitSet(), inputs.get(0), searchRow, cond);
+        return new IgniteHashIndexSpool(cluster, getTraitSet(), inputs.get(0), searchRow, condition);
     }
 
     /** {@inheritDoc} */
     @Override protected Spool copy(RelTraitSet traitSet, RelNode input, Type readType, Type writeType) {
-        return new IgniteHashIndexSpool(getCluster(), traitSet, input, searchRow, cond);
+        return new IgniteHashIndexSpool(getCluster(), traitSet, input, searchRow, condition);
     }
 
     /** {@inheritDoc} */
@@ -103,6 +99,7 @@ public class IgniteHashIndexSpool extends Spool implements IgniteRel {
 
     /** */
     @Override public RelWriter explainTerms(RelWriter pw) {
+        // No need to write condition, since it used only to calculate selectivity.
         RelWriter writer = super.explainTerms(pw);
 
         return writer.item("searchRow", searchRow);
@@ -133,10 +130,5 @@ public class IgniteHashIndexSpool extends Spool implements IgniteRel {
     /** */
     public ImmutableBitSet keys() {
         return keys;
-    }
-
-    /** */
-    public RexNode condition() {
-        return cond;
     }
 }

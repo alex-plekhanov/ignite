@@ -34,6 +34,7 @@ import org.apache.calcite.rel.metadata.RelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.util.BuiltInMethod;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteCorrelatedNestedLoopJoin;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSpool;
 
 import static org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions.any;
 import static org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils.distribution;
@@ -83,6 +84,12 @@ public class IgniteMdCumulativeCost implements MetadataHandler<BuiltInMetadata.C
         RelNode left = rel.getLeft();
         RelNode right = rel.getRight();
 
+        while (right instanceof RelSubset)
+            right = ((RelSubset)right).getBest();
+
+        if (right == null)
+            return rel.getCluster().getPlanner().getCostFactory().makeInfiniteCost();
+
         Set<CorrelationId> corIds = rel.getVariablesSet();
 
         RelOptCost leftCost = mq.getCumulativeCost(left);
@@ -93,7 +100,15 @@ public class IgniteMdCumulativeCost implements MetadataHandler<BuiltInMetadata.C
         if (rightCost.isInfinite())
             return rightCost;
 
-        return cost.plus(leftCost).plus(rightCost.multiplyBy(left.estimateRowCount(mq) / corIds.size()));
+        double iterationsCnt = left.estimateRowCount(mq) / corIds.size();
+
+        if (right instanceof IgniteSpool && iterationsCnt > 1d) {
+            RelOptCost rewindCost = ((IgniteSpool)right).computeRewindCost(rel.getCluster().getPlanner(), mq);
+
+            return cost.plus(leftCost).plus(rightCost).plus(rewindCost.multiplyBy(iterationsCnt - 1d));
+        }
+        else
+            return cost.plus(leftCost).plus(rightCost.multiplyBy(iterationsCnt));
     }
 
     /** */

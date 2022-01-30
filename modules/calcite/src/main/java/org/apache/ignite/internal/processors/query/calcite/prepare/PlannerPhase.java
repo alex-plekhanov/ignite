@@ -41,10 +41,11 @@ import org.apache.calcite.tools.Program;
 import org.apache.calcite.tools.RuleSet;
 import org.apache.calcite.tools.RuleSets;
 import org.apache.ignite.internal.processors.query.calcite.rule.CorrelateToNestedLoopRule;
+import org.apache.ignite.internal.processors.query.calcite.rule.CorrelatedNestedLoopHashIndexSpoolRule;
 import org.apache.ignite.internal.processors.query.calcite.rule.CorrelatedNestedLoopJoinRule;
+import org.apache.ignite.internal.processors.query.calcite.rule.CorrelatedNestedLoopSortedIndexSpoolRule;
+import org.apache.ignite.internal.processors.query.calcite.rule.CorrelatedNestedLoopTableSpoolRule;
 import org.apache.ignite.internal.processors.query.calcite.rule.FilterConverterRule;
-import org.apache.ignite.internal.processors.query.calcite.rule.FilterSpoolMergeToHashIndexSpoolRule;
-import org.apache.ignite.internal.processors.query.calcite.rule.FilterSpoolMergeToSortedIndexSpoolRule;
 import org.apache.ignite.internal.processors.query.calcite.rule.HashAggregateConverterRule;
 import org.apache.ignite.internal.processors.query.calcite.rule.LogicalScanConverterRule;
 import org.apache.ignite.internal.processors.query.calcite.rule.MergeJoinConverterRule;
@@ -212,8 +213,9 @@ public enum PlannerPhase {
                     ProjectScanMergeRule.INDEX_SCAN,
                     FilterScanMergeRule.TABLE_SCAN,
                     FilterScanMergeRule.INDEX_SCAN,
-                    FilterSpoolMergeToSortedIndexSpoolRule.INSTANCE,
-                    FilterSpoolMergeToHashIndexSpoolRule.INSTANCE,
+                    CorrelatedNestedLoopTableSpoolRule.INSTANCE,
+                    CorrelatedNestedLoopSortedIndexSpoolRule.INSTANCE,
+                    CorrelatedNestedLoopHashIndexSpoolRule.INSTANCE,
 
                     LogicalOrToUnionRule.INSTANCE,
 

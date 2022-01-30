@@ -39,15 +39,12 @@ import org.apache.ignite.internal.processors.query.calcite.util.IndexConditions;
  * Relational operator that returns the sorted contents of a table
  * and allow to lookup rows by specified bounds.
  */
-public class IgniteSortedIndexSpool extends Spool implements IgniteRel {
+public class IgniteSortedIndexSpool extends IgniteSpool {
     /** */
     private final RelCollation collation;
 
     /** Index condition. */
     private final IndexConditions idxCond;
-
-    /** Filters. */
-    protected final RexNode condition;
 
     /** */
     public IgniteSortedIndexSpool(
@@ -58,13 +55,12 @@ public class IgniteSortedIndexSpool extends Spool implements IgniteRel {
         RexNode condition,
         IndexConditions idxCond
     ) {
-        super(cluster, traits, input, Type.LAZY, Type.EAGER);
+        super(cluster, traits, input, Type.LAZY, Type.EAGER, condition);
 
         assert Objects.nonNull(idxCond);
         assert Objects.nonNull(condition);
 
         this.idxCond = idxCond;
-        this.condition = condition;
         this.collation = collation;
     }
 
@@ -126,11 +122,6 @@ public class IgniteSortedIndexSpool extends Spool implements IgniteRel {
     /** */
     @Override public RelCollation collation() {
         return collation;
-    }
-
-    /** */
-    public RexNode condition() {
-        return condition;
     }
 
     /** {@inheritDoc} */

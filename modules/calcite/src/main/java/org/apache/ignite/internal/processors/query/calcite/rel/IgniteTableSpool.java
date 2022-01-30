@@ -24,23 +24,27 @@ import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.Spool;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rex.RexNode;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCost;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCostFactory;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Relational operator that returns the contents of a table.
  */
-public class IgniteTableSpool extends Spool implements IgniteRel {
+public class IgniteTableSpool extends IgniteSpool {
     /** */
     public IgniteTableSpool(
         RelOptCluster cluster,
         RelTraitSet traits,
         Spool.Type readType,
-        RelNode input
+        RelNode input,
+        RexNode condition
     ) {
-        super(cluster, traits, input, readType, Type.EAGER);
+        super(cluster, traits, input, readType, Type.EAGER, condition);
     }
 
     /**
@@ -53,8 +57,16 @@ public class IgniteTableSpool extends Spool implements IgniteRel {
             input.getCluster(),
             input.getTraitSet().replace(IgniteConvention.INSTANCE),
             input.getEnum("readType", Spool.Type.class),
-            input.getInput()
+            input.getInput(),
+            input.getExpression("condition")
         );
+    }
+
+    /** {@inheritDoc} */
+    @Override public RelWriter explainTerms(RelWriter pw) {
+        RelWriter writer = super.explainTerms(pw);
+
+        return writer.item("condition", condition);
     }
 
     /** {@inheritDoc} */
@@ -64,17 +76,12 @@ public class IgniteTableSpool extends Spool implements IgniteRel {
 
     /** */
     @Override public IgniteRel clone(RelOptCluster cluster, List<IgniteRel> inputs) {
-        return new IgniteTableSpool(cluster, getTraitSet(), readType, inputs.get(0));
+        return new IgniteTableSpool(cluster, getTraitSet(), readType, inputs.get(0), condition);
     }
 
     /** {@inheritDoc} */
     @Override protected Spool copy(RelTraitSet traitSet, RelNode input, Type readType, Type writeType) {
-        return new IgniteTableSpool(getCluster(), traitSet, readType, input);
-    }
-
-    /** {@inheritDoc} */
-    @Override public boolean isEnforcer() {
-        return true;
+        return new IgniteTableSpool(getCluster(), traitSet, readType, input, condition);
     }
 
     /** {@inheritDoc} */

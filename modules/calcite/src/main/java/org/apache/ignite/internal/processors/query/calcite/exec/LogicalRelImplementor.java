@@ -383,7 +383,13 @@ public class LogicalRelImplementor<Row> implements IgniteRelVisitor<Node<Row>> {
 
         node.register(input);
 
-        return node;
+        Predicate<Row> pred = expressionFactory.predicate(rel.condition(), rel.getRowType());
+
+        FilterNode<Row> filter = new FilterNode<>(ctx, rel.getRowType(), pred);
+
+        filter.register(node);
+
+        return filter;
     }
 
     /** {@inheritDoc} */
