@@ -51,13 +51,15 @@ public class CorrelatedNestedLoopTableSpoolRule extends RelRule<CorrelatedNested
 
         RelOptCluster cluster = join.getCluster();
 
-        RelTraitSet trait = filter.getTraitSet();
-        CorrelationTrait filterCorr = TraitUtils.correlation(filter);
-
-        if (filterCorr.correlated())
-            trait = trait.replace(filterCorr);
+        RelTraitSet trait = filter.getTraitSet().replace(RewindabilityTrait.REWINDABLE);
 
         RelNode input = filter.getInput();
+
+/*
+        if (TraitUtils.rewindability(input).rewindable())
+            return;
+
+*/
 
         RelNode spool = new IgniteTableSpool(
             cluster,

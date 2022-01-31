@@ -34,7 +34,7 @@ import org.apache.calcite.util.ImmutableIntList;
 import org.apache.calcite.util.Util;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteAggregate;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteLimit;
-import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSortedIndexSpool;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSpool;
 import org.apache.ignite.internal.util.typedef.F;
 import org.jetbrains.annotations.Nullable;
 
@@ -116,7 +116,7 @@ public class IgniteMdRowCount extends RelMdRowCount {
      * but IndexSpool has internal filter that could filter out some rows,
      * hence we need to estimate it differently.
      */
-    public double getRowCount(IgniteSortedIndexSpool rel, RelMetadataQuery mq) {
+    public double getRowCount(IgniteSpool rel, RelMetadataQuery mq) {
         return rel.estimateRowCount(mq);
     }
 

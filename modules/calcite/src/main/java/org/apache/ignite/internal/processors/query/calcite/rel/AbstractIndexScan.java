@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.processors.query.calcite.rel;
 
 import java.util.List;
-
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -28,9 +27,7 @@ import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.hint.RelHint;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
-import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCost;
 import org.apache.ignite.internal.processors.query.calcite.util.IndexConditions;
@@ -127,30 +124,14 @@ public abstract class AbstractIndexScan extends ProjectableFilterableTableScan {
         if (condition == null)
             cost = rows * IgniteCost.ROW_PASS_THROUGH_COST;
         else {
-            RexBuilder builder = getCluster().getRexBuilder();
+            double selectivity = mq.getSelectivity(this, condition);;
 
-            double selectivity = 1;
-
-            cost = 0;
-
-            if (lowerCondition() != null) {
-                double selectivity0 = mq.getSelectivity(this, RexUtil.composeConjunction(builder, lowerCondition()));
-
-                selectivity -= 1 - selectivity0;
-
-                cost += Math.log(rows) * IgniteCost.ROW_COMPARISON_COST;
-            }
-
-            if (upperCondition() != null && (lowerCondition() == null || !lowerCondition().equals(upperCondition()))) {
-                double selectivity0 = mq.getSelectivity(this, RexUtil.composeConjunction(builder, upperCondition()));
-
-                selectivity -= 1 - selectivity0;
-            }
+            if (lowerCondition() != null || upperCondition() != null)
+                cost = Math.log(rows) * IgniteCost.ROW_COMPARISON_COST;
+            else
+                cost = rows * IgniteCost.ROW_COMPARISON_COST;
 
             rows *= selectivity;
-
-            if (rows <= 0)
-                rows = 1;
 
             cost += rows * (IgniteCost.ROW_COMPARISON_COST + IgniteCost.ROW_PASS_THROUGH_COST);
         }

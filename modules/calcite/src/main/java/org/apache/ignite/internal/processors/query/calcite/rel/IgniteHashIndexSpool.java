@@ -19,10 +19,12 @@ package org.apache.ignite.internal.processors.query.calcite.rel;
 
 import java.util.List;
 
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
@@ -30,6 +32,7 @@ import org.apache.calcite.rel.core.Spool;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.util.ImmutableBitSet;
+import org.apache.calcite.util.Pair;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCost;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCostFactory;
 import org.apache.ignite.internal.processors.query.calcite.util.RexUtils;
@@ -130,5 +133,19 @@ public class IgniteHashIndexSpool extends IgniteSpool {
     /** */
     public ImmutableBitSet keys() {
         return keys;
+    }
+
+    /** {@inheritDoc} */
+    @Override public Pair<RelTraitSet, List<RelTraitSet>> passThroughCollation(RelTraitSet nodeTraits,
+        List<RelTraitSet> inputTraits) {
+        return Pair.of(nodeTraits.replace(RelCollations.EMPTY),
+            ImmutableList.of(inputTraits.get(0).replace(RelCollations.EMPTY)));
+    }
+
+    /** {@inheritDoc} */
+    @Override public List<Pair<RelTraitSet, List<RelTraitSet>>> deriveCollation(RelTraitSet nodeTraits,
+        List<RelTraitSet> inputTraits) {
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RelCollations.EMPTY),
+            ImmutableList.of(inputTraits.get(0).replace(RelCollations.EMPTY))));
     }
 }

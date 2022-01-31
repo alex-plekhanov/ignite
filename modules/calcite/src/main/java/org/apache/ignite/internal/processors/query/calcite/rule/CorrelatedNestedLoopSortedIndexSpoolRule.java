@@ -63,10 +63,6 @@ public class CorrelatedNestedLoopSortedIndexSpoolRule extends RelRule<Correlated
         RelOptCluster cluster = spool.getCluster();
 
         RelTraitSet trait = spool.getTraitSet();
-        CorrelationTrait filterCorr = TraitUtils.correlation(spool);
-
-        if (filterCorr.correlated())
-            trait = trait.replace(filterCorr);
 
         RelNode input = spool.getInput();
 

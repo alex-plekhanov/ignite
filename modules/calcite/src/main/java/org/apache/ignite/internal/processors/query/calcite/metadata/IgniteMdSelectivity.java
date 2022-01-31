@@ -23,7 +23,6 @@ import java.math.MathContext;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.volcano.RelSubset;
 import org.apache.calcite.rel.RelNode;
@@ -51,9 +50,7 @@ import org.apache.calcite.util.TimeString;
 import org.apache.calcite.util.TimestampString;
 import org.apache.ignite.internal.processors.query.QueryUtils;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteExchange;
-import org.apache.ignite.internal.processors.query.calcite.rel.IgniteHashIndexSpool;
-import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSortedIndexSpool;
-import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSpool;
 import org.apache.ignite.internal.processors.query.calcite.rel.ProjectableFilterableTableScan;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteCacheTable;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteStatisticsImpl;
@@ -106,7 +103,7 @@ public class IgniteMdSelectivity extends RelMdSelectivity {
     }
 
     /** */
-    public Double getSelectivity(IgniteSortedIndexSpool rel, RelMetadataQuery mq, RexNode predicate) {
+    public Double getSelectivity(IgniteSpool rel, RelMetadataQuery mq, RexNode predicate) {
         if (predicate != null) {
             return mq.getSelectivity(rel.getInput(),
                 RelMdUtil.minusPreds(
@@ -635,42 +632,5 @@ public class IgniteMdSelectivity extends RelMdSelectivity {
             return null;
 
         return getSelectivity(input, mq, predicate);
-    }
-
-    /**
-     * Get selectivity of table spool by it's input selectivity.
-     *
-     * @param tspool IgniteTableSpool.
-     * @param mq RelMetadataQuery.
-     * @param predicate Predicate.
-     * @return Selectivity or {@code null} if it can't be estimated.
-     */
-    public Double getSelectivity(IgniteTableSpool tspool, RelMetadataQuery mq, RexNode predicate) {
-        RelNode input = tspool.getInput();
-
-        if (input == null)
-            return null;
-
-        return getSelectivity(input, mq, predicate);
-    }
-
-    /**
-     * Get selectivity of hash index spool by it's input selectivity.
-     *
-     * @param rel IgniteHashIndexSpool.
-     * @param mq RelMetadataQuery.
-     * @param predicate Predicate.
-     * @return Selectivity or {@code null} if it can't be estimated.
-     */
-    public Double getSelectivity(IgniteHashIndexSpool rel, RelMetadataQuery mq, RexNode predicate) {
-        if (predicate != null) {
-            return mq.getSelectivity(rel.getInput(),
-                RelMdUtil.minusPreds(
-                    rel.getCluster().getRexBuilder(),
-                    predicate,
-                    rel.condition()));
-        }
-
-        return mq.getSelectivity(rel.getInput(), rel.condition());
     }
 }

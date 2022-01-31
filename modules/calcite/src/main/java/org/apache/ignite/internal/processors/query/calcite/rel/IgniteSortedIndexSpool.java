@@ -17,23 +17,34 @@
 
 package org.apache.ignite.internal.processors.query.calcite.rel;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelCollation;
+import org.apache.calcite.rel.RelCollations;
+import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.Spool;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.util.ImmutableBitSet;
+import org.apache.calcite.util.Pair;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCost;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCostFactory;
+import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
+import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.processors.query.calcite.util.IndexConditions;
+
+import static org.apache.ignite.internal.processors.query.calcite.util.Commons.maxPrefix;
 
 /**
  * Relational operator that returns the sorted contents of a table
@@ -109,11 +120,6 @@ public class IgniteSortedIndexSpool extends IgniteSpool {
         return idxCond.explainTerms(writer);
     }
 
-    /** {@inheritDoc} */
-    @Override public double estimateRowCount(RelMetadataQuery mq) {
-        return mq.getRowCount(getInput()) * mq.getSelectivity(this, null);
-    }
-
     /** */
     public IndexConditions indexCondition() {
         return idxCond;
@@ -131,13 +137,47 @@ public class IgniteSortedIndexSpool extends IgniteSpool {
         double totalBytes = rowCnt * bytesPerRow;
         double cpuCost;
 
-        if (idxCond.lowerCondition() != null)
-            cpuCost = Math.log(rowCnt) * IgniteCost.ROW_COMPARISON_COST;
+        double selectivity = mq.getSelectivity(this, condition);
+
+        if (idxCond.lowerCondition() != null || idxCond.upperCondition() != null) {
+            cpuCost = Math.log(rowCnt) * IgniteCost.ROW_COMPARISON_COST +
+                rowCnt * selectivity * (IgniteCost.ROW_COMPARISON_COST + IgniteCost.ROW_PASS_THROUGH_COST);
+        }
         else
             cpuCost = rowCnt * IgniteCost.ROW_PASS_THROUGH_COST;
 
         IgniteCostFactory costFactory = (IgniteCostFactory)planner.getCostFactory();
 
         return costFactory.makeCost(rowCnt, cpuCost, 0, totalBytes, 0);
+    }
+
+    /** {@inheritDoc} */
+    @Override public Pair<RelTraitSet, List<RelTraitSet>> passThroughCollation(
+        RelTraitSet nodeTraits,
+        List<RelTraitSet> inputTraits
+    ) {
+        RelCollation required = TraitUtils.collation(nodeTraits);
+
+        if (required.satisfies(collation))
+            return Pair.of(nodeTraits, ImmutableList.of(inputTraits.get(0).replace(required)));
+        else if (collation.satisfies(required))
+            return Pair.of(nodeTraits.replace(collation), ImmutableList.of(inputTraits.get(0).replace(collation)));
+        else
+            return null;
+    }
+
+    /** {@inheritDoc} */
+    @Override public List<Pair<RelTraitSet, List<RelTraitSet>>> deriveCollation(
+        RelTraitSet nodeTraits,
+        List<RelTraitSet> inputTraits
+    ) {
+        RelCollation inputCollation = TraitUtils.collation(inputTraits.get(0));
+
+        if (inputCollation.satisfies(collation))
+            return ImmutableList.of(Pair.of(nodeTraits.replace(inputCollation), inputTraits));
+        else {
+            return ImmutableList.of(Pair.of(nodeTraits.replace(collation),
+                ImmutableList.of(inputTraits.get(0).replace(collation))));
+        }
     }
 }

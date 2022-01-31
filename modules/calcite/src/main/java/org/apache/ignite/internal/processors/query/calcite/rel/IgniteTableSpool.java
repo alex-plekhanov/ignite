@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.query.calcite.rel;
 
 import java.util.List;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -28,8 +29,10 @@ import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.Spool;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.util.Pair;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCost;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCostFactory;
+import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -89,10 +92,17 @@ public class IgniteTableSpool extends IgniteSpool {
         double rowCnt = mq.getRowCount(getInput());
         double bytesPerRow = getRowType().getFieldCount() * IgniteCost.AVERAGE_FIELD_SIZE;
         double totalBytes = rowCnt * bytesPerRow;
-        double cpuCost = rowCnt * IgniteCost.ROW_PASS_THROUGH_COST;
+        double cpuCost = rowCnt * (IgniteCost.ROW_PASS_THROUGH_COST + IgniteCost.ROW_COMPARISON_COST);
 
         IgniteCostFactory costFactory = (IgniteCostFactory)planner.getCostFactory();
 
         return costFactory.makeCost(rowCnt, cpuCost, 0, totalBytes, 0);
+    }
+
+    /** {@inheritDoc} */
+    @Override public List<Pair<RelTraitSet, List<RelTraitSet>>> deriveCollation(RelTraitSet nodeTraits,
+        List<RelTraitSet> inTraits) {
+        return ImmutableList.of(Pair.of(nodeTraits.replace(TraitUtils.collation(inTraits.get(0))),
+            inTraits));
     }
 }

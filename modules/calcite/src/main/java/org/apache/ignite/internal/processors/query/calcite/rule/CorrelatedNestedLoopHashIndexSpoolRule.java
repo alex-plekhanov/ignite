@@ -63,10 +63,6 @@ public class CorrelatedNestedLoopHashIndexSpoolRule extends RelRule<CorrelatedNe
         RexBuilder builder = RexUtils.builder(cluster);
 
         RelTraitSet trait = spool.getTraitSet();
-        CorrelationTrait filterCorr = TraitUtils.correlation(spool);
-
-        if (filterCorr.correlated())
-            trait = trait.replace(filterCorr);
 
         RelNode input = spool.getInput();
 
