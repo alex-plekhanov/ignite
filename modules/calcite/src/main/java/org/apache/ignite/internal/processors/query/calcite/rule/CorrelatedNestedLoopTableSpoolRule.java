@@ -27,8 +27,6 @@ import org.apache.ignite.internal.processors.query.calcite.rel.IgniteCorrelatedN
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteFilter;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
-import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
-import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
 import org.immutables.value.Value;
 
 /**
@@ -51,22 +49,15 @@ public class CorrelatedNestedLoopTableSpoolRule extends RelRule<CorrelatedNested
 
         RelOptCluster cluster = join.getCluster();
 
-        RelTraitSet trait = filter.getTraitSet().replace(RewindabilityTrait.REWINDABLE);
+        RelTraitSet trait = filter.getTraitSet();
 
         RelNode input = filter.getInput();
-
-/*
-        if (TraitUtils.rewindability(input).rewindable())
-            return;
-
-*/
 
         RelNode spool = new IgniteTableSpool(
             cluster,
             trait,
             Spool.Type.LAZY,
             convert(input, input.getTraitSet()
-                .replace(RewindabilityTrait.ONE_WAY)
                 .replace(CorrelationTrait.UNCORRELATED)),
             filter.getCondition()
         );

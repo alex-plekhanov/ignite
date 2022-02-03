@@ -81,7 +81,6 @@ import org.apache.ignite.internal.processors.query.calcite.sql.fun.IgniteOwnSqlO
 import org.apache.ignite.internal.processors.query.calcite.sql.fun.IgniteStdSqlOperatorTable;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTraitDef;
 import org.apache.ignite.internal.processors.query.calcite.trait.DistributionTraitDef;
-import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTraitDef;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeSystem;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.processors.query.calcite.util.LifecycleAware;
@@ -130,7 +129,6 @@ public class CalciteQueryProcessor extends GridProcessorAdapter implements Query
             ConventionTraitDef.INSTANCE,
             RelCollationTraitDef.INSTANCE,
             DistributionTraitDef.INSTANCE,
-            RewindabilityTraitDef.INSTANCE,
             CorrelationTraitDef.INSTANCE,
         })
         .build();

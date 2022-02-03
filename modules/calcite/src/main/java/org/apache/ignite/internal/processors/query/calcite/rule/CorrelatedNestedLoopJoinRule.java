@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptRule;
@@ -42,7 +41,6 @@ import org.apache.calcite.tools.RelBuilder;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteCorrelatedNestedLoopJoin;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
-import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 
 /** */
 public class CorrelatedNestedLoopJoinRule extends AbstractIgniteConverterRule<LogicalJoin> {
@@ -122,7 +120,6 @@ public class CorrelatedNestedLoopJoinRule extends AbstractIgniteConverterRule<Lo
         CorrelationTrait corrTrait = CorrelationTrait.correlations(correlationIds);
 
         RelTraitSet rightInTraits = cluster.traitSetOf(IgniteConvention.INSTANCE)
-            .replace(RewindabilityTrait.REWINDABLE)
             .replace(corrTrait);
 
         RelNode left = convert(rel.getLeft(), leftInTraits);

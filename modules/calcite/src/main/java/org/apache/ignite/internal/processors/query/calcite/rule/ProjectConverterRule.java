@@ -31,7 +31,6 @@ import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteProject;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
-import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.util.RexUtils;
 
 /**
@@ -58,8 +57,7 @@ public class ProjectConverterRule extends AbstractIgniteConverterRule<LogicalPro
 
         if (!corrIds.isEmpty()) {
             traits = traits
-                .replace(CorrelationTrait.correlations(corrIds))
-                .replace(RewindabilityTrait.REWINDABLE);
+                .replace(CorrelationTrait.correlations(corrIds));
         }
 
         RelNode input = convert(rel.getInput(), traits);

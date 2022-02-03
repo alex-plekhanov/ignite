@@ -28,7 +28,6 @@ import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableFunctionScan;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
-import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.util.RexUtils;
 import org.apache.ignite.internal.util.typedef.F;
 
@@ -50,7 +49,6 @@ public class TableFunctionScanConverterRule extends AbstractIgniteConverterRule<
 
         RelTraitSet traitSet = rel.getTraitSet()
             .replace(IgniteConvention.INSTANCE)
-            .replace(RewindabilityTrait.REWINDABLE)
             .replace(IgniteDistributions.broadcast());
 
         Set<CorrelationId> corrIds = RexUtils.extractCorrelationIds(rel.getCall());
