@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitSet;
@@ -44,6 +45,7 @@ import org.apache.ignite.internal.processors.query.calcite.rel.logical.IgniteLog
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteIndex;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteTable;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
+import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.util.RexUtils;
 import org.apache.ignite.internal.util.typedef.F;
 
@@ -77,6 +79,7 @@ public abstract class LogicalScanConverterRule<T extends ProjectableFilterableTa
                 }
 
                 RelTraitSet traits = rel.getCluster().traitSetOf(IgniteConvention.INSTANCE)
+                    .replace(RewindabilityTrait.REWINDABLE)
                     .replace(distribution)
                     .replace(collation);
 
@@ -127,6 +130,7 @@ public abstract class LogicalScanConverterRule<T extends ProjectableFilterableTa
                 }
 
                 RelTraitSet traits = cluster.traitSetOf(IgniteConvention.INSTANCE)
+                    .replace(RewindabilityTrait.REWINDABLE)
                     .replace(distribution);
 
                 Set<CorrelationId> corrIds = RexUtils.extractCorrelationIds(rel.condition());

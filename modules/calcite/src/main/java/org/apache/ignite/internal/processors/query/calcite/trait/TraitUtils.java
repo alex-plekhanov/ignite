@@ -114,6 +114,8 @@ public class TraitUtils {
             return convertCollation(planner, (RelCollation)toTrait, rel);
         else if (converter == DistributionTraitDef.INSTANCE)
             return convertDistribution(planner, (IgniteDistribution)toTrait, rel);
+        else if (converter == RewindabilityTraitDef.INSTANCE)
+            return convertRewindability(planner, (RewindabilityTrait)toTrait, rel);
         else
             return convertOther(planner, converter, toTrait, rel);
     }
@@ -151,6 +153,7 @@ public class TraitUtils {
             return new IgniteExchange(
                 rel.getCluster(),
                 traits
+                    .replace(RewindabilityTrait.ONE_WAY)
                     .replace(CorrelationTrait.UNCORRELATED),
                 RelOptRule.convert(
                     rel,
@@ -159,6 +162,31 @@ public class TraitUtils {
                 ),
                 toTrait);
         }
+    }
+
+    /** */
+    @Nullable public static RelNode convertRewindability(RelOptPlanner planner,
+        RewindabilityTrait toTrait, RelNode rel) {
+        RewindabilityTrait fromTrait = rewindability(rel);
+
+        if (fromTrait.satisfies(toTrait))
+            return rel;
+        else
+            return null;
+
+/*
+        RelTraitSet traits = rel.getTraitSet()
+            .replace(toTrait)
+            .replace(CorrelationTrait.UNCORRELATED);
+
+        return new IgniteTableSpool(
+            rel.getCluster(),
+            traits,
+            Spool.Type.LAZY,
+            RelOptRule.convert(rel, rel.getTraitSet().replace(CorrelationTrait.UNCORRELATED)),
+            null
+        );
+*/
     }
 
     /** */
@@ -206,6 +234,18 @@ public class TraitUtils {
     /** */
     public static RelCollation collation(RelTraitSet traits) {
         return traits.getTrait(RelCollationTraitDef.INSTANCE);
+    }
+
+    /** */
+    public static RewindabilityTrait rewindability(RelNode rel) {
+        return rel instanceof IgniteRel
+            ? ((IgniteRel)rel).rewindability()
+            : rewindability(rel.getTraitSet());
+    }
+
+    /** */
+    public static RewindabilityTrait rewindability(RelTraitSet traits) {
+        return traits.getTrait(RewindabilityTraitDef.INSTANCE);
     }
 
     /** */
@@ -357,6 +397,7 @@ public class TraitUtils {
         List<Pair<RelTraitSet, List<RelTraitSet>>> traits = new PropagationContext(ImmutableSet.of(Pair.of(requiredTraits, inTraits)))
             .propagate((in, outs) -> singletonListFromNullable(rel.passThroughCollation(in, outs)))
             .propagate((in, outs) -> singletonListFromNullable(rel.passThroughDistribution(in, outs)))
+            .propagate((in, outs) -> singletonListFromNullable(rel.passThroughRewindability(in, outs)))
             .propagate((in, outs) -> singletonListFromNullable(rel.passThroughCorrelation(in, outs)))
             .combinations();
 
@@ -378,6 +419,7 @@ public class TraitUtils {
         return new PropagationContext(combinations)
             .propagate(rel::deriveCollation)
             .propagate(rel::deriveDistribution)
+            .propagate(rel::deriveRewindability)
             .propagate(rel::deriveCorrelation)
             .nodes(rel::createNode);
     }

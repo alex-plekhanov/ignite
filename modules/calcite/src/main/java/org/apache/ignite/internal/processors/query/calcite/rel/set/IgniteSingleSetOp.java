@@ -27,6 +27,7 @@ import org.apache.calcite.util.Pair;
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.agg.AggregateType;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
+import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 
@@ -34,6 +35,21 @@ import org.apache.ignite.internal.processors.query.calcite.util.Commons;
  * Physical node for set op (MINUS, INTERSECT) operator which inputs satisfy SINGLE distribution.
  */
 public interface IgniteSingleSetOp extends IgniteSetOp {
+    /** {@inheritDoc} */
+    @Override public default List<Pair<RelTraitSet, List<RelTraitSet>>> deriveRewindability(
+        RelTraitSet nodeTraits,
+        List<RelTraitSet> inputTraits
+    ) {
+        boolean rewindable = inputTraits.stream()
+            .map(TraitUtils::rewindability)
+            .allMatch(RewindabilityTrait::rewindable);
+
+        if (rewindable)
+            return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.REWINDABLE), inputTraits));
+
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inputTraits));
+    }
+
     /** {@inheritDoc} */
     @Override public default Pair<RelTraitSet, List<RelTraitSet>> passThroughDistribution(RelTraitSet nodeTraits,
         List<RelTraitSet> inTraits) {

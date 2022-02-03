@@ -31,6 +31,7 @@ import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.util.Pair;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
+import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
 import org.apache.ignite.internal.processors.query.calcite.trait.TraitsAwareIgniteRel;
 import org.apache.ignite.internal.processors.query.calcite.util.RexUtils;
@@ -67,6 +68,18 @@ public abstract class IgniteSpool extends Spool implements TraitsAwareIgniteRel 
 
         // Self cost without memory and network.
         return planner.getCostFactory().makeCost(cost.getRows(), cost.getCpu(), cost.getIo());
+    };
+
+    /** {@inheritDoc} */
+    @Override public Pair<RelTraitSet, List<RelTraitSet>> passThroughRewindability(RelTraitSet nodeTraits,
+        List<RelTraitSet> inTraits) {
+        return Pair.of(nodeTraits.replace(RewindabilityTrait.REWINDABLE), inTraits);
+    }
+
+    /** {@inheritDoc} */
+    @Override public List<Pair<RelTraitSet, List<RelTraitSet>>> deriveRewindability(RelTraitSet nodeTraits,
+        List<RelTraitSet> inTraits) {
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.REWINDABLE), inTraits));
     }
 
     /** {@inheritDoc} */

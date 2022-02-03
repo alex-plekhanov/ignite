@@ -30,6 +30,7 @@ import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteFilter;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
+import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.util.RexUtils;
 
 /**
@@ -54,8 +55,11 @@ public class FilterConverterRule extends AbstractIgniteConverterRule<LogicalFilt
 
         Set<CorrelationId> corrIds = RexUtils.extractCorrelationIds(rel.getCondition());
 
-        if (!corrIds.isEmpty())
-            traits = traits.replace(CorrelationTrait.correlations(corrIds));
+        if (!corrIds.isEmpty()) {
+            traits = traits
+                .replace(CorrelationTrait.correlations(corrIds))
+                .replace(RewindabilityTrait.REWINDABLE);
+        }
 
         return new IgniteFilter(
             cluster,

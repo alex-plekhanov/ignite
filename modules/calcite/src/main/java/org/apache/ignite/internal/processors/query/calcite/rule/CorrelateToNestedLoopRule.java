@@ -34,6 +34,7 @@ import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteCorrelatedNestedLoopJoin;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
+import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 
 /**
  * Rule to convert LogicalCorrelate operator to IgniteCorrelatedNestedLoopJoin.
@@ -61,6 +62,7 @@ public class CorrelateToNestedLoopRule extends AbstractIgniteConverterRule<Logic
         RelTraitSet outTraits = cluster.traitSetOf(IgniteConvention.INSTANCE);
         RelTraitSet leftInTraits = cluster.traitSetOf(IgniteConvention.INSTANCE);
         RelTraitSet rightInTraits = cluster.traitSetOf(IgniteConvention.INSTANCE)
+            .replace(RewindabilityTrait.REWINDABLE)
             .replace(corrTrait);
 
         RelNode left = convert(rel.getLeft(), leftInTraits);
