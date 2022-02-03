@@ -32,7 +32,7 @@ public class IgniteCost implements RelOptCost {
     public static final double ROW_PASS_THROUGH_COST = 1;
 
     /** Size of a particular field. */
-    public static final double AVERAGE_FIELD_SIZE = 4; // such accuracy should be enough for an estimate
+    public static final double AVERAGE_FIELD_SIZE = 10; // such accuracy should be enough for an estimate
 
     /** Cost of a comparison of one row. */
     public static final double ROW_COMPARISON_COST = 3;
@@ -42,6 +42,9 @@ public class IgniteCost implements RelOptCost {
 
     /** Cost of a lookup at the hash. */
     public static final double HASH_LOOKUP_COST = 10;
+
+    /** Count of extra fields required to store row in a hash map. */
+    public static final double HASH_EXTRA_FIELDS_PER_ROW = 3; // Buckets, Map.Entry, GroupKey, etc.
 
     /**
      * With broadcast distribution each row will be sent to the each distination node,
