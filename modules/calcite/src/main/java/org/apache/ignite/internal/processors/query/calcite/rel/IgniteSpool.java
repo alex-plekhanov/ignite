@@ -108,7 +108,7 @@ public abstract class IgniteSpool extends Spool implements TraitsAwareIgniteRel 
         Set<CorrelationId> corrIds = RexUtils.extractCorrelationIds(condition);
 
         if (TraitUtils.correlation(inTraits.get(0)).correlated())
-            return null;
+            return ImmutableList.of();
         else
             return ImmutableList.of(Pair.of(nodeTraits.replace(CorrelationTrait.correlations(corrIds)), inTraits));
     }

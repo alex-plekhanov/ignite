@@ -171,8 +171,10 @@ public class TraitUtils {
 
         if (fromTrait.satisfies(toTrait))
             return rel;
-        else
+        else if (rel instanceof IgniteExchange)
             return null;
+
+        return RelOptRule.convert(rel, rel.getTraitSet().replace(toTrait));
 
 /*
         RelTraitSet traits = rel.getTraitSet()
@@ -526,6 +528,11 @@ public class TraitUtils {
                 return this;
 
             ImmutableSet.Builder<Pair<RelTraitSet, List<RelTraitSet>>> b = ImmutableSet.builder();
+
+            for (Pair<RelTraitSet, List<RelTraitSet>> variant : combinations)
+                if (processor.propagate(variant.left, variant.right) == null)
+                    System.out.println("test");
+
             for (Pair<RelTraitSet, List<RelTraitSet>> variant : combinations)
                 b.addAll(processor.propagate(variant.left, variant.right));
             return new PropagationContext(b.build());
