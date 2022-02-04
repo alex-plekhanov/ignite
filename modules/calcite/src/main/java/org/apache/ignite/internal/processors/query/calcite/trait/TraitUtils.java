@@ -43,7 +43,6 @@ import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.AggregateCall;
-import org.apache.calcite.rel.core.Spool;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
@@ -56,7 +55,6 @@ import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteExchange;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteRel;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteSort;
-import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTrimExchange;
 import org.apache.ignite.internal.util.typedef.F;
 import org.jetbrains.annotations.Nullable;
@@ -167,13 +165,18 @@ public class TraitUtils {
     }
 
     /** */
-    @Nullable public static RelNode convertRewindability(RelOptPlanner planner,
-        RewindabilityTrait toTrait, RelNode rel) {
+    @Nullable public static RelNode convertRewindability(
+        RelOptPlanner planner,
+        RewindabilityTrait toTrait, RelNode rel)
+    {
         RewindabilityTrait fromTrait = rewindability(rel);
 
         if (fromTrait.satisfies(toTrait))
             return rel;
+        else
+            return null;
 
+/*
         RelTraitSet traits = rel.getTraitSet()
             .replace(toTrait)
             .replace(CorrelationTrait.UNCORRELATED);
@@ -184,6 +187,7 @@ public class TraitUtils {
             Spool.Type.LAZY,
             RelOptRule.convert(rel, rel.getTraitSet().replace(CorrelationTrait.UNCORRELATED))
         );
+*/
     }
 
     /** */

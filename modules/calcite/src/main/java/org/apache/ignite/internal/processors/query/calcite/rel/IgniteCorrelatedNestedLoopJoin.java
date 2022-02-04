@@ -164,8 +164,11 @@ public class IgniteCorrelatedNestedLoopJoin extends AbstractIgniteJoin {
 
         RewindabilityTrait rewindability = TraitUtils.rewindability(nodeTraits);
 
-        return Pair.of(nodeTraits.replace(rewindability),
-            ImmutableList.of(left.replace(rewindability), right.replace(RewindabilityTrait.REWINDABLE)));
+        if (rewindability.rewindable())
+            left = left.replace(rewindability);
+
+        return Pair.of(nodeTraits,
+            ImmutableList.of(left, right.replace(RewindabilityTrait.REWINDABLE)));
     }
 
     /** {@inheritDoc} */

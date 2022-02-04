@@ -73,7 +73,10 @@ public interface TraitsAwareIgniteRel extends IgniteRel {
     default Pair<RelTraitSet, List<RelTraitSet>> passThroughRewindability(RelTraitSet nodeTraits, List<RelTraitSet> inTraits) {
         RewindabilityTrait rewindability = TraitUtils.rewindability(nodeTraits);
 
-        return Pair.of(nodeTraits, Commons.transform(inTraits, t -> t.replace(rewindability)));
+        //return Pair.of(nodeTraits, Commons.transform(inTraits, t -> t.replace(rewindability)));
+
+        return Pair.of(nodeTraits, rewindability.rewindable() ?
+            Commons.transform(inTraits, t -> t.replace(rewindability)) : inTraits);
     }
 
     /**
