@@ -70,20 +70,9 @@ public class FilterSpoolMergeToHashIndexSpoolRule extends RelRule<FilterSpoolMer
 
         RelNode input = spool.getInput();
 
-        RexNode condition0 = RexUtil.expandSearch(builder, null, filter.getCondition());
-
-        condition0 = RexUtil.toCnf(builder, condition0);
-
-        List<RexNode> conjunctions = RelOptUtil.conjunctions(condition0);
-
-        //TODO: https://issues.apache.org/jira/browse/IGNITE-14916
-        for (RexNode rexNode : conjunctions)
-            if (!isBinaryComparison(rexNode))
-                return;
-
         List<RexNode> searchRow = RexUtils.buildHashSearchRow(
             cluster,
-            condition0,
+            filter.getCondition(),
             spool.getRowType(),
             null,
             false

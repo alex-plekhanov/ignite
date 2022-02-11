@@ -21,8 +21,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
-
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.agg.GroupKey;
 import org.apache.ignite.internal.util.typedef.F;
@@ -81,8 +81,8 @@ public class RuntimeHashIndex<Row> implements RuntimeIndex<Row> {
     }
 
     /** */
-    public Iterable<Row> scan(Supplier<Row> searchRow) {
-        return new IndexScan(searchRow);
+    public Iterable<Row> scan(Predicate<Row> filter, Supplier<Row> searchRow) {
+        return new IndexScan(filter, searchRow);
     }
 
     /** */
@@ -108,10 +108,15 @@ public class RuntimeHashIndex<Row> implements RuntimeIndex<Row> {
         /** Search row. */
         private final Supplier<Row> searchRow;
 
+        /** Filter. */
+        private final Predicate<Row> filter;
+
         /**
+         * @param filter Filter.
          * @param searchRow Search row.
          */
-        IndexScan(Supplier<Row> searchRow) {
+        IndexScan(Predicate<Row> filter, Supplier<Row> searchRow) {
+            this.filter = filter;
             this.searchRow = searchRow;
         }
 
@@ -129,7 +134,8 @@ public class RuntimeHashIndex<Row> implements RuntimeIndex<Row> {
 
             List<Row> eqRows = rows.get(key);
 
-            return eqRows == null ? Collections.emptyIterator() : eqRows.iterator();
+            return eqRows == null ? Collections.emptyIterator() :
+                F.iterator(eqRows.iterator(), F.identity(), true, filter::test);
         }
     }
 }

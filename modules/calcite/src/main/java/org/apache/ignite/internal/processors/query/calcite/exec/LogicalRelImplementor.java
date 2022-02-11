@@ -418,12 +418,14 @@ public class LogicalRelImplementor<Row> implements IgniteRelVisitor<Node<Row>> {
 
     /** {@inheritDoc} */
     @Override public Node<Row> visit(IgniteHashIndexSpool rel) {
+        Predicate<Row> filter = expressionFactory.predicate(rel.condition(), rel.getRowType());
         Supplier<Row> searchRow = expressionFactory.rowSource(rel.searchRow());
 
         IndexSpoolNode<Row> node = IndexSpoolNode.createHashSpool(
             ctx,
             rel.getRowType(),
             ImmutableBitSet.of(rel.keys()),
+            filter,
             searchRow
         );
 
