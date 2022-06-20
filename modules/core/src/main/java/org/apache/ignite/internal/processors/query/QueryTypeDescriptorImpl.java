@@ -166,10 +166,8 @@ public class QueryTypeDescriptorImpl implements GridQueryTypeDescriptor {
         this.log = coCtx.kernalContext().log(getClass());
     }
 
-    /**
-     * @return Cache name.
-     */
-    public String cacheName() {
+    /** {@inheritDoc} */
+    @Override public String cacheName() {
         return cacheName;
     }
 

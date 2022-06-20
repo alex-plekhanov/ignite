@@ -37,6 +37,7 @@ import org.apache.ignite.internal.cache.query.index.Index;
 import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
 import org.apache.ignite.internal.processors.query.GridQueryIndexDescriptor;
 import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
+import org.apache.ignite.internal.processors.query.QueryField;
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.IgniteScalarFunction;
 import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
@@ -173,7 +174,8 @@ public class SchemaHolderImpl extends AbstractService implements SchemaHolder, S
     @Override public synchronized void onSqlTypeCreated(
         String schemaName,
         GridQueryTypeDescriptor typeDesc,
-        GridCacheContextInfo<?, ?> cacheInfo
+        GridCacheContextInfo<?, ?> cacheInfo,
+        boolean isSql
     ) {
         IgniteSchema schema = igniteSchemas.computeIfAbsent(schemaName, IgniteSchema::new);
 
@@ -187,15 +189,6 @@ public class SchemaHolderImpl extends AbstractService implements SchemaHolder, S
         rebuild();
     }
 
-    /** {@inheritDoc} */
-    @Override public void onSqlTypeUpdated(
-        String schemaName,
-        GridQueryTypeDescriptor typeDesc,
-        GridCacheContextInfo<?, ?> cacheInfo
-    ) {
-        onSqlTypeCreated(schemaName, typeDesc, cacheInfo);
-    }
-
     /** */
     private static Object affinityIdentity(CacheConfiguration<?, ?> ccfg) {
         if (ccfg.getCacheMode() == CacheMode.PARTITIONED)
@@ -204,9 +197,21 @@ public class SchemaHolderImpl extends AbstractService implements SchemaHolder, S
     }
 
     /** {@inheritDoc} */
+    @Override public void onColumnsAdded(String schemaName, String tblName, List<QueryField> cols, boolean ifColNotExists) {
+        rebuild();
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onColumnsDropped(String schemaName, String tblName, List<String> cols, boolean ifColExists) {
+        rebuild();
+    }
+
+    /** {@inheritDoc} */
     @Override public synchronized void onSqlTypeDropped(
         String schemaName,
-        GridQueryTypeDescriptor typeDesc
+        GridQueryTypeDescriptor typeDesc,
+        boolean destroy,
+        boolean clearIdx
     ) {
         IgniteSchema schema = igniteSchemas.computeIfAbsent(schemaName, IgniteSchema::new);
 
@@ -290,7 +295,7 @@ public class SchemaHolderImpl extends AbstractService implements SchemaHolder, S
     }
 
     /** {@inheritDoc} */
-    @Override public void onFunctionCreated(String schemaName, String name, Method method) {
+    @Override public void onFunctionCreated(String schemaName, String name, boolean deterministic, Method method) {
         IgniteSchema schema = igniteSchemas.computeIfAbsent(schemaName, IgniteSchema::new);
 
         schema.addFunction(name.toUpperCase(), IgniteScalarFunction.create(method));

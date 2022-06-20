@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -116,7 +115,6 @@ import org.apache.ignite.internal.processors.query.h2.affinity.H2PartitionResolv
 import org.apache.ignite.internal.processors.query.h2.affinity.PartitionExtractor;
 import org.apache.ignite.internal.processors.query.h2.database.H2TreeClientIndex;
 import org.apache.ignite.internal.processors.query.h2.database.H2TreeIndex;
-import org.apache.ignite.internal.processors.query.h2.database.H2TreeIndexBase;
 import org.apache.ignite.internal.processors.query.h2.dml.DmlDistributedPlanInfo;
 import org.apache.ignite.internal.processors.query.h2.dml.DmlUpdateResultsIterator;
 import org.apache.ignite.internal.processors.query.h2.dml.DmlUpdateSingleEntryIterator;
@@ -177,7 +175,6 @@ import org.h2.api.ErrorCode;
 import org.h2.api.JavaObjectSerializer;
 import org.h2.engine.Session;
 import org.h2.engine.SysProperties;
-import org.h2.index.Index;
 import org.h2.index.IndexType;
 import org.h2.message.DbException;
 import org.h2.table.Column;
@@ -3078,41 +3075,11 @@ public class IgniteH2Indexing implements GridQueryIndexing {
         return longRunningQryMgr;
     }
 
-    /** {@inheritDoc} */
-    @Override public long indexSize(String schemaName, String tblName, String idxName) throws IgniteCheckedException {
-        GridH2Table tbl = schemaMgr.dataTable(schemaName, tblName);
-
-        if (tbl == null)
-            return 0;
-
-        H2TreeIndex idx = (H2TreeIndex)tbl.userIndex(idxName);
-
-        return idx == null ? 0 : idx.size();
-    }
-
     /**
      * @return Distributed SQL configuration.
      */
     public DistributedSqlConfiguration distributedConfiguration() {
         return distrCfg;
-    }
-
-    /** {@inheritDoc} */
-    @Override public Map<String, Integer> secondaryIndexesInlineSize() {
-        Map<String, Integer> map = new HashMap<>();
-        for (GridH2Table table : schemaMgr.dataTables()) {
-            for (Index index : table.getIndexes()) {
-                if (index instanceof H2TreeIndexBase && !index.getIndexType().isPrimaryKey()) {
-                    map.put(
-                        index.getSchema().getName() + "#" + index.getTable().getName() + "#" + index.getName(),
-                        ((H2TreeIndexBase)index).inlineSize()
-                    );
-                }
-            }
-
-        }
-
-        return map;
     }
 
     /**

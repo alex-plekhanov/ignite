@@ -284,6 +284,9 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     /** Running query manager. */
     private RunningQueryManager runningQryMgr;
 
+    /** Schema manager. */
+    private GridQuerySchemaManagerImpl schemaMgr;
+
     /**
      * Constructor.
      *
@@ -327,14 +330,17 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     @Override public void start() throws IgniteCheckedException {
         super.start();
 
+        schemaMgr = new GridQuerySchemaManagerImpl(ctx);
+        schemaMgr.start(ctx.config().getSqlConfiguration().getSqlSchemas());
+
+        runningQryMgr = new RunningQueryManager(ctx);
+        runningQryMgr.start(busyLock);
+
         if (idx != null) {
             ctx.resource().injectGeneric(idx);
 
             idx.start(ctx, busyLock);
         }
-
-        runningQryMgr = new RunningQueryManager(ctx);
-        runningQryMgr.start(busyLock);
 
         ctx.io().addMessageListener(TOPIC_SCHEMA, ioLsnr);
 
@@ -382,6 +388,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
             idx.stop();
 
         runningQryMgr.stop();
+        schemaMgr.stop();
 
         U.closeQuiet(qryDetailMetricsEvictTask);
     }
@@ -596,12 +603,11 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     }
 
     /**
-     *
      * @return Information about secondary indexes inline size. Key is a full index name, value is a effective inline size.
-     * @see GridQueryIndexing#secondaryIndexesInlineSize()
+     * @see IndexProcessor#secondaryIndexesInlineSize()
      */
     public Map<String, Integer> secondaryIndexesInlineSize() {
-        return idx != null ? idx.secondaryIndexesInlineSize() : Collections.emptyMap();
+        return idx != null ? ctx.indexProcessor().secondaryIndexesInlineSize() : Collections.emptyMap();
     }
 
     /**
@@ -2055,11 +2061,13 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                     visitor = clo -> {};
 
                 idx.dynamicIndexCreate(op0.schemaName(), op0.tableName(), idxDesc, op0.ifNotExists(), visitor);
+                schemaMgr.createIndex(op0.schemaName(), op0.tableName(), idxDesc, op0.ifNotExists(), visitor);
             }
             else if (op instanceof SchemaIndexDropOperation) {
                 SchemaIndexDropOperation op0 = (SchemaIndexDropOperation)op;
 
                 idx.dynamicIndexDrop(op0.schemaName(), op0.indexName(), op0.ifExists());
+                schemaMgr.dropIndex(op0.schemaName(), op0.indexName(), op0.ifExists());
             }
             else if (op instanceof SchemaAlterTableAddColumnOperation) {
                 SchemaAlterTableAddColumnOperation op0 = (SchemaAlterTableAddColumnOperation)op;
@@ -2450,6 +2458,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         idxProc.markRebuildIndexesForCache(cctx, val);
 
         idx.markAsRebuildNeeded(cctx, val);
+        schemaMgr.markIndexRebuild(cctx.name(), val);
     }
 
     /**
@@ -4202,5 +4211,12 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      */
     public IndexBuildStatusStorage getIdxBuildStatusStorage() {
         return idxBuildStatusStorage;
+    }
+
+    /**
+     * @return Schema manager.
+     */
+    public GridQuerySchemaManager schemaManager() {
+        return schemaMgr;
     }
 }

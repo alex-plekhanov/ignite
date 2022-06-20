@@ -20,6 +20,7 @@ package org.apache.ignite.internal.cache.query.index;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -61,6 +62,7 @@ import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.reuse.ReuseList;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.processors.query.IgniteSQLException;
+import org.apache.ignite.internal.processors.query.QueryUtils;
 import org.apache.ignite.internal.processors.query.schema.IndexRebuildCancelToken;
 import org.apache.ignite.internal.processors.query.schema.SchemaIndexCacheVisitor;
 import org.apache.ignite.internal.util.GridAtomicLong;
@@ -612,5 +614,39 @@ public class IndexProcessor extends GridProcessorAdapter {
      */
     public IgniteLogger logger() {
         return log;
+    }
+
+    /**
+     * Information about secondary indexes efficient (actual) inline size.
+     *
+     * @return Map with inline sizes. The key of entry is a full index name (with schema and table name), the value of
+     * entry is a inline size.
+     */
+    public Map<String, Integer> secondaryIndexesInlineSize() {
+        Map<String, Integer> map = new HashMap<>();
+
+        ddlLock.readLock().lock();
+
+        try {
+            for (Map<String, Index> idxs : cacheToIdx.values()) {
+                for (Index idx : idxs.values()) {
+                    if (idx instanceof InlineIndex && !QueryUtils.PRIMARY_KEY_INDEX.equals(idx.name())) {
+                        InlineIndex idx0 = (InlineIndex)idx;
+                        IndexDefinition idxDef = indexDefinition(idx.id());
+                        IndexName idxName = idxDef.idxName();
+
+                        map.put(
+                            idxName.schemaName() + "#" + idxName.tableName() + "#" + idxName.idxName(),
+                            idx0.inlineSize()
+                        );
+                    }
+                }
+            }
+        }
+        finally {
+            ddlLock.readLock().unlock();
+        }
+
+        return map;
     }
 }

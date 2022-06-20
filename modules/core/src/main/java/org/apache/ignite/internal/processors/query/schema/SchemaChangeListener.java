@@ -18,10 +18,12 @@
 package org.apache.ignite.internal.processors.query.schema;
 
 import java.lang.reflect.Method;
+import java.util.List;
 import org.apache.ignite.internal.cache.query.index.Index;
 import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
 import org.apache.ignite.internal.processors.query.GridQueryIndexDescriptor;
 import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
+import org.apache.ignite.internal.processors.query.QueryField;
 import org.apache.ignite.spi.systemview.view.SystemView;
 import org.jetbrains.annotations.Nullable;
 
@@ -49,27 +51,44 @@ public interface SchemaChangeListener {
      * @param schemaName Schema name.
      * @param typeDesc Type descriptor.
      * @param cacheInfo Cache info.
+     * @param isSql {@code True} in case table has been created from SQL.
      */
-    public void onSqlTypeCreated(String schemaName, GridQueryTypeDescriptor typeDesc,
-        GridCacheContextInfo<?, ?> cacheInfo);
+    public void onSqlTypeCreated(
+        String schemaName,
+        GridQueryTypeDescriptor typeDesc,
+        GridCacheContextInfo<?, ?> cacheInfo,
+        boolean isSql
+    );
+
+    /**
+     * Callback method.
+     *
+     * @param schemaName Schema name.
+     * @param tblName Table name.
+     * @param cols Column names.
+     * @param ifColNotExists if columns not exists.
+     */
+    public void onColumnsAdded(String schemaName, String tblName, List<QueryField> cols, boolean ifColNotExists);
+
+    /**
+     * Callback method.
+     *
+     * @param schemaName Schema name.
+     * @param tblName Table name.
+     * @param cols Column names.
+     * @param ifColExists if columns exists.
+     */
+    public void onColumnsDropped(String schemaName, String tblName, List<String> cols, boolean ifColExists);
 
     /**
      * Callback method.
      *
      * @param schemaName Schema name.
      * @param typeDesc Type descriptor.
-     * @param cacheInfo Cache info.
+     * @param destroy Cache destroy flag.
+     * @param clearIdx Clear index flag.
      */
-    public void onSqlTypeUpdated(String schemaName, GridQueryTypeDescriptor typeDesc,
-        GridCacheContextInfo<?, ?> cacheInfo);
-
-    /**
-     * Callback method.
-     *
-     * @param schemaName Schema name.
-     * @param typeDesc Type descriptor.
-     */
-    public void onSqlTypeDropped(String schemaName, GridQueryTypeDescriptor typeDesc);
+    public void onSqlTypeDropped(String schemaName, GridQueryTypeDescriptor typeDesc, boolean destroy, boolean clearIdx);
 
     /**
      * Callback on index creation.
@@ -113,9 +132,10 @@ public interface SchemaChangeListener {
      *
      * @param schemaName Schema name.
      * @param name Function name.
+     * @param deterministic Specifies if the function is deterministic (result depends only on input parameters)
      * @param method Public static method, implementing this function.
      */
-    public void onFunctionCreated(String schemaName, String name, Method method);
+    public void onFunctionCreated(String schemaName, String name, boolean deterministic, Method method);
 
     /**
      * Callback method.

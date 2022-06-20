@@ -15,80 +15,62 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.processors.query.h2;
+package org.apache.ignite.internal.processors.query;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.cache.query.annotations.QuerySqlFunction;
 import org.apache.ignite.internal.GridKernalContext;
-import org.apache.ignite.internal.managers.systemview.FiltrableSystemViewLocal;
-import org.apache.ignite.internal.managers.systemview.SystemViewLocal;
+import org.apache.ignite.internal.cache.query.index.Index;
+import org.apache.ignite.internal.jdbc2.JdbcUtils;
 import org.apache.ignite.internal.managers.systemview.walker.SqlIndexViewWalker;
 import org.apache.ignite.internal.managers.systemview.walker.SqlSchemaViewWalker;
 import org.apache.ignite.internal.managers.systemview.walker.SqlTableColumnViewWalker;
 import org.apache.ignite.internal.managers.systemview.walker.SqlTableViewWalker;
 import org.apache.ignite.internal.managers.systemview.walker.SqlViewColumnViewWalker;
 import org.apache.ignite.internal.managers.systemview.walker.SqlViewViewWalker;
+import org.apache.ignite.internal.processors.cache.CacheGroupDescriptor;
 import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
-import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
-import org.apache.ignite.internal.processors.query.GridQueryIndexDescriptor;
-import org.apache.ignite.internal.processors.query.GridQueryRowDescriptorImpl;
-import org.apache.ignite.internal.processors.query.GridQuerySchemaManager;
-import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
-import org.apache.ignite.internal.processors.query.IgniteSQLException;
-import org.apache.ignite.internal.processors.query.QueryField;
-import org.apache.ignite.internal.processors.query.QueryIndexDescriptorImpl;
-import org.apache.ignite.internal.processors.query.QuerySysIndexDescriptorImpl;
-import org.apache.ignite.internal.processors.query.QueryUtils;
-import org.apache.ignite.internal.processors.query.h2.database.H2TreeIndexBase;
-import org.apache.ignite.internal.processors.query.h2.opt.GridH2IndexBase;
-import org.apache.ignite.internal.processors.query.h2.opt.GridH2ProxyIndex;
-import org.apache.ignite.internal.processors.query.h2.opt.GridH2RowDescriptor;
-import org.apache.ignite.internal.processors.query.h2.opt.GridH2Table;
-import org.apache.ignite.internal.processors.query.h2.sys.SqlSystemTableEngine;
-import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemView;
+import org.apache.ignite.internal.processors.metric.impl.MetricUtils;
 import org.apache.ignite.internal.processors.query.schema.AbstractSchemaChangeListener;
 import org.apache.ignite.internal.processors.query.schema.SchemaChangeListener;
 import org.apache.ignite.internal.processors.query.schema.SchemaIndexCacheVisitor;
 import org.apache.ignite.internal.util.GridConcurrentHashSet;
 import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.internal.util.typedef.internal.U;
-import org.apache.ignite.spi.systemview.view.FiltrableSystemView;
-import org.apache.ignite.spi.systemview.view.SqlIndexView;
-import org.apache.ignite.spi.systemview.view.SqlSchemaView;
-import org.apache.ignite.spi.systemview.view.SqlTableColumnView;
-import org.apache.ignite.spi.systemview.view.SqlTableView;
-import org.apache.ignite.spi.systemview.view.SqlViewColumnView;
-import org.apache.ignite.spi.systemview.view.SqlViewView;
 import org.apache.ignite.spi.systemview.view.SystemView;
-import org.h2.index.Index;
-import org.h2.table.Column;
+import org.apache.ignite.spi.systemview.view.sql.SqlIndexView;
+import org.apache.ignite.spi.systemview.view.sql.SqlSchemaView;
+import org.apache.ignite.spi.systemview.view.sql.SqlTableColumnView;
+import org.apache.ignite.spi.systemview.view.sql.SqlTableView;
+import org.apache.ignite.spi.systemview.view.sql.SqlViewColumnView;
+import org.apache.ignite.spi.systemview.view.sql.SqlViewView;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.internal.processors.metric.impl.MetricUtils.metricName;
+import static org.apache.ignite.internal.processors.query.QueryUtils.matches;
 
 /**
  * Schema manager. Responsible for all manipulations on schema objects.
  */
-public class SchemaManager implements GridQuerySchemaManager {
+public class GridQuerySchemaManagerImpl implements GridQuerySchemaManager {
     /** */
     public static final String SQL_SCHEMA_VIEW = "schemas";
 
@@ -128,20 +110,17 @@ public class SchemaManager implements GridQuerySchemaManager {
     /** */
     private final SchemaChangeListener lsnr;
 
-    /** Connection manager. */
-    private final ConnectionManager connMgr;
-
     /** Collection of schemaNames and registered tables. */
-    private final ConcurrentMap<String, H2Schema> schemas = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, GridQuerySchema> schemas = new ConcurrentHashMap<>();
 
     /** Cache name -> schema name */
     private final Map<String, String> cacheName2schema = new ConcurrentHashMap<>();
 
-    /** Data tables. */
-    private final ConcurrentMap<QueryTable, GridH2Table> dataTables = new ConcurrentHashMap<>();
+    /** Map from table identifier to table. */
+    private final ConcurrentMap<T2<String, String>, GridQueryTable> id2tbl = new ConcurrentHashMap<>();
 
     /** System VIEW collection. */
-    private final Set<SqlSystemView> systemViews = new GridConcurrentHashSet<>();
+    private final Set<SystemView<?>> sysViews = new GridConcurrentHashSet<>();
 
     /** Mutex to synchronize schema operations. */
     private final Object schemaMux = new Object();
@@ -156,14 +135,12 @@ public class SchemaManager implements GridQuerySchemaManager {
      * Constructor.
      *
      * @param ctx Kernal context.
-     * @param connMgr Connection manager.
      */
-    public SchemaManager(GridKernalContext ctx, ConnectionManager connMgr) {
+    public GridQuerySchemaManagerImpl(GridKernalContext ctx) {
         this.ctx = ctx;
-        this.connMgr = connMgr;
 
         lsnr = schemaChangeListener(ctx);
-        log = ctx.log(SchemaManager.class);
+        log = ctx.log(GridQuerySchemaManagerImpl.class);
 
         ctx.systemView().registerView(SQL_SCHEMA_VIEW, SQL_SCHEMA_VIEW_DESC,
             new SqlSchemaViewWalker(),
@@ -172,30 +149,30 @@ public class SchemaManager implements GridQuerySchemaManager {
 
         ctx.systemView().registerView(SQL_TBLS_VIEW, SQL_TBLS_VIEW_DESC,
             new SqlTableViewWalker(),
-            dataTables.values(),
+            id2tbl.values(),
             SqlTableView::new);
 
         ctx.systemView().registerView(SQL_VIEWS_VIEW, SQL_VIEWS_VIEW_DESC,
             new SqlViewViewWalker(),
-            systemViews,
+            sysViews,
             SqlViewView::new);
 
         ctx.systemView().registerInnerCollectionView(SQL_IDXS_VIEW, SQL_IDXS_VIEW_DESC,
             new SqlIndexViewWalker(),
-            dataTables.values(),
-            GridH2Table::indexesInformation,
+            id2tbl.values(),
+            t -> t.descriptor().indexes().values(), // TODO check PK indexes and proxies
             SqlIndexView::new);
 
-        ctx.systemView().registerInnerArrayView(SQL_TBL_COLS_VIEW, SQL_TBL_COLS_VIEW_DESC,
+        ctx.systemView().registerInnerCollectionView(SQL_TBL_COLS_VIEW, SQL_TBL_COLS_VIEW_DESC,
             new SqlTableColumnViewWalker(),
-            dataTables.values(),
-            GridH2Table::getColumns,
-            SqlTableColumnView::new);
+            id2tbl.values(),
+            t -> t.descriptor().properties().values(),
+            SqlTableColumnView::new); // TODO check _KEY, _VAL columns
 
-        ctx.systemView().registerInnerArrayView(SQL_VIEW_COLS_VIEW, SQL_VIEW_COLS_VIEW_DESC,
+        ctx.systemView().registerInnerCollectionView(SQL_VIEW_COLS_VIEW, SQL_VIEW_COLS_VIEW_DESC,
             new SqlViewColumnViewWalker(),
-            systemViews,
-            SqlSystemView::getColumns,
+            sysViews,
+            v -> MetricUtils.systemViewAttributes(v).entrySet(),
             SqlViewColumnView::new);
     }
 
@@ -206,14 +183,10 @@ public class SchemaManager implements GridQuerySchemaManager {
      */
     public void start(String[] schemaNames) throws IgniteCheckedException {
         // Register PUBLIC schema which is always present.
-        schemas.put(QueryUtils.DFLT_SCHEMA, new H2Schema(QueryUtils.DFLT_SCHEMA, true));
+        schemas.put(QueryUtils.DFLT_SCHEMA, new GridQuerySchema(QueryUtils.DFLT_SCHEMA, true));
 
         // Create schemas listed in node's configuration.
         createPredefinedSchemas(schemaNames);
-
-        // Register predefined system functions.
-        createSqlFunction(QueryUtils.DFLT_SCHEMA, "QUERY_ENGINE", true,
-            H2Utils.class.getName() + ".queryEngine");
     }
 
     /**
@@ -242,23 +215,16 @@ public class SchemaManager implements GridQuerySchemaManager {
             return;
         }
 
-        SystemViewLocal<?> sysView = view instanceof FiltrableSystemView ?
-            new FiltrableSystemViewLocal<>(ctx, view) : new SystemViewLocal<>(ctx, view);
-
         try {
             synchronized (schemaMux) {
                 createSchema(schema, true);
             }
 
-            try (H2PooledConnection c = connMgr.connection(schema)) {
-                SqlSystemTableEngine.registerView(c.connection(), sysView);
-
-                systemViews.add(sysView);
-            }
+            sysViews.add(view);
 
             lsnr.onSystemViewCreated(schema, view);
         }
-        catch (IgniteCheckedException | SQLException e) {
+        catch (IgniteCheckedException e) {
             throw new IgniteException("Failed to register system view.", e);
         }
     }
@@ -311,30 +277,32 @@ public class SchemaManager implements GridQuerySchemaManager {
      * Registers new class description.
      *
      * @param cacheInfo Cache info.
-     * @param idx Indexing.
      * @param type Type descriptor.
      * @param isSql Whether SQL enabled.
      * @throws IgniteCheckedException If failed.
      */
-    public void onCacheTypeCreated(GridCacheContextInfo cacheInfo, IgniteH2Indexing idx,
-        GridQueryTypeDescriptor type, boolean isSql) throws IgniteCheckedException {
+    public void onCacheTypeCreated(
+        GridCacheContextInfo<?, ?> cacheInfo,
+        GridQueryTypeDescriptor type,
+        boolean isSql
+    ) throws IgniteCheckedException {
         String schemaName = schemaName(cacheInfo.name());
 
-        H2TableDescriptor tblDesc = new H2TableDescriptor(idx, schemaName, type, cacheInfo, isSql);
+        GridQuerySchema schema = schema(schemaName);
 
-        H2Schema schema = schema(schemaName);
+        lsnr.onSqlTypeCreated(schemaName, type, cacheInfo, isSql);
 
-        try (H2PooledConnection conn = connMgr.connection(schema.schemaName())) {
-            GridH2Table h2tbl = createTable(schema.schemaName(), schema, tblDesc, conn, isSql);
+        GridQueryTable tbl = new GridQueryTable(cacheInfo, type);
 
-            schema.add(tblDesc);
+        createSystemIndexes(tbl);
+        createInitialUserIndexes(tbl);
 
-            if (dataTables.putIfAbsent(h2tbl.identifier(), h2tbl) != null)
-                throw new IllegalStateException("Table already exists: " + h2tbl.identifierString());
-        }
-        catch (SQLException e) {
-            throw new IgniteCheckedException("Failed to register query type: " + tblDesc, e);
-        }
+        schema.add(tbl);
+
+        T2<String, String> tableId = new T2<>(schemaName, type.tableName());
+
+        if (id2tbl.putIfAbsent(tableId, tbl) != null)
+            throw new IllegalStateException("Table already exists: " + schemaName + '.' + type.tableName());
     }
 
     /**
@@ -347,33 +315,25 @@ public class SchemaManager implements GridQuerySchemaManager {
     public void onCacheDestroyed(String cacheName, boolean rmvIdx, boolean clearIdx) {
         String schemaName = schemaName(cacheName);
 
-        H2Schema schema = schemas.get(schemaName);
+        GridQuerySchema schema = schemas.get(schemaName);
 
-        // Remove this mapping only after callback to DML proc - it needs that mapping internally
+        // Remove this mapping only after callback to DML proc - it needs that mapping internally.
         cacheName2schema.remove(cacheName);
 
-        // Drop tables.
-        Collection<H2TableDescriptor> rmvTbls = new HashSet<>();
-
-        for (H2TableDescriptor tbl : schema.tables()) {
-            if (F.eq(tbl.cacheName(), cacheName)) {
+        for (GridQueryTable tbl : schema.tables()) {
+            if (F.eq(tbl.cacheInfo().name(), cacheName)) {
                 try {
-                    tbl.table().setRemoveIndexOnDestroy(clearIdx);
-
-                    dropTable(tbl, rmvIdx);
-                    lsnr.onSqlTypeDropped(schemaName, tbl.type(), rmvIdx, clearIdx);
+                    lsnr.onSqlTypeDropped(schemaName, tbl.descriptor(), rmvIdx, clearIdx);
                 }
                 catch (Exception e) {
-                    U.error(log, "Failed to drop table on cache stop (will ignore): " + tbl.fullTableName(), e);
+                    U.error(log, "Failed to drop table on cache stop (will ignore): " +
+                        tbl.descriptor().tableName(), e);
                 }
 
                 schema.drop(tbl);
 
-                rmvTbls.add(tbl);
-
-                GridH2Table h2Tbl = tbl.table();
-
-                dataTables.remove(h2Tbl.identifier(), h2Tbl);
+                T2<String, String> tableId = new T2<>(tbl.cacheInfo().name(), tbl.descriptor().tableName());
+                id2tbl.remove(tableId, tbl);
             }
         }
 
@@ -382,17 +342,12 @@ public class SchemaManager implements GridQuerySchemaManager {
                 schemas.remove(schemaName);
 
                 try {
-                    dropSchema(schemaName);
+                    lsnr.onSchemaDropped(schemaName);
                 }
                 catch (Exception e) {
                     U.error(log, "Failed to drop schema on cache stop (will ignore): " + cacheName, e);
                 }
             }
-        }
-
-        for (H2TableDescriptor tbl : rmvTbls) {
-            for (Index idx : tbl.table().getIndexes())
-                idx.close(null);
         }
     }
 
@@ -408,29 +363,16 @@ public class SchemaManager implements GridQuerySchemaManager {
         if (!predefined)
             predefined = isSchemaPredefined(schemaName);
 
-        H2Schema schema = new H2Schema(schemaName, predefined);
+        GridQuerySchema schema = new GridQuerySchema(schemaName, predefined);
 
-        H2Schema oldSchema = schemas.putIfAbsent(schemaName, schema);
+        GridQuerySchema oldSchema = schemas.putIfAbsent(schemaName, schema);
 
         if (oldSchema == null)
-            createSchema0(schemaName);
+            lsnr.onSchemaCreated(schemaName);
         else
             schema = oldSchema;
 
         schema.incrementUsageCount();
-    }
-
-    /**
-     * Creates DB schema if it has not been created yet.
-     *
-     * @param schema Schema name.
-     */
-    private void createSchema0(String schema) throws IgniteCheckedException {
-        connMgr.executeSystemStatement("CREATE SCHEMA IF NOT EXISTS " + H2Utils.withQuotes(schema));
-        lsnr.onSchemaCreated(schema);
-
-        if (log.isDebugEnabled())
-            log.debug("Created H2 schema for index database: " + schema);
     }
 
     /**
@@ -440,15 +382,7 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @return {@code True} if predefined.
      */
     private boolean isSchemaPredefined(String schemaName) {
-        if (F.eq(QueryUtils.DFLT_SCHEMA, schemaName))
-            return true;
-
-        for (H2Schema schema : schemas.values()) {
-            if (F.eq(schema.schemaName(), schemaName) && schema.predefined())
-                return true;
-        }
-
-        return false;
+        return F.eq(QueryUtils.DFLT_SCHEMA, schemaName);
     }
 
     /**
@@ -474,30 +408,10 @@ public class SchemaManager implements GridQuerySchemaManager {
 
                     String alias = ann.alias().isEmpty() ? m.getName() : ann.alias();
 
-                    createSqlFunction(schema, alias, ann.deterministic(), cls.getName() + '.' + m.getName());
-
                     lsnr.onFunctionCreated(schema, alias, ann.deterministic(), m);
                 }
             }
         }
-    }
-
-    /**
-     * Registers SQL function.
-     *
-     * @param schema Schema.
-     * @param alias Function alias.
-     * @param deterministic Deterministic flag.
-     * @param methodName Public static method name (including class full name).
-     */
-    private void createSqlFunction(String schema, String alias, boolean deterministic, String methodName)
-        throws IgniteCheckedException {
-        String clause = "CREATE ALIAS IF NOT EXISTS " + alias + (deterministic ?
-            " DETERMINISTIC FOR \"" :
-            " FOR \"") +
-            methodName + '"';
-
-        connMgr.executeStatement(schema, clause);
     }
 
     /**
@@ -530,153 +444,41 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param schemaName Schema name.
      * @return Schema.
      */
-    private H2Schema schema(String schemaName) {
+    private GridQuerySchema schema(String schemaName) {
         return schemas.get(schemaName);
     }
 
     /**
-     * Create db table by using given table descriptor.
+     * Create system indexes for table.
      *
-     * @param schemaName Schema name.
-     * @param schema Schema.
-     * @param tbl Table descriptor.
-     * @param conn Connection.
-     * @throws SQLException If failed to create db table.
-     * @throws IgniteCheckedException If failed.
+     * @param tbl Table.
      */
-    private GridH2Table createTable(String schemaName, H2Schema schema, H2TableDescriptor tbl, H2PooledConnection conn,
-        boolean isSql) throws SQLException, IgniteCheckedException {
-        assert schema != null;
-        assert tbl != null;
+    private void createSystemIndexes(GridQueryTable tbl) {
+        List<GridQueryIndexDescriptor> sysIdxs = new ArrayList<>();
 
-        String sql = H2Utils.tableCreateSql(tbl);
+        //TODO
+        //sysIdxs.add(new QuerySysIndexDescriptorImpl(idxName, idxCols));
 
-        if (log.isDebugEnabled())
-            log.debug("Creating DB table with SQL: " + sql);
+        for (GridQueryIndexDescriptor idxDesc : sysIdxs) {
+            Index idx = null; // TODO
 
-        GridH2RowDescriptor rowDesc = new GridH2RowDescriptor(
-            new GridQueryRowDescriptorImpl(tbl.cacheInfo(), tbl.type()));
-
-        GridH2Table h2Tbl = H2TableEngine.createTable(conn.connection(), sql, rowDesc, tbl, ctx.indexProcessor());
-
-        lsnr.onSqlTypeCreated(schemaName, tbl.type(), tbl.cacheInfo(), isSql);
-
-        registerSystemIndexes(h2Tbl, schemaName, tbl);
-
-        for (GridH2IndexBase usrIdx : tbl.createUserIndexes())
-            createInitialUserIndex(schemaName, tbl, usrIdx);
-
-        return h2Tbl;
-    }
-
-    /**
-     * Registers all available indexes.
-     *
-     * @param h2Tbl Table representation.
-     * @param schemaName Current schema.
-     * @param tbl Table descriptor.
-     */
-    private void registerSystemIndexes(GridH2Table h2Tbl, String schemaName, H2TableDescriptor tbl) {
-        Collection<Index> sysIdxs = h2Tbl.getIndexes().stream()
-            .filter(idx -> (idx instanceof H2TreeIndexBase) || ((idx instanceof GridH2ProxyIndex)
-                && ((GridH2ProxyIndex)idx).underlyingIndex() instanceof H2TreeIndexBase))
-            .collect(Collectors.toList());
-
-        for (Index idx : sysIdxs) {
-            Collection<String> idxCols = Stream.of(idx.getColumns())
-                .map(Column::getName)
-                .collect(Collectors.toList());
-
-            String idxName = idx.getName();
-
-            if (idx instanceof GridH2ProxyIndex)
-                idx = ((GridH2ProxyIndex)idx).underlyingIndex();
-
-            QuerySysIndexDescriptorImpl desc = new QuerySysIndexDescriptorImpl(idxName, idxCols);
-
-            lsnr.onIndexCreated(schemaName, tbl.tableName(), idxName, desc,
-                ((GridH2IndexBase)idx).unwrap(org.apache.ignite.internal.cache.query.index.Index.class));
+            lsnr.onIndexCreated(tbl.descriptor().schemaName(), tbl.descriptor().tableName(), idxDesc.name(), idxDesc,
+                idx);
         }
     }
 
     /**
-     * Drops table form h2 database and clear all related indexes (h2 text, lucene).
+     * Create initial user indexes.
      *
-     * @param tbl Table to unregister.
-     * @param destroy {@code true} when table destroyed (cache destroyed) otherwise {@code false}.
+     * @param tbl Table.
      */
-    private void dropTable(H2TableDescriptor tbl, boolean destroy) {
-        assert tbl != null;
+    private void createInitialUserIndexes(GridQueryTable tbl) {
+        for (GridQueryIndexDescriptor idxDesc : tbl.descriptor().indexes().values()) {
+            Index idx = null; // TODO
 
-        if (log.isDebugEnabled())
-            log.debug("Removing query index table: " + tbl.fullTableName());
-
-        try (H2PooledConnection c = connMgr.connection(tbl.schemaName())) {
-            Statement stmt = null;
-
-            try {
-                stmt = c.connection().createStatement();
-
-                String sql = "DROP TABLE IF EXISTS " + tbl.fullTableName();
-
-                if (log.isDebugEnabled())
-                    log.debug("Dropping database index table with SQL: " + sql);
-
-                stmt.executeUpdate(sql);
-            }
-            catch (SQLException e) {
-                throw new IgniteSQLException("Failed to drop database index table [type=" + tbl.type().name() +
-                    ", table=" + tbl.fullTableName() + "]", IgniteQueryErrorCode.TABLE_DROP_FAILED, e);
-            }
-            finally {
-                U.close(stmt, log);
-            }
+            lsnr.onIndexCreated(tbl.descriptor().schemaName(), tbl.descriptor().tableName(), idxDesc.name(), idxDesc,
+                idx);
         }
-    }
-
-    /**
-     * Creates DB schema if it has not been created yet.
-     *
-     * @param schema Schema name.
-     */
-    private void dropSchema(String schema) throws IgniteCheckedException {
-        connMgr.executeSystemStatement("DROP SCHEMA IF EXISTS " + H2Utils.withQuotes(schema));
-        lsnr.onSchemaDropped(schema);
-
-        if (log.isDebugEnabled())
-            log.debug("Dropped H2 schema for index database: " + schema);
-    }
-
-    /**
-     * Add initial user index.
-     *
-     * @param schemaName Schema name.
-     * @param desc Table descriptor.
-     * @param h2Idx User index.
-     * @throws IgniteCheckedException If failed.
-     */
-    private void createInitialUserIndex(String schemaName, H2TableDescriptor desc, GridH2IndexBase h2Idx)
-        throws IgniteCheckedException {
-        GridH2Table h2Tbl = desc.table();
-
-        h2Tbl.proposeUserIndex(h2Idx);
-
-        try {
-            String sql = H2Utils.indexCreateSql(desc.fullTableName(), h2Idx, false);
-
-            connMgr.executeStatement(schemaName, sql);
-        }
-        catch (Exception e) {
-            // Rollback and re-throw.
-            h2Tbl.rollbackUserIndex(h2Idx.getName());
-
-            throw e;
-        }
-
-        GridQueryIndexDescriptor idxDesc = desc.type().indexes().get(h2Idx.getName());
-
-        lsnr.onIndexCreated(schemaName, desc.tableName(), h2Idx.getName(), idxDesc,
-            h2Idx.unwrap(org.apache.ignite.internal.cache.query.index.Index.class));
     }
 
     /**
@@ -692,37 +494,18 @@ public class SchemaManager implements GridQuerySchemaManager {
     public void createIndex(String schemaName, String tblName, QueryIndexDescriptorImpl idxDesc, boolean ifNotExists,
         SchemaIndexCacheVisitor cacheVisitor) throws IgniteCheckedException {
         // Locate table.
-        H2Schema schema = schema(schemaName);
+        GridQuerySchema schema = schema(schemaName);
 
-        H2TableDescriptor desc = (schema != null ? schema.tableByName(tblName) : null);
+        GridQueryTable tbl = (schema != null ? schema.tableByName(tblName) : null);
 
-        if (desc == null)
-            throw new IgniteCheckedException("Table not found in internal H2 database [schemaName=" + schemaName +
+        if (tbl == null) {
+            throw new IgniteCheckedException("Table not found in schema manager [schemaName=" + schemaName +
                 ", tblName=" + tblName + ']');
-
-        GridH2Table h2Tbl = desc.table();
-
-        // Create index.
-        final GridH2IndexBase h2Idx = desc.createUserIndex(idxDesc, cacheVisitor);
-
-        h2Tbl.proposeUserIndex(h2Idx);
-
-        try {
-            // At this point index is in consistent state, promote it through H2 SQL statement, so that cached
-            // prepared statements are re-built.
-            String sql = H2Utils.indexCreateSql(desc.fullTableName(), h2Idx, ifNotExists);
-
-            connMgr.executeStatement(schemaName, sql);
-        }
-        catch (Exception e) {
-            // Rollback and re-throw.
-            h2Tbl.rollbackUserIndex(h2Idx.getName());
-
-            throw e;
         }
 
-        lsnr.onIndexCreated(schemaName, desc.tableName(), h2Idx.getName(), idxDesc,
-            h2Idx.unwrap(org.apache.ignite.internal.cache.query.index.Index.class));
+        Index idx = null; // TODO
+
+        lsnr.onIndexCreated(schemaName, tbl.descriptor().tableName(), idxDesc.name(), idxDesc, idx);
     }
 
     /**
@@ -734,34 +517,23 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param ifNotExists If-not-exists.
      * @throws IgniteCheckedException If failed.
      */
-    public void createIndex(String schemaName, String tblName, GridH2IndexBase h2Idx, boolean ifNotExists)
+    public void createIndex(String schemaName, String tblName, Index h2Idx, boolean ifNotExists)
         throws IgniteCheckedException {
         // Locate table.
-        H2Schema schema = schema(schemaName);
+        GridQuerySchema schema = schema(schemaName);
 
-        H2TableDescriptor desc = (schema != null ? schema.tableByName(tblName) : null);
+        GridQueryTable tbl = (schema != null ? schema.tableByName(tblName) : null);
 
-        if (desc == null)
-            throw new IgniteCheckedException("Table not found in internal H2 database [schemaName=" + schemaName +
+        if (tbl == null) {
+            throw new IgniteCheckedException("Table not found in schema manager [schemaName=" + schemaName +
                 ", tblName=" + tblName + ']');
-
-        GridH2Table h2Tbl = desc.table();
-
-        h2Tbl.proposeUserIndex(h2Idx);
-
-        try {
-            // At this point index is in consistent state, promote it through H2 SQL statement, so that cached
-            // prepared statements are re-built.
-            String sql = H2Utils.indexCreateSql(desc.fullTableName(), h2Idx, ifNotExists);
-
-            connMgr.executeStatement(schemaName, sql);
         }
-        catch (Exception e) {
-            // Rollback and re-throw.
-            h2Tbl.rollbackUserIndex(h2Idx.getName());
 
-            throw e;
-        }
+        Index idx = null; // TODO
+        GridQueryIndexDescriptor idxDesc = null; // TODO
+
+        // TODO it's added
+        lsnr.onIndexCreated(schemaName, tbl.descriptor().tableName(), idxDesc.name(), idxDesc, idx);
     }
 
     /**
@@ -770,21 +542,12 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param schemaName Schema name.
      * @param idxName Index name.
      * @param ifExists If exists.
-     * @throws IgniteCheckedException If failed.
      */
-    public void dropIndex(final String schemaName, String idxName, boolean ifExists)
-        throws IgniteCheckedException {
-        String sql = H2Utils.indexDropSql(schemaName, idxName, ifExists);
+    public void dropIndex(final String schemaName, String idxName, boolean ifExists) {
+        GridQueryTypeDescriptor desc = typeDescriptorForIndex(schemaName, idxName);
 
-        GridH2Table tbl = dataTableForIndex(schemaName, idxName);
-
-        assert tbl != null;
-
-        tbl.setRemoveIndexOnDestroy(true);
-
-        connMgr.executeStatement(schemaName, sql);
-
-        lsnr.onIndexDropped(schemaName, tbl.getName(), idxName);
+        if (desc != null)
+            lsnr.onIndexDropped(schemaName, desc.tableName(), idxName);
     }
 
     /**
@@ -800,19 +563,18 @@ public class SchemaManager implements GridQuerySchemaManager {
     public void addColumn(String schemaName, String tblName, List<QueryField> cols,
         boolean ifTblExists, boolean ifColNotExists) throws IgniteCheckedException {
         // Locate table.
-        H2Schema schema = schema(schemaName);
+        GridQuerySchema schema = schema(schemaName);
 
-        H2TableDescriptor desc = (schema != null ? schema.tableByName(tblName) : null);
+        GridQueryTable tbl = (schema != null ? schema.tableByName(tblName) : null);
 
-        if (desc == null) {
-            if (!ifTblExists)
-                throw new IgniteCheckedException("Table not found in internal H2 database [schemaName=" + schemaName +
+        if (tbl == null) {
+            if (!ifTblExists) {
+                throw new IgniteCheckedException("Table not found in schema manager [schemaName=" + schemaName +
                     ", tblName=" + tblName + ']');
+            }
             else
                 return;
         }
-
-        desc.table().addColumns(cols, ifColNotExists);
 
         lsnr.onColumnsAdded(schemaName, tblName, cols, ifColNotExists);
     }
@@ -830,19 +592,18 @@ public class SchemaManager implements GridQuerySchemaManager {
     public void dropColumn(String schemaName, String tblName, List<String> cols, boolean ifTblExists,
         boolean ifColExists) throws IgniteCheckedException {
         // Locate table.
-        H2Schema schema = schema(schemaName);
+        GridQuerySchema schema = schema(schemaName);
 
-        H2TableDescriptor desc = (schema != null ? schema.tableByName(tblName) : null);
+        GridQueryTable tbl = (schema != null ? schema.tableByName(tblName) : null);
 
-        if (desc == null) {
-            if (!ifTblExists)
-                throw new IgniteCheckedException("Table not found in internal H2 database [schemaName=" + schemaName +
+        if (tbl == null) {
+            if (!ifTblExists) {
+                throw new IgniteCheckedException("Table not found in schema manager [schemaName=" + schemaName +
                     ",tblName=" + tblName + ']');
+            }
             else
                 return;
         }
-
-        desc.table().dropColumns(cols, ifColExists);
 
         lsnr.onColumnsDropped(schemaName, tblName, cols, ifColExists);
     }
@@ -855,13 +616,15 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param type Type name.
      * @return Descriptor.
      */
-    @Nullable public H2TableDescriptor tableForType(String schemaName, String cacheName, String type) {
-        H2Schema schema = schema(schemaName);
+    @Nullable public GridQueryTypeDescriptor tableForType(String schemaName, String cacheName, String type) {
+        GridQuerySchema schema = schema(schemaName);
 
         if (schema == null)
             return null;
 
-        return schema.tableByTypeName(cacheName, type);
+        GridQueryTable tbl = schema.tableByTypeName(cacheName, type);
+
+        return tbl == null ? null : tbl.descriptor();
     }
 
     /**
@@ -870,17 +633,17 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param cacheName Cache name.
      * @return Collection of table descriptors.
      */
-    public Collection<H2TableDescriptor> tablesForCache(String cacheName) {
-        H2Schema schema = schema(schemaName(cacheName));
+    public Collection<GridQueryTypeDescriptor> tablesForCache(String cacheName) {
+        GridQuerySchema schema = schema(schemaName(cacheName));
 
         if (schema == null)
             return Collections.emptySet();
 
-        List<H2TableDescriptor> tbls = new ArrayList<>();
+        List<GridQueryTypeDescriptor> tbls = new ArrayList<>();
 
-        for (H2TableDescriptor tbl : schema.tables()) {
-            if (F.eq(tbl.cacheName(), cacheName))
-                tbls.add(tbl);
+        for (GridQueryTable tbl : schema.tables()) {
+            if (F.eq(tbl.cacheInfo().name(), cacheName))
+                tbls.add(tbl.descriptor());
         }
 
         return tbls;
@@ -893,22 +656,22 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param tblName Table name.
      * @return Table or {@code null} if none found.
      */
-    public GridH2Table dataTable(String schemaName, String tblName) {
-        return dataTables.get(new QueryTable(schemaName, tblName));
+    public GridQueryTable dataTable(String schemaName, String tblName) {
+        return id2tbl.get(new T2<>(schemaName, tblName));
     }
 
     /**
      * @return all known tables.
      */
-    public Collection<GridH2Table> dataTables() {
-        return dataTables.values();
+    public Collection<GridQueryTable> dataTables() {
+        return id2tbl.values();
     }
 
     /**
      * @return all known system views.
      */
-    public Collection<SqlSystemView> systemViews() {
-        return Collections.unmodifiableSet(systemViews);
+    public Collection<SystemView<?>> systemViews() {
+        return Collections.unmodifiableSet(sysViews);
     }
 
     /**
@@ -918,13 +681,13 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param idxName Index name.
      * @return Table or {@code null} if index is not found.
      */
-    public GridH2Table dataTableForIndex(String schemaName, String idxName) {
-        for (Map.Entry<QueryTable, GridH2Table> dataTableEntry : dataTables.entrySet()) {
-            if (F.eq(dataTableEntry.getKey().schema(), schemaName)) {
-                GridH2Table h2Tbl = dataTableEntry.getValue();
+    public GridQueryTypeDescriptor dataTableForIndex(String schemaName, String idxName) {
+        for (Map.Entry<T2<String, String>, GridQueryTable> dataTableEntry : id2tbl.entrySet()) {
+            if (F.eq(dataTableEntry.getKey().get1(), schemaName)) {
+                GridQueryTypeDescriptor desc = dataTableEntry.getValue().descriptor();
 
-                if (h2Tbl.userIndex(idxName) != null)
-                    return h2Tbl;
+                if (desc.indexes().containsKey(idxName))
+                    return desc;
             }
         }
 
@@ -938,11 +701,7 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param mark Mark/unmark flag, {@code true} if index rebuild started, {@code false} if finished.
      */
     public void markIndexRebuild(String cacheName, boolean mark) {
-        for (H2TableDescriptor tblDesc : tablesForCache(cacheName)) {
-            assert tblDesc.table() != null;
-
-            tblDesc.table().markRebuildFromHashInProgress(mark);
-
+        for (GridQueryTypeDescriptor tblDesc : tablesForCache(cacheName)) {
             if (mark)
                 lsnr.onIndexRebuildStarted(tblDesc.schemaName(), tblDesc.tableName());
             else
@@ -952,23 +711,148 @@ public class SchemaManager implements GridQuerySchemaManager {
 
     /** {@inheritDoc} */
     @Override public GridQueryTypeDescriptor typeDescriptorForTable(String schemaName, String tableName) {
-        GridH2Table dataTable = dataTable(schemaName, tableName);
-
-        return dataTable == null ? null : dataTable.rowDescriptor().type();
+        GridQueryTable tbl = dataTable(schemaName, tableName);
+        return tbl == null ? null : tbl.descriptor();
     }
 
     /** {@inheritDoc} */
     @Override public GridQueryTypeDescriptor typeDescriptorForIndex(String schemaName, String idxName) {
-        GridH2Table dataTable = dataTableForIndex(schemaName, idxName);
-
-        return dataTable == null ? null : dataTable.rowDescriptor().type();
+        return dataTableForIndex(schemaName, idxName);
     }
 
     /** {@inheritDoc} */
     @Override public <K, V> GridCacheContextInfo<K, V> cacheInfoForTable(String schemaName, String tableName) {
-        GridH2Table dataTable = dataTable(schemaName, tableName);
+        GridQueryTable tbl = id2tbl.get(new T2<>(schemaName, tableName));
 
-        return dataTable == null ? null : (GridCacheContextInfo<K, V>)dataTable.cacheInfo();
+        return tbl == null ? null : (GridCacheContextInfo<K, V>)tbl.cacheInfo();
+    }
+
+    /**
+     * Return table information filtered by given patterns.
+     *
+     * @param schemaNamePtrn Filter by schema name. Can be {@code null} to don't use the filter.
+     * @param tblNamePtrn Filter by table name. Can be {@code null} to don't use the filter.
+     * @param tblTypes Filter by table type. As Of now supported only 'TABLES' and 'VIEWS'.
+     * Can be {@code null} or empty to don't use the filter.
+     *
+     * @return Table information filtered by given patterns.
+     */
+    public Collection<TableInformation> tablesInformation(
+        String schemaNamePtrn,
+        String tblNamePtrn,
+        String... tblTypes
+    ) {
+        Set<String> types = F.isEmpty(tblTypes) ? Collections.emptySet() : new HashSet<>(Arrays.asList(tblTypes));
+
+        Collection<TableInformation> infos = new ArrayList<>();
+
+        boolean allTypes = F.isEmpty(tblTypes);
+
+        if (allTypes || types.contains(JdbcUtils.TYPE_TABLE)) {
+            dataTables().stream()
+                .filter(t -> matches(t.descriptor().schemaName(), schemaNamePtrn))
+                .filter(t -> matches(t.descriptor().tableName(), tblNamePtrn))
+                .map(t -> {
+                    int cacheGrpId = t.cacheInfo().groupId();
+
+                    CacheGroupDescriptor cacheGrpDesc = ctx.cache().cacheGroupDescriptors().get(cacheGrpId);
+
+                    // We should skip table in case regarding cache group has been removed.
+                    if (cacheGrpDesc == null)
+                        return null;
+
+                    GridQueryTypeDescriptor type = t.descriptor();
+
+                    return new TableInformation(t.descriptor().schemaName(), t.descriptor().tableName(),
+                        JdbcUtils.TYPE_TABLE, cacheGrpId, cacheGrpDesc.cacheOrGroupName(), t.cacheInfo().cacheId(),
+                        t.cacheInfo().name(), type.affinityKey(), type.keyFieldAlias(), type.valueFieldAlias(),
+                        type.keyTypeName(), type.valueTypeName());
+                })
+                .filter(Objects::nonNull)
+                .forEach(infos::add);
+        }
+
+        if ((allTypes || types.contains(JdbcUtils.TYPE_VIEW)) && matches(QueryUtils.SCHEMA_SYS, schemaNamePtrn)) {
+            systemViews().stream()
+                .filter(t -> matches(MetricUtils.toSqlName(t.name()), tblNamePtrn))
+                .map(v -> new TableInformation(QueryUtils.SCHEMA_SYS, MetricUtils.toSqlName(v.name()), JdbcUtils.TYPE_VIEW))
+                .forEach(infos::add);
+        }
+
+        return infos;
+    }
+
+    /**
+     * Return column information filtered by given patterns.
+     *
+     * @param schemaNamePtrn Filter by schema name. Can be {@code null} to don't use the filter.
+     * @param tblNamePtrn Filter by table name. Can be {@code null} to don't use the filter.
+     * @param colNamePtrn Filter by column name. Can be {@code null} to don't use the filter.
+     *
+     * @return Column information filtered by given patterns.
+     */
+    public Collection<ColumnInformation> columnsInformation(
+        String schemaNamePtrn,
+        String tblNamePtrn,
+        String colNamePtrn
+    ) {
+        Collection<ColumnInformation> infos = new ArrayList<>();
+
+        // Gather information about tables.
+        dataTables().stream()
+            .filter(t -> matches(t.descriptor().schemaName(), schemaNamePtrn))
+            .filter(t -> matches(t.descriptor().tableName(), tblNamePtrn))
+            .flatMap(
+                tbl -> {
+                    int[] cnt = new int[1];
+
+                    return tbl.descriptor().fields().keySet().stream()
+                        .filter(field -> matches(field, colNamePtrn))
+                        .map(field -> {
+                            GridQueryProperty prop = tbl.descriptor().property(field);
+
+                            return new ColumnInformation(
+                                ++cnt[0], // Start from 1.
+                                tbl.descriptor().schemaName(),
+                                tbl.descriptor().tableName(),
+                                field,
+                                prop.type(),
+                                !prop.notNull(),
+                                prop.defaultValue(),
+                                prop.precision(),
+                                prop.scale(),
+                                field.equals(tbl.descriptor().affinityKey()));
+                        });
+                }
+            ).forEach(infos::add);
+
+        // Gather information about system views.
+        if (matches(QueryUtils.SCHEMA_SYS, schemaNamePtrn)) {
+            systemViews().stream()
+                .filter(v -> matches(MetricUtils.toSqlName(v.name()), tblNamePtrn))
+                .flatMap(
+                    view -> {
+                        int[] cnt = new int[1];
+
+                        return MetricUtils.systemViewAttributes(view).entrySet().stream()
+                            .filter(c -> matches(MetricUtils.toSqlName(c.getKey()), colNamePtrn))
+                            .map(c -> new ColumnInformation(
+                                ++cnt[0], // Start from 1.
+                                QueryUtils.SCHEMA_SYS,
+                                MetricUtils.toSqlName(view.name()),
+                                c.getKey(),
+                                c.getValue(),
+                                true,
+                                null,
+                                -1,
+                                -1,
+                                false)
+                            );
+                    }
+                ).forEach(infos::add);
+        }
+
+        return infos;
     }
 
     /** */
@@ -1040,7 +924,7 @@ public class SchemaManager implements GridQuerySchemaManager {
 
         /** {@inheritDoc} */
         @Override public void onIndexCreated(String schemaName, String tblName, String idxName,
-            GridQueryIndexDescriptor idxDesc, org.apache.ignite.internal.cache.query.index.Index idx) {
+            GridQueryIndexDescriptor idxDesc, Index idx) {
             lsnrs.forEach(lsnr -> lsnr.onIndexCreated(schemaName, tblName, idxName, idxDesc, idx));
         }
 

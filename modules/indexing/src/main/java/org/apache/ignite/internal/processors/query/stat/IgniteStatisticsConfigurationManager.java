@@ -24,7 +24,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -46,10 +45,13 @@ import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.processors.cluster.GridClusterStateProcessor;
 import org.apache.ignite.internal.processors.metastorage.DistributedMetaStorage;
 import org.apache.ignite.internal.processors.metastorage.DistributedMetastorageLifecycleListener;
+import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 import org.apache.ignite.internal.processors.query.IgniteSQLException;
 import org.apache.ignite.internal.processors.query.QueryUtils;
 import org.apache.ignite.internal.processors.query.h2.SchemaManager;
 import org.apache.ignite.internal.processors.query.h2.opt.GridH2Table;
+import org.apache.ignite.internal.processors.query.schema.AbstractSchemaChangeListener;
+import org.apache.ignite.internal.processors.query.schema.SchemaChangeListener;
 import org.apache.ignite.internal.processors.query.stat.config.StatisticsColumnConfiguration;
 import org.apache.ignite.internal.processors.query.stat.config.StatisticsObjectConfiguration;
 import org.apache.ignite.internal.processors.query.stat.view.ColumnConfigurationViewSupplier;
@@ -90,6 +92,9 @@ public class IgniteStatisticsConfigurationManager {
 
     /** Persistence enabled flag. */
     private final boolean persistence;
+
+    /** Active flag. */
+    private volatile boolean active;
 
     /** Logger. */
     private final IgniteLogger log;
@@ -175,6 +180,9 @@ public class IgniteStatisticsConfigurationManager {
             new StatisticsColumnConfigurationViewWalker(),
             colCfgViewSupplier::columnConfigurationViewSupplier,
             Function.identity());
+
+        if (isServerNode)
+            subscriptionProcessor.registerSchemaChangeListener(schemaLsnr);
     }
 
     /**
@@ -203,50 +211,47 @@ public class IgniteStatisticsConfigurationManager {
         mgmtBusyExecutor.execute(this::updateAllLocalStatistics);
     }
 
-    /** Drop columns listener to clean its statistics configuration. */
-    private final BiConsumer<GridH2Table, List<String>> dropColsLsnr = new BiConsumer<GridH2Table, List<String>>() {
-        /**
-         * Drop statistics after columns dropped.
-         *
-         * @param tbl Table.
-         * @param cols Dropped columns.
-         */
-        @Override public void accept(GridH2Table tbl, List<String> cols) {
-            assert !F.isEmpty(cols);
-            dropStatistics(Collections.singletonList(
-                    new StatisticsTarget(
-                        tbl.identifier().schema(),
-                        tbl.getName(),
-                        cols.toArray(EMPTY_STRINGS)
-                    )
-                ),
-                false);
-        }
-    };
+    /** */
+    private final SchemaChangeListener schemaLsnr = new AbstractSchemaChangeListener() {
+        @Override public void onSqlTypeDropped(
+            String schemaName,
+            GridQueryTypeDescriptor typeDescriptor,
+            boolean destroy,
+            boolean clearIdx
+        ) {
+            if (!active || !destroy)
+                return;
 
-    /** Drop table listener to clear its statistics configuration. */
-    private final BiConsumer<String, String> dropTblLsnr = new BiConsumer<String, String>() {
-        /**
-         * Drop statistics after table dropped.
-         *
-         * @param schema Schema name.
-         * @param name Table name.
-         */
-        @Override public void accept(String schema, String name) {
-            assert !F.isEmpty(schema) && !F.isEmpty(name) : schema + ":" + name;
+            // Clear table statistics configuration.
+            String name = typeDescriptor.tableName();
 
-            StatisticsKey key = new StatisticsKey(schema, name);
+            assert !F.isEmpty(schemaName) && !F.isEmpty(name) : schemaName + ":" + name;
+
+            StatisticsKey key = new StatisticsKey(schemaName, name);
 
             try {
                 StatisticsObjectConfiguration cfg = config(key);
 
                 if (cfg != null && !F.isEmpty(cfg.columns()))
-                    dropStatistics(Collections.singletonList(new StatisticsTarget(schema, name)), false);
+                    dropStatistics(Collections.singletonList(new StatisticsTarget(schemaName, name)), false);
             }
             catch (Throwable e) {
                 if (!X.hasCause(e, NodeStoppingException.class))
                     throw new IgniteSQLException("Error on drop statistics for dropped table [key=" + key + ']', e);
             }
+        }
+
+        @Override public void onColumnsDropped(String schemaName, String tblName, List<String> cols, boolean ifColExists) {
+            if (!active)
+                return;
+
+            assert !F.isEmpty(cols);
+
+            // Drop statistics after columns dropped.
+            dropStatistics(
+                Collections.singletonList(new StatisticsTarget(schemaName, tblName, cols.toArray(EMPTY_STRINGS))),
+                false
+            );
         }
     };
 
@@ -327,15 +332,12 @@ public class IgniteStatisticsConfigurationManager {
      * Start tracking configuration changes and do initial loading.
      */
     public void start() {
+        active = true;
+
         if (log.isTraceEnabled())
             log.trace("Statistics configuration manager starting...");
 
         mgmtBusyExecutor.activate();
-
-        if (isServerNode) {
-            schemaMgr.registerDropColumnsListener(dropColsLsnr);
-            schemaMgr.registerDropTableListener(dropTblLsnr);
-        }
 
         if (log.isDebugEnabled())
             log.debug("Statistics configuration manager started.");
@@ -364,13 +366,10 @@ public class IgniteStatisticsConfigurationManager {
      * Stop tracking configuration changes.
      */
     public void stop() {
+        active = false;
+
         if (log.isTraceEnabled())
             log.trace("Statistics configuration manager stopping...");
-
-        if (isServerNode) {
-            schemaMgr.unregisterDropColumnsListener(dropColsLsnr);
-            schemaMgr.unregisterDropTableListener(dropTblLsnr);
-        }
 
         mgmtBusyExecutor.deactivate();
 
