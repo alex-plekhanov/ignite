@@ -57,7 +57,7 @@ public class H2TableDescriptor {
     public static final String PK_HASH_IDX_NAME = "_key_PK_hash";
 
     /** Affinity key index name. */
-    public static final String AFFINITY_KEY_IDX_NAME = "AFFINITY_KEY";
+    public static final String AFFINITY_KEY_IDX_NAME = QueryUtils.AFFINITY_KEY_INDEX;
 
     /** Indexing. */
     private final IgniteH2Indexing idx;
@@ -197,15 +197,69 @@ public class H2TableDescriptor {
         return luceneIdx;
     }
 
+    /**
+     * @return Hash index.
+     */
+    public Index hashIndex() {
+        return pkHashIdx;
+    }
+
     /** {@inheritDoc} */
     @Override public String toString() {
         return S.toString(H2TableDescriptor.class, this);
     }
 
     /**
+     * Create hash index if needed.
+     */
+    public void createHashIndex(GridH2Table tbl) {
+        if (cacheInfo.affinityNode()) {
+            IndexColumn keyCol = tbl.indexColumn(QueryUtils.KEY_COL, SortOrder.ASCENDING);
+            IndexColumn affCol = tbl.getAffinityKeyColumn();
+
+            if (affCol != null && H2Utils.equals(affCol, keyCol))
+                affCol = null;
+
+            List<IndexColumn> cols = H2Utils.treeIndexColumns(tbl.rowDescriptor(),
+                new ArrayList<>(2), keyCol, affCol);
+
+            assert pkHashIdx == null : pkHashIdx;
+
+            pkHashIdx = new H2PkHashIndex(cacheInfo.cacheContext(), tbl, PK_HASH_IDX_NAME, cols,
+                tbl.rowDescriptor().context().config().getQueryParallelism());
+        }
+    }
+
+    /**
+     * Create text (lucene) index if needed.
+     */
+    public void createTextIndex(GridH2Table tbl) {
+        if (type().valueClass() == String.class
+            && !idx.distributedConfiguration().isDisableCreateLuceneIndexForStringValueType()) {
+            try {
+                luceneIdx = new GridLuceneIndex(idx.kernalContext(), tbl.cacheName(), type);
+            }
+            catch (IgniteCheckedException e1) {
+                throw new IgniteException(e1);
+            }
+        }
+
+        GridQueryIndexDescriptor textIdx = type.textIndex();
+
+        if (textIdx != null) {
+            try {
+                luceneIdx = new GridLuceneIndex(idx.kernalContext(), tbl.cacheName(), type);
+            }
+            catch (IgniteCheckedException e1) {
+                throw new IgniteException(e1);
+            }
+        }
+    }
+
+    /**
      * Create list of indexes. First must be primary key, after that all unique indexes and only then non-unique
      * indexes. All indexes must be subtypes of {@link H2TreeIndexBase}.
-     *
+     * TODO: remove
      * @param tbl Table to create indexes for.
      * @return List of indexes.
      */
@@ -445,7 +499,7 @@ public class H2TableDescriptor {
 
     /**
      * Create hash index.
-     *
+     * TODO: remove
      * @param tbl Table.
      * @param cols Columns.
      * @return Index.

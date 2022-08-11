@@ -18,7 +18,10 @@
 package org.apache.ignite.internal.cache.query.index.sorted;
 
 import org.apache.ignite.internal.cache.query.index.IndexDefinition;
+import org.apache.ignite.internal.processors.cache.GridCacheContext;
+import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
 import org.apache.ignite.internal.processors.query.GridQueryRowDescriptor;
+import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 
 /**
  * Represents a definition of a sorted index.
@@ -39,8 +42,11 @@ public interface SortedIndexDefinition extends IndexDefinition {
     /** Cache of index rows. */
     public IndexRowCache idxRowCache();
 
-    /** Table row descriptor. */
-    public GridQueryRowDescriptor rowDescriptor();
+    /** Type descriptor. */
+    public GridQueryTypeDescriptor typeDescriptor();
+
+    /** Cache info. */
+    public GridCacheContextInfo<?, ?> cacheInfo();
 
     /** Amount of index tree segments.*/
     public int segments();

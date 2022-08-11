@@ -18,19 +18,19 @@
 package org.apache.ignite.spi.systemview.view.sql;
 
 import org.apache.ignite.internal.managers.systemview.walker.Order;
-import org.apache.ignite.internal.processors.query.GridQuerySchema;
+import org.apache.ignite.internal.processors.query.schema.management.SchemaDescriptor;
 
 /**
  * Sql schema system view representation.
  */
 public class SqlSchemaView {
     /** Schema. */
-    private final GridQuerySchema schema;
+    private final SchemaDescriptor schema;
 
     /**
      * @param schema Schema.
      */
-    public SqlSchemaView(GridQuerySchema schema) {
+    public SqlSchemaView(SchemaDescriptor schema) {
         this.schema = schema;
     }
 

@@ -456,12 +456,9 @@ public class IgniteH2Indexing implements GridQueryIndexing {
 
             List<IndexColumn> cols = ctx.indexProcessor().useUnwrappedPk(cctx, treeName) ? unwrappedCols : wrappedCols;
 
-            IndexKeyTypeSettings keyTypeSettings = new IndexKeyTypeSettings()
-                .stringOptimizedCompare(CompareMode.OFF.equals(tbl.getCompareMode().getName()))
-                .binaryUnsigned(tbl.getCompareMode().isBinaryUnsigned());
-
             QueryIndexDefinition idxDef = new QueryIndexDefinition(
-                tbl.rowDescriptor(),
+                typeDesc,
+                cacheInfo,
                 new IndexName(tbl.cacheName(), tbl.getSchema().getName(), tbl.getName(), name),
                 treeName,
                 ctx.indexProcessor().rowCacheCleaner(cacheInfo.groupId()),
@@ -469,7 +466,7 @@ public class IgniteH2Indexing implements GridQueryIndexing {
                 affinityKey,
                 H2Utils.columnsToKeyDefinitions(tbl, cols),
                 inlineSize,
-                keyTypeSettings
+                ctx.indexProcessor().keyTypeSettings()
             );
 
             org.apache.ignite.internal.cache.query.index.Index index;
@@ -2182,6 +2179,13 @@ public class IgniteH2Indexing implements GridQueryIndexing {
                     log
                 )
             );
+
+        // Setup default index key type settings.
+        CompareMode compareMode = H2Utils.session(connMgr.connection()).getDatabase().getCompareMode();
+
+        ctx.indexProcessor().keyTypeSettings()
+            .stringOptimizedCompare(CompareMode.OFF.equals(compareMode.getName()))
+            .binaryUnsigned(compareMode.isBinaryUnsigned());
     }
 
     /**

@@ -37,12 +37,14 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteInterruptedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cache.CachePeekMode;
+import org.apache.ignite.cache.QueryIndexType;
 import org.apache.ignite.cache.query.QueryRetryException;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.cache.query.index.IndexDefinition;
 import org.apache.ignite.internal.cache.query.index.IndexName;
 import org.apache.ignite.internal.cache.query.index.IndexProcessor;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexKeyDefinition;
+import org.apache.ignite.internal.cache.query.index.sorted.inline.InlineIndexImpl;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.GridCacheContext;
 import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
@@ -58,6 +60,7 @@ import org.apache.ignite.internal.processors.query.h2.database.H2IndexType;
 import org.apache.ignite.internal.processors.query.h2.database.H2TreeIndex;
 import org.apache.ignite.internal.processors.query.h2.database.H2TreeIndexBase;
 import org.apache.ignite.internal.processors.query.h2.database.IndexInformation;
+import org.apache.ignite.internal.processors.query.schema.management.IndexDescriptor;
 import org.apache.ignite.internal.processors.query.stat.ObjectStatistics;
 import org.apache.ignite.internal.processors.query.stat.StatisticsKey;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
@@ -127,10 +130,10 @@ public class GridH2Table extends TableBase {
     private volatile ArrayList<Index> idxs;
 
     /** */
-    private final int pkIndexPos;
+    private volatile int pkIndexPos;
 
     /** Total number of system indexes. */
-    private final int sysIdxsCnt;
+    private volatile int sysIdxsCnt;
 
     /** */
     private final Map<String, GridH2IndexBase> tmpIdxs = new HashMap<>();
@@ -223,6 +226,16 @@ public class GridH2Table extends TableBase {
 
         identifierStr = identifier.schema() + "." + identifier.table();
 
+/*
+        tblDesc.createHashIndex(this);
+        tblDesc.createTextIndex(this);
+        idxs = new ArrayList<>();
+
+        if (tblDesc.hashIndex() != null)
+            idxs.add(tblDesc.hashIndex());
+*/
+
+        // TODO remove
         // Indexes must be created in the end when everything is ready.
         idxs = tblDesc.createSystemIndexes(this);
 
@@ -266,6 +279,28 @@ public class GridH2Table extends TableBase {
             GridKernalContext ctx = desc.context().kernalContext();
 
             log = ctx.log(getClass());
+        }
+    }
+
+    /** */
+    public void addSystemIndex(Index idx) {
+        // TODO use this
+
+        lock(true);
+
+        try {
+            if (idx.getIndexType().isPrimaryKey()) {
+                // Add SCAN index at 0 which is required by H2.
+                idxs.add(0, new H2TableScanIndex(this, (GridH2IndexBase)idx, (GridH2IndexBase)tblDesc.hashIndex()));
+                pkIndexPos = idxs.size();
+            }
+
+            idxs.add(idx);
+
+            sysIdxsCnt = idxs.size();
+        }
+        finally {
+            unlock(true);
         }
     }
 
@@ -751,20 +786,10 @@ public class GridH2Table extends TableBase {
         if (idx instanceof GridH2IndexBase) {
             GridH2IndexBase h2idx = (GridH2IndexBase)idx;
 
-            // Destroy underlying Ignite index.
-            IndexDefinition deleteDef = new IndexDefinition() {
-                /** {@inheritDoc} */
-                @Override public IndexName idxName() {
-                    return new IndexName(cacheName(), getSchema().getName(), tableName, idx.getName());
-                }
-
-                /** {@inheritDoc} */
-                @Override public LinkedHashMap<String, IndexKeyDefinition> indexKeyDefinitions() {
-                    throw new UnsupportedOperationException("Hasn't be invoked for destroyed index.");
-                }
-            };
-
-            idxProc.removeIndex(cacheContext(), deleteDef.idxName(), !rmIndex);
+            idxProc.removeIndex(
+                new IndexName(cacheName(), getSchema().getName(), tableName, idx.getName()),
+                !rmIndex
+            );
 
             // Call it too, if H2 index stores some state.
             h2idx.destroy(rmIndex);

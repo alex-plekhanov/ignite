@@ -18,10 +18,10 @@
 package org.apache.ignite.spi.systemview.view.sql;
 
 import java.util.stream.Collectors;
+import org.apache.ignite.internal.cache.query.index.SortOrder;
 import org.apache.ignite.internal.managers.systemview.walker.Order;
-import org.apache.ignite.internal.processors.query.GridQueryIndexDescriptor;
-import org.apache.ignite.internal.processors.query.GridQueryTable;
-import org.apache.ignite.internal.processors.query.QueryUtils;
+import org.apache.ignite.internal.processors.query.schema.management.IndexDescriptor;
+import org.apache.ignite.internal.processors.query.schema.management.TableDescriptor;
 import org.apache.ignite.spi.systemview.view.SystemView;
 
 /**
@@ -29,16 +29,16 @@ import org.apache.ignite.spi.systemview.view.SystemView;
  */
 public class SqlIndexView {
     /** Table. */
-    private final GridQueryTable tbl;
+    private final TableDescriptor tbl;
 
     /** Index. */
-    private final GridQueryIndexDescriptor idx;
+    private final IndexDescriptor idx;
 
     /**
      * @param tbl Table information.
      * @param idx Index information.
      */
-    public SqlIndexView(GridQueryTable tbl, GridQueryIndexDescriptor idx) {
+    public SqlIndexView(TableDescriptor tbl, IndexDescriptor idx) {
         this.tbl = tbl;
         this.idx = idx;
     }
@@ -129,7 +129,9 @@ public class SqlIndexView {
      */
     @Order(8)
     public String columns() {
-        return idx.fields().stream().map(fld -> '"' + fld + '"' + (idx.descending(fld) ? "\"DESC\"" : "\"ASC\""))
+        return idx.keyDefinitions().entrySet().stream()
+            .map(fld -> '"' + fld.getKey() + '"' +
+                (fld.getValue().order().sortOrder() == SortOrder.DESC ? " \"DESC\"" : " \"ASC\""))
             .collect(Collectors.joining(", "));
     }
 
@@ -140,7 +142,7 @@ public class SqlIndexView {
      */
     @Order(9)
     public boolean isPk() {
-        return QueryUtils.PRIMARY_KEY_INDEX.equals(idx.name());
+        return idx.isPk();
     }
 
     /**
@@ -150,7 +152,7 @@ public class SqlIndexView {
      */
     @Order(10)
     public boolean isUnique() {
-        return QueryUtils.PRIMARY_KEY_INDEX.equals(idx.name());
+        return idx.isPk();
     }
 
     /**

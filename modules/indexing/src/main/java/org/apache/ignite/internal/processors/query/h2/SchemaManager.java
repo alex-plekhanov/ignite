@@ -41,12 +41,6 @@ import org.apache.ignite.cache.query.annotations.QuerySqlFunction;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.managers.systemview.FiltrableSystemViewLocal;
 import org.apache.ignite.internal.managers.systemview.SystemViewLocal;
-import org.apache.ignite.internal.managers.systemview.walker.SqlIndexViewWalker;
-import org.apache.ignite.internal.managers.systemview.walker.SqlSchemaViewWalker;
-import org.apache.ignite.internal.managers.systemview.walker.SqlTableColumnViewWalker;
-import org.apache.ignite.internal.managers.systemview.walker.SqlTableViewWalker;
-import org.apache.ignite.internal.managers.systemview.walker.SqlViewColumnViewWalker;
-import org.apache.ignite.internal.managers.systemview.walker.SqlViewViewWalker;
 import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.processors.query.GridQueryIndexDescriptor;
@@ -68,16 +62,11 @@ import org.apache.ignite.internal.processors.query.h2.sys.view.SqlSystemView;
 import org.apache.ignite.internal.processors.query.schema.AbstractSchemaChangeListener;
 import org.apache.ignite.internal.processors.query.schema.SchemaChangeListener;
 import org.apache.ignite.internal.processors.query.schema.SchemaIndexCacheVisitor;
+import org.apache.ignite.internal.processors.query.schema.management.IndexDescriptor;
 import org.apache.ignite.internal.util.GridConcurrentHashSet;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.spi.systemview.view.FiltrableSystemView;
-import org.apache.ignite.spi.systemview.view.SqlIndexView;
-import org.apache.ignite.spi.systemview.view.SqlSchemaView;
-import org.apache.ignite.spi.systemview.view.SqlTableColumnView;
-import org.apache.ignite.spi.systemview.view.SqlTableView;
-import org.apache.ignite.spi.systemview.view.SqlViewColumnView;
-import org.apache.ignite.spi.systemview.view.SqlViewView;
 import org.apache.ignite.spi.systemview.view.SystemView;
 import org.h2.index.Index;
 import org.h2.table.Column;
@@ -165,6 +154,7 @@ public class SchemaManager implements GridQuerySchemaManager {
         lsnr = schemaChangeListener(ctx);
         log = ctx.log(SchemaManager.class);
 
+/*
         ctx.systemView().registerView(SQL_SCHEMA_VIEW, SQL_SCHEMA_VIEW_DESC,
             new SqlSchemaViewWalker(),
             schemas.values(),
@@ -197,6 +187,7 @@ public class SchemaManager implements GridQuerySchemaManager {
             systemViews,
             SqlSystemView::getColumns,
             SqlViewColumnView::new);
+*/
     }
 
     /**
@@ -592,10 +583,19 @@ public class SchemaManager implements GridQuerySchemaManager {
             if (idx instanceof GridH2ProxyIndex)
                 idx = ((GridH2ProxyIndex)idx).underlyingIndex();
 
-            QuerySysIndexDescriptorImpl desc = new QuerySysIndexDescriptorImpl(idxName, idxCols);
+            QuerySysIndexDescriptorImpl desc = new QuerySysIndexDescriptorImpl(idxName, idxCols, -1);
 
-            lsnr.onIndexCreated(schemaName, tbl.tableName(), idxName, desc,
-                ((GridH2IndexBase)idx).unwrap(org.apache.ignite.internal.cache.query.index.Index.class));
+            IndexDescriptor idxDesc = new IndexDescriptor(
+                idxName,
+                desc.type(),
+                H2Utils.columnsToKeyDefinitions(h2Tbl, F.asList(idx.getIndexColumns())),
+                F.eq(idxName, QueryUtils.PRIMARY_KEY_INDEX),
+                F.eq(idxName, QueryUtils.AFFINITY_KEY_INDEX),
+                desc.inlineSize(),
+                ((GridH2IndexBase)idx).unwrap(org.apache.ignite.internal.cache.query.index.Index.class)
+            );
+
+            lsnr.onIndexCreated(schemaName, tbl.tableName(), idxName, idxDesc);
         }
     }
 
@@ -675,8 +675,17 @@ public class SchemaManager implements GridQuerySchemaManager {
 
         GridQueryIndexDescriptor idxDesc = desc.type().indexes().get(h2Idx.getName());
 
-        lsnr.onIndexCreated(schemaName, desc.tableName(), h2Idx.getName(), idxDesc,
-            h2Idx.unwrap(org.apache.ignite.internal.cache.query.index.Index.class));
+        IndexDescriptor idxDesc0 = new IndexDescriptor(
+            h2Idx.getName(),
+            idxDesc.type(),
+            H2Utils.columnsToKeyDefinitions(h2Tbl, F.asList(h2Idx.getIndexColumns())),
+            false,
+            false,
+            idxDesc.inlineSize(),
+            h2Idx.unwrap(org.apache.ignite.internal.cache.query.index.Index.class)
+        );
+
+        lsnr.onIndexCreated(schemaName, desc.tableName(), h2Idx.getName(), idxDesc0);
     }
 
     /**
@@ -721,8 +730,17 @@ public class SchemaManager implements GridQuerySchemaManager {
             throw e;
         }
 
-        lsnr.onIndexCreated(schemaName, desc.tableName(), h2Idx.getName(), idxDesc,
-            h2Idx.unwrap(org.apache.ignite.internal.cache.query.index.Index.class));
+        IndexDescriptor idxDesc0 = new IndexDescriptor(
+            h2Idx.getName(),
+            idxDesc.type(),
+            H2Utils.columnsToKeyDefinitions(h2Tbl, F.asList(h2Idx.getIndexColumns())),
+            false,
+            false,
+            idxDesc.inlineSize(),
+            h2Idx.unwrap(org.apache.ignite.internal.cache.query.index.Index.class)
+        );
+
+        lsnr.onIndexCreated(schemaName, desc.tableName(), h2Idx.getName(), idxDesc0);
     }
 
     /**
@@ -1039,9 +1057,8 @@ public class SchemaManager implements GridQuerySchemaManager {
         }
 
         /** {@inheritDoc} */
-        @Override public void onIndexCreated(String schemaName, String tblName, String idxName,
-            GridQueryIndexDescriptor idxDesc, org.apache.ignite.internal.cache.query.index.Index idx) {
-            lsnrs.forEach(lsnr -> lsnr.onIndexCreated(schemaName, tblName, idxName, idxDesc, idx));
+        @Override public void onIndexCreated(String schemaName, String tblName, String idxName, IndexDescriptor idxDesc) {
+            lsnrs.forEach(lsnr -> lsnr.onIndexCreated(schemaName, tblName, idxName, idxDesc));
         }
 
         /** {@inheritDoc} */

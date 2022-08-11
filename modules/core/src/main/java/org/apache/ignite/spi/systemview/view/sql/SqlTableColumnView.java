@@ -19,7 +19,7 @@ package org.apache.ignite.spi.systemview.view.sql;
 
 import org.apache.ignite.internal.managers.systemview.walker.Order;
 import org.apache.ignite.internal.processors.query.GridQueryProperty;
-import org.apache.ignite.internal.processors.query.GridQueryTable;
+import org.apache.ignite.internal.processors.query.schema.management.TableDescriptor;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.spi.systemview.view.SystemView;
 
@@ -28,7 +28,7 @@ import org.apache.ignite.spi.systemview.view.SystemView;
  */
 public class SqlTableColumnView {
     /** Table. */
-    private final GridQueryTable tbl;
+    private final TableDescriptor tbl;
 
     /** Query property. */
     private final GridQueryProperty prop;
@@ -37,7 +37,7 @@ public class SqlTableColumnView {
      * @param tbl Table.
      * @param prop Column.
      */
-    public SqlTableColumnView(GridQueryTable tbl, GridQueryProperty prop) {
+    public SqlTableColumnView(TableDescriptor tbl, GridQueryProperty prop) {
         this.tbl = tbl;
         this.prop = prop;
     }
@@ -107,7 +107,7 @@ public class SqlTableColumnView {
         return false;
     }
 
-    /** @return {@code True} if autoincremented field. */
+    /** @return {@code True} if affinity column. */
     public boolean affinityColumn() {
         return F.eq(prop.name(), tbl.descriptor().affinityKey());
     }

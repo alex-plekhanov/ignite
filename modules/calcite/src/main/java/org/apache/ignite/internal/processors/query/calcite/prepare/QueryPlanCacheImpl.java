@@ -27,6 +27,7 @@ import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 import org.apache.ignite.internal.processors.query.QueryField;
 import org.apache.ignite.internal.processors.query.calcite.util.AbstractService;
 import org.apache.ignite.internal.processors.query.schema.AbstractSchemaChangeListener;
+import org.apache.ignite.internal.processors.query.schema.management.IndexDescriptor;
 import org.apache.ignite.internal.processors.subscription.GridInternalSubscriptionProcessor;
 import org.apache.ignite.internal.util.GridBoundedConcurrentLinkedHashMap;
 
@@ -115,8 +116,7 @@ public class QueryPlanCacheImpl extends AbstractService implements QueryPlanCach
             String schemaName,
             String tblName,
             String idxName,
-            GridQueryIndexDescriptor idxDesc,
-            Index idx
+            IndexDescriptor idxDesc
         ) {
             clear();
         }

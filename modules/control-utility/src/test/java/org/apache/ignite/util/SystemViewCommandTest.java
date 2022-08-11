@@ -108,11 +108,11 @@ import static org.apache.ignite.internal.processors.pool.PoolProcessor.STREAM_PO
 import static org.apache.ignite.internal.processors.pool.PoolProcessor.SYS_POOL_QUEUE_VIEW;
 import static org.apache.ignite.internal.processors.query.QueryUtils.DFLT_SCHEMA;
 import static org.apache.ignite.internal.processors.query.QueryUtils.SCHEMA_SYS;
-import static org.apache.ignite.internal.processors.query.h2.SchemaManager.SQL_SCHEMA_VIEW;
-import static org.apache.ignite.internal.processors.query.h2.SchemaManager.SQL_TBLS_VIEW;
-import static org.apache.ignite.internal.processors.query.h2.SchemaManager.SQL_TBL_COLS_VIEW;
-import static org.apache.ignite.internal.processors.query.h2.SchemaManager.SQL_VIEWS_VIEW;
-import static org.apache.ignite.internal.processors.query.h2.SchemaManager.SQL_VIEW_COLS_VIEW;
+import static org.apache.ignite.internal.processors.query.schema.management.SchemaManager.SQL_SCHEMA_VIEW;
+import static org.apache.ignite.internal.processors.query.schema.management.SchemaManager.SQL_TBLS_VIEW;
+import static org.apache.ignite.internal.processors.query.schema.management.SchemaManager.SQL_TBL_COLS_VIEW;
+import static org.apache.ignite.internal.processors.query.schema.management.SchemaManager.SQL_VIEWS_VIEW;
+import static org.apache.ignite.internal.processors.query.schema.management.SchemaManager.SQL_VIEW_COLS_VIEW;
 import static org.apache.ignite.internal.processors.service.IgniteServiceProcessor.SVCS_VIEW;
 import static org.apache.ignite.internal.processors.task.GridTaskProcessor.TASKS_VIEW;
 import static org.apache.ignite.internal.util.IgniteUtils.toStringSafe;

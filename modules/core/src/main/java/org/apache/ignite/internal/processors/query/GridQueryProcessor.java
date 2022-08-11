@@ -106,6 +106,7 @@ import org.apache.ignite.internal.processors.query.schema.SchemaOperationClientF
 import org.apache.ignite.internal.processors.query.schema.SchemaOperationException;
 import org.apache.ignite.internal.processors.query.schema.SchemaOperationManager;
 import org.apache.ignite.internal.processors.query.schema.SchemaOperationWorker;
+import org.apache.ignite.internal.processors.query.schema.management.SchemaManager;
 import org.apache.ignite.internal.processors.query.schema.message.SchemaAbstractDiscoveryMessage;
 import org.apache.ignite.internal.processors.query.schema.message.SchemaFinishDiscoveryMessage;
 import org.apache.ignite.internal.processors.query.schema.message.SchemaOperationStatusMessage;
@@ -285,7 +286,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     private RunningQueryManager runningQryMgr;
 
     /** Schema manager. */
-    private GridQuerySchemaManagerImpl schemaMgr;
+    private SchemaManager schemaMgr;
 
     /**
      * Constructor.
@@ -330,7 +331,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     @Override public void start() throws IgniteCheckedException {
         super.start();
 
-        schemaMgr = new GridQuerySchemaManagerImpl(ctx);
+        schemaMgr = new SchemaManager(ctx);
         schemaMgr.start(ctx.config().getSqlConfiguration().getSqlSchemas());
 
         runningQryMgr = new RunningQueryManager(ctx);

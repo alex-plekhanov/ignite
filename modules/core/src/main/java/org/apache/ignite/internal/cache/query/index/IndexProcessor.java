@@ -30,6 +30,7 @@ import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInternalFuture;
+import org.apache.ignite.internal.cache.query.index.sorted.IndexKeyTypeSettings;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexRow;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexRowCache;
 import org.apache.ignite.internal.cache.query.index.sorted.IndexRowCacheRegistry;
@@ -106,6 +107,9 @@ public class IndexProcessor extends GridProcessorAdapter {
 
     /** Row cache. */
     private final IndexRowCacheRegistry idxRowCacheRegistry = new IndexRowCacheRegistry();
+
+    /** Default key type settings. */
+    private final IndexKeyTypeSettings keyTypeSettings = new IndexKeyTypeSettings();
 
     /**
      * Registry of all indexes. High key is a cache name, lower key is an unique index name.
@@ -261,11 +265,10 @@ public class IndexProcessor extends GridProcessorAdapter {
     /**
      * Removes an index.
      *
-     * @param cctx Cache context.
      * @param idxName Index name.
      * @param softDelete whether it's required to delete underlying structures.
      */
-    public void removeIndex(GridCacheContext<?, ?> cctx, IndexName idxName, boolean softDelete) {
+    public void removeIndex(IndexName idxName, boolean softDelete) {
         ddlLock.writeLock().lock();
 
         try {
@@ -535,6 +538,13 @@ public class IndexProcessor extends GridProcessorAdapter {
         };
 
         tree.destroy();
+    }
+
+    /**
+     * @return Default key type settings.
+     */
+    public IndexKeyTypeSettings keyTypeSettings() {
+        return keyTypeSettings;
     }
 
     /**

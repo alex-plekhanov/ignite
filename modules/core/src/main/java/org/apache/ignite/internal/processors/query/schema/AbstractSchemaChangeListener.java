@@ -7,6 +7,7 @@ import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
 import org.apache.ignite.internal.processors.query.GridQueryIndexDescriptor;
 import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 import org.apache.ignite.internal.processors.query.QueryField;
+import org.apache.ignite.internal.processors.query.schema.management.IndexDescriptor;
 import org.apache.ignite.spi.systemview.view.SystemView;
 
 /**
@@ -28,8 +29,7 @@ public class AbstractSchemaChangeListener implements SchemaChangeListener {
         String schemaName,
         String tblName,
         String idxName,
-        GridQueryIndexDescriptor idxDesc,
-        Index idx
+        IndexDescriptor idxDesc
     ) {
         // No-op.
     }

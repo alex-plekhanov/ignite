@@ -30,7 +30,7 @@ import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.junit.Test;
 
 import static org.apache.ignite.internal.managers.systemview.SystemViewMBean.VIEWS;
-import static org.apache.ignite.internal.processors.query.h2.SchemaManager.SQL_TBL_COLS_VIEW;
+import static org.apache.ignite.internal.processors.query.schema.management.SchemaManager.SQL_TBL_COLS_VIEW;
 
 /**
  * Tests {@link JmxSystemViewExporterSpi}.

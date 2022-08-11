@@ -24,6 +24,7 @@ import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
 import org.apache.ignite.internal.processors.query.GridQueryIndexDescriptor;
 import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 import org.apache.ignite.internal.processors.query.QueryField;
+import org.apache.ignite.internal.processors.query.schema.management.IndexDescriptor;
 import org.apache.ignite.spi.systemview.view.SystemView;
 import org.jetbrains.annotations.Nullable;
 
@@ -97,10 +98,8 @@ public interface SchemaChangeListener {
      * @param tblName Table name.
      * @param idxName Index name.
      * @param idxDesc Index descriptor.
-     * @param idx Index.
      */
-    public void onIndexCreated(String schemaName, String tblName, String idxName, GridQueryIndexDescriptor idxDesc,
-        @Nullable Index idx);
+    public void onIndexCreated(String schemaName, String tblName, String idxName, IndexDescriptor idxDesc);
 
     /**
      * Callback on index drop.

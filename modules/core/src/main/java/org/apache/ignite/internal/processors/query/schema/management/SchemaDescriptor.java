@@ -15,24 +15,25 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.processors.query;
+package org.apache.ignite.internal.processors.query.schema.management;
 
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.apache.ignite.internal.processors.query.QueryTypeNameKey;
 
 /**
  * Local database schema object.
  */
-public class GridQuerySchema {
+public class SchemaDescriptor {
     /** */
     private final String schemaName;
 
     /** */
-    private final ConcurrentMap<String, GridQueryTable> tbls = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, TableDescriptor> tbls = new ConcurrentHashMap<>();
 
     /** */
-    private final ConcurrentMap<QueryTypeNameKey, GridQueryTable> typeToTbl = new ConcurrentHashMap<>();
+    private final ConcurrentMap<QueryTypeNameKey, TableDescriptor> typeToTbl = new ConcurrentHashMap<>();
 
     /** Whether schema is predefined and cannot be dorpped. */
     private final boolean predefined;
@@ -46,7 +47,7 @@ public class GridQuerySchema {
      * @param schemaName Schema name.
      * @param predefined Predefined flag.
      */
-    public GridQuerySchema(String schemaName, boolean predefined) {
+    public SchemaDescriptor(String schemaName, boolean predefined) {
         this.schemaName = schemaName;
         this.predefined = predefined;
     }
@@ -78,7 +79,7 @@ public class GridQuerySchema {
     /**
      * @return Tables.
      */
-    public Collection<GridQueryTable> tables() {
+    public Collection<TableDescriptor> tables() {
         return tbls.values();
     }
 
@@ -86,7 +87,7 @@ public class GridQuerySchema {
      * @param tblName Table name.
      * @return Table.
      */
-    public GridQueryTable tableByName(String tblName) {
+    public TableDescriptor tableByName(String tblName) {
         return tbls.get(tblName);
     }
 
@@ -94,14 +95,14 @@ public class GridQuerySchema {
      * @param typeName Type name.
      * @return Table.
      */
-    public GridQueryTable tableByTypeName(String cacheName, String typeName) {
+    public TableDescriptor tableByTypeName(String cacheName, String typeName) {
         return typeToTbl.get(new QueryTypeNameKey(cacheName, typeName));
     }
 
     /**
      * @param tbl Table descriptor.
      */
-    public void add(GridQueryTable tbl) {
+    public void add(TableDescriptor tbl) {
         if (tbls.putIfAbsent(tbl.descriptor().tableName(), tbl) != null)
             throw new IllegalStateException("Table already registered: " + tbl.descriptor().tableName());
 
@@ -114,7 +115,7 @@ public class GridQuerySchema {
      *
      * @param tbl Table to be removed.
      */
-    public void drop(GridQueryTable tbl) {
+    public void drop(TableDescriptor tbl) {
         tbls.remove(tbl.descriptor().tableName());
 
         typeToTbl.remove(new QueryTypeNameKey(tbl.cacheInfo().name(), tbl.descriptor().name()));
