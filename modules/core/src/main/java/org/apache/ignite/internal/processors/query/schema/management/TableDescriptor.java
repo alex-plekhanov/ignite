@@ -17,7 +17,6 @@
 
 package org.apache.ignite.internal.processors.query.schema.management;
 
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,6 +43,9 @@ public class TableDescriptor {
 
     /** */
     private final String affKey;
+
+    /** */
+    private volatile boolean idxRebuildInProgress;
 
     /**
      * Ctor.
@@ -100,5 +102,15 @@ public class TableDescriptor {
     /** */
     public String affinityKey() {
         return affKey;
+    }
+
+    /** */
+    public boolean isIndexRebuildInProgress() {
+        return idxRebuildInProgress;
+    }
+
+    /** */
+    public void markIndexRebuildInProgress(boolean idxRebuildInProgress) {
+        this.idxRebuildInProgress = idxRebuildInProgress;
     }
 }

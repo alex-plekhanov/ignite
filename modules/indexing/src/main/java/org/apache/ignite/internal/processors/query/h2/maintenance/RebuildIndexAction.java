@@ -32,9 +32,9 @@ import org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabase
 import org.apache.ignite.internal.processors.cache.persistence.checkpoint.CheckpointManager;
 import org.apache.ignite.internal.processors.query.GridQueryProcessor;
 import org.apache.ignite.internal.processors.query.aware.IndexBuildStatusStorage;
+import org.apache.ignite.internal.processors.query.h2.H2SchemaManager;
 import org.apache.ignite.internal.processors.query.h2.H2TableDescriptor;
 import org.apache.ignite.internal.processors.query.h2.IgniteH2Indexing;
-import org.apache.ignite.internal.processors.query.h2.SchemaManager;
 import org.apache.ignite.internal.processors.query.h2.database.H2TreeIndex;
 import org.apache.ignite.internal.processors.query.h2.opt.GridH2Table;
 import org.apache.ignite.internal.processors.query.schema.IndexRebuildCancelToken;
@@ -137,7 +137,7 @@ public class RebuildIndexAction implements MaintenanceAction<Boolean> {
 
         String cacheName = context.name();
 
-        SchemaManager schemaManager = indexing.schemaManager();
+        H2SchemaManager schemaManager = indexing.schemaManager();
 
         H2TreeIndex targetIndex = findIndex(cacheName, idxName, schemaManager);
 
@@ -171,7 +171,7 @@ public class RebuildIndexAction implements MaintenanceAction<Boolean> {
         GridCacheContext<?, ?> context,
         String cacheName,
         IndexBuildStatusStorage storage,
-        SchemaManager schemaManager,
+        H2SchemaManager schemaManager,
         GridH2Table targetTable
     ) throws IgniteCheckedException {
         GridFutureAdapter<Void> createIdxFut = new GridFutureAdapter<>();
@@ -243,7 +243,7 @@ public class RebuildIndexAction implements MaintenanceAction<Boolean> {
      * @param schemaManager Schema manager.
      * @return Index or {@code null} if index was not found.
      */
-    @Nullable private H2TreeIndex findIndex(String cacheName, String idxName, SchemaManager schemaManager) {
+    @Nullable private H2TreeIndex findIndex(String cacheName, String idxName, H2SchemaManager schemaManager) {
         H2TreeIndex targetIndex = null;
 
         for (H2TableDescriptor tblDesc : schemaManager.tablesForCache(cacheName)) {

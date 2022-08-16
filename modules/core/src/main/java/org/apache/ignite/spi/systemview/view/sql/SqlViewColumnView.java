@@ -45,7 +45,7 @@ public class SqlViewColumnView {
     /** @return Column name. */
     @Order
     public String columnName() {
-        return col.getKey();
+        return MetricUtils.toSqlName(col.getKey());
     }
 
     /** @return Schema name. */
@@ -71,7 +71,7 @@ public class SqlViewColumnView {
     }
 
     /** @return Precision. */
-    public long precision() {
+    public int precision() {
         return -1;
     }
 
@@ -82,6 +82,6 @@ public class SqlViewColumnView {
 
     /** @return {@code True} if nullable field. */
     public boolean nullable() {
-        return true;
+        return !col.getValue().isPrimitive();
     }
 }

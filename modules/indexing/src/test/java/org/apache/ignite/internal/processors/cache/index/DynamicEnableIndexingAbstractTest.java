@@ -39,9 +39,9 @@ import org.apache.ignite.configuration.DataRegionConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteEx;
+import org.apache.ignite.internal.processors.query.h2.H2SchemaManager;
 import org.apache.ignite.internal.processors.query.h2.H2TableDescriptor;
 import org.apache.ignite.internal.processors.query.h2.IgniteH2Indexing;
-import org.apache.ignite.internal.processors.query.h2.SchemaManager;
 import org.apache.ignite.internal.processors.query.h2.database.H2TreeIndex;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.testframework.GridTestUtils;
@@ -273,7 +273,7 @@ public class DynamicEnableIndexingAbstractTest extends GridCommonAbstractTest {
 
         IgniteH2Indexing indexing = (IgniteH2Indexing)ig.context().query().getIndexing();
 
-        SchemaManager schemaMgr = indexing.schemaManager();
+        H2SchemaManager schemaMgr = indexing.schemaManager();
 
         H2TableDescriptor descr = schemaMgr.tableForType(POI_SCHEMA_NAME, POI_CACHE_NAME, POI_CLASS_NAME);
 

@@ -36,7 +36,7 @@ import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.CacheGroupContext;
 import org.apache.ignite.internal.processors.query.QueryUtils;
-import org.apache.ignite.internal.processors.query.h2.SchemaManager;
+import org.apache.ignite.internal.processors.query.h2.H2SchemaManager;
 import org.apache.ignite.internal.processors.query.h2.opt.GridH2Table;
 import org.apache.ignite.internal.processors.query.stat.config.StatisticsColumnConfiguration;
 import org.apache.ignite.internal.processors.query.stat.config.StatisticsObjectConfiguration;
@@ -54,7 +54,7 @@ public class IgniteStatisticsHelper {
     private final IgniteLogger log;
 
     /** Schema manager. */
-    private final SchemaManager schemaMgr;
+    private final H2SchemaManager schemaMgr;
 
     /**
      * Constructor.
@@ -65,7 +65,7 @@ public class IgniteStatisticsHelper {
      */
     public IgniteStatisticsHelper(
         UUID locNodeId,
-        SchemaManager schemaMgr,
+        H2SchemaManager schemaMgr,
         Function<Class<?>, IgniteLogger> logSupplier
     ) {
         this.schemaMgr = schemaMgr;

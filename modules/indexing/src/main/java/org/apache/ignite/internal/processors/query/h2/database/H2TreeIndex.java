@@ -349,12 +349,9 @@ public class H2TreeIndex extends H2TreeIndexBase {
     }
 
     /** {@inheritDoc} */
-    @Override public void destroy(boolean rmvIdx) {
+    @Override public void destroy() {
         try {
-            queryIndex.destroy(!rmvIdx);
-
-            super.destroy(rmvIdx);
-
+            super.destroy();
         }
         finally {
             if (msgLsnr != null)
@@ -369,9 +366,10 @@ public class H2TreeIndex extends H2TreeIndexBase {
      */
     public void destroyImmediately() throws IgniteCheckedException {
         try {
+            // TODO refactor
             queryIndex.destroy0(false, true);
 
-            super.destroy(false);
+            super.destroy();
         }
         finally {
             if (msgLsnr != null)

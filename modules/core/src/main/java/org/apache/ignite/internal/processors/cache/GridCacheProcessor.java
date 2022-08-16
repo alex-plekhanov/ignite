@@ -2738,7 +2738,7 @@ public class GridCacheProcessor extends GridProcessorAdapter {
      * @param cctx Cache context to close.
      */
     private void closeCacheOnNotAffinityNode(GridCacheContext cctx) {
-        if (ctx.query().moduleEnabled())
+        if (ctx.query().indexingEnabled())
             stopCacheSafely(cctx, false);
         else
             stopCacheSafely(cctx);

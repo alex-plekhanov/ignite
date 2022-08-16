@@ -37,7 +37,7 @@ import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.Gri
 import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.PartitionsExchangeAware;
 import org.apache.ignite.internal.processors.cache.persistence.IgniteCacheDatabaseSharedManager;
 import org.apache.ignite.internal.processors.configuration.distributed.DistributedEnumProperty;
-import org.apache.ignite.internal.processors.query.h2.SchemaManager;
+import org.apache.ignite.internal.processors.query.h2.H2SchemaManager;
 import org.apache.ignite.internal.processors.query.h2.opt.GridH2Table;
 import org.apache.ignite.internal.processors.query.stat.config.StatisticsObjectConfiguration;
 import org.apache.ignite.internal.processors.timeout.GridTimeoutProcessor;
@@ -69,7 +69,7 @@ public class IgniteStatisticsManagerImpl implements IgniteStatisticsManager {
     private final GridKernalContext ctx;
 
     /** SchemaManager */
-    private final SchemaManager schemaMgr;
+    private final H2SchemaManager schemaMgr;
 
     /** Statistics repository. */
     private final IgniteStatisticsRepository statsRepos;
@@ -136,7 +136,7 @@ public class IgniteStatisticsManagerImpl implements IgniteStatisticsManager {
      * @param ctx Kernal context.
      * @param schemaMgr Schema manager.
      */
-    public IgniteStatisticsManagerImpl(GridKernalContext ctx, SchemaManager schemaMgr) {
+    public IgniteStatisticsManagerImpl(GridKernalContext ctx, H2SchemaManager schemaMgr) {
         this.ctx = ctx;
         this.schemaMgr = schemaMgr;
 

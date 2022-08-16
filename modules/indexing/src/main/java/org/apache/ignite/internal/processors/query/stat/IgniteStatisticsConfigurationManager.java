@@ -48,7 +48,7 @@ import org.apache.ignite.internal.processors.metastorage.DistributedMetastorageL
 import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 import org.apache.ignite.internal.processors.query.IgniteSQLException;
 import org.apache.ignite.internal.processors.query.QueryUtils;
-import org.apache.ignite.internal.processors.query.h2.SchemaManager;
+import org.apache.ignite.internal.processors.query.h2.H2SchemaManager;
 import org.apache.ignite.internal.processors.query.h2.opt.GridH2Table;
 import org.apache.ignite.internal.processors.query.schema.AbstractSchemaChangeListener;
 import org.apache.ignite.internal.processors.query.schema.SchemaChangeListener;
@@ -79,7 +79,7 @@ public class IgniteStatisticsConfigurationManager {
     public static final String[] EMPTY_STRINGS = new String[0];
 
     /** Schema manager. */
-    private final SchemaManager schemaMgr;
+    private final H2SchemaManager schemaMgr;
 
     /** Distributed metastore. */
     private volatile DistributedMetaStorage distrMetaStorage;
@@ -152,7 +152,7 @@ public class IgniteStatisticsConfigurationManager {
      * @param isServerNode Server node flag.
      */
     public IgniteStatisticsConfigurationManager(
-        SchemaManager schemaMgr,
+        H2SchemaManager schemaMgr,
         GridInternalSubscriptionProcessor subscriptionProcessor,
         GridSystemViewManager sysViewMgr,
         GridClusterStateProcessor cluster,
@@ -216,8 +216,7 @@ public class IgniteStatisticsConfigurationManager {
         @Override public void onSqlTypeDropped(
             String schemaName,
             GridQueryTypeDescriptor typeDescriptor,
-            boolean destroy,
-            boolean clearIdx
+            boolean destroy
         ) {
             if (!active || !destroy)
                 return;

@@ -62,33 +62,21 @@ public class SqlTableColumnView {
 
     /** @return Field data type. */
     public Class<?> type() {
-        if (prop == null)
-            return null;
-
         return prop.type();
     }
 
     /** @return Field default. */
     public String defaultValue() {
-        if (prop == null)
-            return null;
-
-        return String.valueOf(prop.defaultValue());
+        return prop.defaultValue() == null ? null : prop.defaultValue().toString();
     }
 
     /** @return Precision. */
     public int precision() {
-        if (prop == null)
-            return -1;
-
         return prop.precision();
     }
 
     /** @return Scale. */
     public int scale() {
-        if (prop == null)
-            return -1;
-
         return prop.scale();
     }
 
@@ -99,7 +87,7 @@ public class SqlTableColumnView {
 
     /** @return {@code True} if primary key. */
     public boolean pk() {
-        return prop.key();
+        return F.eq(prop.name(), tbl.descriptor().keyFieldName()) || prop.key();
     }
 
     /** @return {@code True} if autoincremented field. */
@@ -109,6 +97,7 @@ public class SqlTableColumnView {
 
     /** @return {@code True} if affinity column. */
     public boolean affinityColumn() {
-        return F.eq(prop.name(), tbl.descriptor().affinityKey());
+        return !tbl.descriptor().customAffinityKeyMapper() &&
+            (F.eq(prop.name(), tbl.descriptor().affinityKey()) || (F.isEmpty(tbl.descriptor().affinityKey()) && pk()));
     }
 }

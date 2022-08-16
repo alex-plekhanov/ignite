@@ -131,7 +131,7 @@ public class SqlIndexView {
     public String columns() {
         return idx.keyDefinitions().entrySet().stream()
             .map(fld -> '"' + fld.getKey() + '"' +
-                (fld.getValue().order().sortOrder() == SortOrder.DESC ? " \"DESC\"" : " \"ASC\""))
+                (fld.getValue().order().sortOrder() == SortOrder.DESC ? " DESC" : " ASC"))
             .collect(Collectors.joining(", "));
     }
 

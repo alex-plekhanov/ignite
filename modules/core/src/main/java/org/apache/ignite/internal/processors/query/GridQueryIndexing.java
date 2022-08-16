@@ -18,9 +18,7 @@
 package org.apache.ignite.internal.processors.query;
 
 import java.sql.SQLException;
-import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteDataStreamer;
 import org.apache.ignite.cache.query.FieldsQueryCursor;
@@ -162,34 +160,6 @@ public interface GridQueryIndexing {
     public void dynamicIndexDrop(String schemaName, String idxName, boolean ifExists) throws IgniteCheckedException;
 
     /**
-     * Add columns to dynamic table.
-     *
-     * @param schemaName Schema name.
-     * @param tblName Table name.
-     * @param cols Columns to add.
-     * @param ifTblExists Ignore operation if target table does not exist (instead of throwing an error).
-     * @param ifColNotExists Ignore operation if column already exists (instead of throwing an error) - is honored only
-     *     for single column case.
-     * @throws IgniteCheckedException If failed.
-     */
-    public void dynamicAddColumn(String schemaName, String tblName, List<QueryField> cols, boolean ifTblExists,
-        boolean ifColNotExists) throws IgniteCheckedException;
-
-    /**
-     * Drop columns from dynamic table.
-     *
-     * @param schemaName Schema name.
-     * @param tblName Table name.
-     * @param cols Columns to drop.
-     * @param ifTblExists Ignore operation if target table does not exist (instead of throwing an error).
-     * @param ifColExists Ignore operation if column does not exist (instead of throwing an error) - is honored only
-     *     for single column case.
-     * @throws IgniteCheckedException If failed.
-     */
-    public void dynamicDropColumn(String schemaName, String tblName, List<String> cols, boolean ifTblExists,
-        boolean ifColExists) throws IgniteCheckedException;
-
-    /**
      * Registers cache.
      *
      * @param cacheName Cache name.
@@ -204,11 +174,9 @@ public interface GridQueryIndexing {
      * Unregisters cache.
      *
      * @param cacheInfo Cache context info.
-     * @param rmvIdx If {@code true}, will remove index.
-     * @param clearIdx If {@code true}, will clear the index.
      * @throws IgniteCheckedException If failed to drop cache schema.
      */
-    public void unregisterCache(GridCacheContextInfo cacheInfo, boolean rmvIdx, boolean clearIdx) throws IgniteCheckedException;
+    public void unregisterCache(GridCacheContextInfo<?, ?> cacheInfo) throws IgniteCheckedException;
 
     /**
      *
@@ -241,18 +209,6 @@ public interface GridQueryIndexing {
         MvccSnapshot mvccSnapshot,
         GridQueryCancel cancel
     ) throws IgniteCheckedException;
-
-    /**
-     * Registers type if it was not known before or updates it otherwise.
-     *
-     * @param cacheInfo Cache context info.
-     * @param desc Type descriptor.
-     * @param isSql {@code true} in case table has been created from SQL.
-     * @throws IgniteCheckedException If failed.
-     * @return {@code True} if type was registered, {@code false} if for some reason it was rejected.
-     */
-    public boolean registerType(GridCacheContextInfo cacheInfo, GridQueryTypeDescriptor desc,
-        boolean isSql) throws IgniteCheckedException;
 
     /**
      * Jdbc parameters metadata of the specified query.
@@ -304,13 +260,6 @@ public interface GridQueryIndexing {
         throws IgniteCheckedException;
 
     /**
-     * Mark as rebuild needed for the given cache.
-     *
-     * @param cctx Cache context.
-     */
-    public void markAsRebuildNeeded(GridCacheContext cctx, boolean val);
-
-    /**
      * Returns backup filter.
      *
      * @param topVer Topology version.
@@ -335,21 +284,6 @@ public interface GridQueryIndexing {
      * Cancels all executing queries.
      */
     public void onKernalStop();
-
-    /**
-     * Gets database schema from cache name.
-     *
-     * @param cacheName Cache name. {@code null} would be converted to an empty string.
-     * @return Schema name. Should not be null since we should not fail for an invalid cache name.
-     */
-    public String schema(String cacheName);
-
-    /**
-     * Gets database schemas names.
-     *
-     * @return Schema names.
-     */
-    public Set<String> schemasNames();
 
     /**
      * Whether passed sql statement is single insert statement eligible for streaming.
@@ -391,29 +325,6 @@ public interface GridQueryIndexing {
      * @throws IgniteCheckedException On bean registration error.
      */
     void registerMxBeans(IgniteMBeansManager mbMgr) throws IgniteCheckedException;
-
-    /**
-     * Return table information filtered by given patterns.
-     *
-     * @param schemaNamePtrn Filter by schema name. Can be {@code null} to don't use the filter.
-     * @param tblNamePtrn Filter by table name. Can be {@code null} to don't use the filter.
-     * @param tblTypes Filter by table type. As Of now supported only 'TABLES' and 'VIEWS'.
-     * Can be {@code null} or empty to don't use the filter.
-     *
-     * @return Column information filtered by given patterns.
-     */
-    Collection<TableInformation> tablesInformation(String schemaNamePtrn, String tblNamePtrn, String... tblTypes);
-
-    /**
-     * Return column information filtered by given patterns.
-     *
-     * @param schemaNamePtrn Filter by schema name. Can be {@code null} to don't use the filter.
-     * @param tblNamePtrn Filter by table name. Can be {@code null} to don't use the filter.
-     * @param colNamePtrn Filter by column name. Can be {@code null} to don't use the filter.
-     *
-     * @return Column information filtered by given patterns.
-     */
-    Collection<ColumnInformation> columnsInformation(String schemaNamePtrn, String tblNamePtrn, String colNamePtrn);
 
     /**
      * Checks if object of the specified class can be stored in the specified table column by the query engine.

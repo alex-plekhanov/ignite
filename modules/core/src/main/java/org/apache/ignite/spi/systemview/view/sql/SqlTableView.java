@@ -159,8 +159,6 @@ public class SqlTableView {
 
     /** @return {@code True} if index rebuild is in progress. */
     public boolean isIndexRebuildInProgress() {
-        return false;
-        // TODO
-        //tbl.rebuildFromHashInProgress();
+        return tbl.isIndexRebuildInProgress();
     }
 }

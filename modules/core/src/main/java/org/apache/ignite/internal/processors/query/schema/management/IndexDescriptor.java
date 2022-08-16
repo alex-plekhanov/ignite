@@ -107,7 +107,7 @@ public class IndexDescriptor {
     }
 
     /** */
-    public boolean isAff() {
+    public boolean isAffinity() {
         return isAff;
     }
 
