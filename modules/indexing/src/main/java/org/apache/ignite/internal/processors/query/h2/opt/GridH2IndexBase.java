@@ -156,18 +156,6 @@ public abstract class GridH2IndexBase extends H2IndexCostedBase {
         return false;
     }
 
-    /** {@inheritDoc} */
-    @Override public void removeChildrenAndResources(Session session) {
-        // The sole purpose of this override is to pass session to table.removeIndex
-        assert table instanceof GridH2Table;
-
-        ((GridH2Table)table).removeIndex(session, this);
-
-        remove(session);
-
-        database.removeMeta(session, getId());
-    }
-
     /**
      * @return Index segments count.
      */

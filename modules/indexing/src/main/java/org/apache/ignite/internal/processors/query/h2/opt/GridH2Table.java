@@ -773,11 +773,11 @@ public class GridH2Table extends TableBase {
         Index registredIdx = null;
 
         for (Index idx : idxs) {
-            if (!(idx instanceof H2TreeIndex))
-                continue;
-
             if (F.eq(curIdx.getName(), idx.getName()))
                 throw new IgniteCheckedException("Index already exists: " + idx.getName());
+
+            if (!(curIdx instanceof H2TreeIndex) || !(idx instanceof H2TreeIndex))
+                continue;
 
             IndexColumn[] idxColumns = idx.getIndexColumns();
 
@@ -916,15 +916,6 @@ public class GridH2Table extends TableBase {
 
     /** {@inheritDoc} */
     @Override public void removeIndex(Index h2Idx) {
-        throw DbException.getUnsupportedException("must use removeIndex(session, idx)");
-    }
-
-    /**
-     * Remove the given index from the list.
-     *
-     * @param h2Idx the index to remove
-     */
-    public void removeIndex(Session session, Index h2Idx) {
         lock(true);
 
         try {

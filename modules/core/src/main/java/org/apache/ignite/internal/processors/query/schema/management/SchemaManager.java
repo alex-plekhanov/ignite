@@ -1232,7 +1232,7 @@ public class SchemaManager implements GridQuerySchemaManager {
                                 ++cnt[0], // Start from 1.
                                 QueryUtils.SCHEMA_SYS,
                                 MetricUtils.toSqlName(view.name()),
-                                c.getKey(),
+                                MetricUtils.toSqlName(c.getKey()),
                                 c.getValue(),
                                 true,
                                 null,

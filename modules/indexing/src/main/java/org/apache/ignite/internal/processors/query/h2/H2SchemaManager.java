@@ -362,7 +362,7 @@ public class H2SchemaManager implements SchemaChangeListener {
 
         // System indexes are not registred as DB objects.
         if (isSystemIndex(idx)) {
-            tbl.removeIndex(null, idx);
+            tbl.removeIndex(idx);
 
             return;
         }

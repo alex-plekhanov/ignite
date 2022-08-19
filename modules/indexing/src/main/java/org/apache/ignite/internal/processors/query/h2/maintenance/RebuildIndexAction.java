@@ -42,7 +42,6 @@ import org.apache.ignite.internal.processors.query.schema.SchemaIndexCacheVisito
 import org.apache.ignite.internal.processors.query.schema.SchemaIndexCacheVisitorImpl;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.maintenance.MaintenanceAction;
-import org.h2.engine.Session;
 import org.h2.index.Index;
 import org.jetbrains.annotations.Nullable;
 
@@ -230,9 +229,7 @@ public class RebuildIndexAction implements MaintenanceAction<Boolean> {
     private void destroyOldIndex(H2TreeIndex index, GridH2Table table) throws IgniteCheckedException {
         index.destroyImmediately();
 
-        Session session = table.getDatabase().getSystemSession();
-
-        table.removeIndex(session, index);
+        table.removeIndex(index);
     }
 
     /**
