@@ -1935,9 +1935,9 @@ public class IgniteH2Indexing implements GridQueryIndexing {
             /** */
             @Override public void onColumnsAdded(
                 String schemaName,
-                String tblName,
-                List<QueryField> cols,
-                boolean ifColNotExists
+                GridQueryTypeDescriptor typeDesc,
+                GridCacheContextInfo<?, ?> cacheInfo,
+                List<QueryField> cols
             ) {
                 clearPlanCache();
             }
@@ -1945,9 +1945,9 @@ public class IgniteH2Indexing implements GridQueryIndexing {
             /** */
             @Override public void onColumnsDropped(
                 String schemaName,
-                String tblName,
-                List<String> cols,
-                boolean ifColExists
+                GridQueryTypeDescriptor typeDesc,
+                GridCacheContextInfo<?, ?> cacheInfo,
+                List<String> cols
             ) {
                 clearPlanCache();
             }

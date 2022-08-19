@@ -74,12 +74,22 @@ public class AbstractSchemaChangeListener implements SchemaChangeListener {
     }
 
     /** {@inheritDoc} */
-    @Override public void onColumnsAdded(String schemaName, String tblName, List<QueryField> cols, boolean ifColNotExists) {
+    @Override public void onColumnsAdded(
+        String schemaName,
+        GridQueryTypeDescriptor typeDesc,
+        GridCacheContextInfo<?, ?> cacheInfo,
+        List<QueryField> cols
+    ) {
         // No-op.
     }
 
     /** {@inheritDoc} */
-    @Override public void onColumnsDropped(String schemaName, String tblName, List<String> cols, boolean ifColExists) {
+    @Override public void onColumnsDropped(
+        String schemaName,
+        GridQueryTypeDescriptor typeDesc,
+        GridCacheContextInfo<?, ?> cacheInfo,
+        List<String> cols
+    ) {
         // No-op.
     }
 

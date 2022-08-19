@@ -378,23 +378,33 @@ public class H2SchemaManager implements SchemaChangeListener {
     }
 
     /** {@inheritDoc} */
-    @Override public void onColumnsAdded(String schemaName, String tblName, List<QueryField> cols, boolean ifColNotExists) {
-        GridH2Table tbl = dataTable(schemaName, tblName);
+    @Override public void onColumnsAdded(
+        String schemaName,
+        GridQueryTypeDescriptor typeDesc,
+        GridCacheContextInfo<?, ?> cacheInfo,
+        List<QueryField> cols
+    ) {
+        GridH2Table tbl = dataTable(schemaName, typeDesc.tableName());
 
         if (tbl == null)
             return;
 
-        tbl.addColumns(cols, ifColNotExists);
+        tbl.addColumns(cols);
     }
 
     /** {@inheritDoc} */
-    @Override public void onColumnsDropped(String schemaName, String tblName, List<String> cols, boolean ifColExists) {
-        GridH2Table tbl = dataTable(schemaName, tblName);
+    @Override public void onColumnsDropped(
+        String schemaName,
+        GridQueryTypeDescriptor typeDesc,
+        GridCacheContextInfo<?, ?> cacheInfo,
+        List<String> cols
+    ) {
+        GridH2Table tbl = dataTable(schemaName, typeDesc.tableName());
 
         if (tbl == null)
             return;
 
-        tbl.dropColumns(cols, ifColExists);
+        tbl.dropColumns(cols);
     }
 
     /** {@inheritDoc} */

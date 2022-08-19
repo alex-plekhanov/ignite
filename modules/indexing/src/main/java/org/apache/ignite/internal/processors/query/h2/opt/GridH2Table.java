@@ -1149,11 +1149,8 @@ public class GridH2Table extends TableBase {
      * Add new columns to this table.
      *
      * @param cols Columns to add.
-     * @param ifNotExists Ignore this command if {@code cols} has size of 1 and column with given name already exists.
      */
-    public void addColumns(List<QueryField> cols, boolean ifNotExists) {
-        assert !ifNotExists || cols.size() == 1;
-
+    public void addColumns(List<QueryField> cols) {
         lock(true);
 
         try {
@@ -1168,13 +1165,8 @@ public class GridH2Table extends TableBase {
 
             // And now, let's add new columns
             for (QueryField col : cols) {
-                if (doesColumnExist(col.name())) {
-                    if (ifNotExists && cols.size() == 1)
-                        return;
-                    else
-                        throw new IgniteSQLException("Column already exists [tblName=" + getName() +
-                            ", colName=" + col.name() + ']');
-                }
+                if (doesColumnExist(col.name()))
+                    return;
 
                 try {
                     Column c = new Column(col.name(), DataType.getTypeFromClass(Class.forName(col.typeName())));
@@ -1203,12 +1195,9 @@ public class GridH2Table extends TableBase {
      * Drop columns.
      *
      * @param cols Columns.
-     * @param ifExists If EXISTS flag.
      */
     @SuppressWarnings("ForLoopReplaceableByForEach")
-    public void dropColumns(List<String> cols, boolean ifExists) {
-        assert !ifExists || cols.size() == 1;
-
+    public void dropColumns(List<String> cols) {
         lock(true);
 
         try {
@@ -1217,13 +1206,8 @@ public class GridH2Table extends TableBase {
             int size = safeColumns0.length;
 
             for (String name : cols) {
-                if (!doesColumnExist(name)) {
-                    if (ifExists && cols.size() == 1)
-                        return;
-                    else
-                        throw new IgniteSQLException("Column does not exist [tblName=" + getName() +
-                            ", colName=" + name + ']');
-                }
+                if (!doesColumnExist(name))
+                    return;
 
                 size--;
             }

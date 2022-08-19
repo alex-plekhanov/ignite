@@ -197,13 +197,23 @@ public class SchemaHolderImpl extends AbstractService implements SchemaHolder, S
     }
 
     /** {@inheritDoc} */
-    @Override public void onColumnsAdded(String schemaName, String tblName, List<QueryField> cols, boolean ifColNotExists) {
-        rebuild();
+    @Override public void onColumnsAdded(
+        String schemaName,
+        GridQueryTypeDescriptor typeDesc,
+        GridCacheContextInfo<?, ?> cacheInfo,
+        List<QueryField> cols
+    ) {
+        onSqlTypeCreated(schemaName, typeDesc, cacheInfo);
     }
 
     /** {@inheritDoc} */
-    @Override public void onColumnsDropped(String schemaName, String tblName, List<String> cols, boolean ifColExists) {
-        rebuild();
+    @Override public void onColumnsDropped(
+        String schemaName,
+        GridQueryTypeDescriptor typeDesc,
+        GridCacheContextInfo<?, ?> cacheInfo,
+        List<String> cols
+    ) {
+        onSqlTypeCreated(schemaName, typeDesc, cacheInfo);
     }
 
     /** {@inheritDoc} */

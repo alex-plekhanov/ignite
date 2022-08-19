@@ -57,24 +57,34 @@ public interface SchemaChangeListener {
     );
 
     /**
-     * Callback method.
+     * Callback on columns added.
      *
      * @param schemaName Schema name.
-     * @param tblName Table name.
-     * @param cols Column names.
-     * @param ifColNotExists if columns not exists.
+     * @param typeDesc Type descriptor.
+     * @param cacheInfo Cache info.
+     * @param cols Added columns' names.
      */
-    public void onColumnsAdded(String schemaName, String tblName, List<QueryField> cols, boolean ifColNotExists);
+    public void onColumnsAdded(
+        String schemaName,
+        GridQueryTypeDescriptor typeDesc,
+        GridCacheContextInfo<?, ?> cacheInfo,
+        List<QueryField> cols
+    );
 
     /**
-     * Callback method.
+     * Callback on columns dropped.
      *
      * @param schemaName Schema name.
-     * @param tblName Table name.
-     * @param cols Column names.
-     * @param ifColExists if columns exists.
+     * @param typeDesc Type descriptor.
+     * @param cacheInfo Cache info.
+     * @param cols Dropped columns' names.
      */
-    public void onColumnsDropped(String schemaName, String tblName, List<String> cols, boolean ifColExists);
+    public void onColumnsDropped(
+        String schemaName,
+        GridQueryTypeDescriptor typeDesc,
+        GridCacheContextInfo<?, ?> cacheInfo,
+        List<String> cols
+    );
 
     /**
      * Callback method.

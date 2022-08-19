@@ -958,8 +958,15 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param ifColNotExists If column not exists.
      * @throws IgniteCheckedException If failed.
      */
-    public void addColumn(String schemaName, String tblName, List<QueryField> cols,
-        boolean ifTblExists, boolean ifColNotExists) throws IgniteCheckedException {
+    public void addColumn(
+        String schemaName,
+        String tblName,
+        List<QueryField> cols,
+        boolean ifTblExists,
+        boolean ifColNotExists
+    ) throws IgniteCheckedException {
+        assert !ifColNotExists || cols.size() == 1;
+
         // Locate table.
         TableDescriptor tbl = dataTable(schemaName, tblName);
 
@@ -972,7 +979,7 @@ public class SchemaManager implements GridQuerySchemaManager {
                 return;
         }
 
-        lsnr.onColumnsAdded(schemaName, tblName, cols, ifColNotExists);
+        lsnr.onColumnsAdded(schemaName, tbl.descriptor(), tbl.cacheInfo(), cols);
     }
 
     /**
@@ -985,8 +992,15 @@ public class SchemaManager implements GridQuerySchemaManager {
      * @param ifColExists If column exists.
      * @throws IgniteCheckedException If failed.
      */
-    public void dropColumn(String schemaName, String tblName, List<String> cols, boolean ifTblExists,
-        boolean ifColExists) throws IgniteCheckedException {
+    public void dropColumn(
+        String schemaName,
+        String tblName,
+        List<String> cols,
+        boolean ifTblExists,
+        boolean ifColExists
+    ) throws IgniteCheckedException {
+        assert !ifColExists || cols.size() == 1;
+
         // Locate table.
         TableDescriptor tbl = dataTable(schemaName, tblName);
 
@@ -999,7 +1013,7 @@ public class SchemaManager implements GridQuerySchemaManager {
                 return;
         }
 
-        lsnr.onColumnsDropped(schemaName, tblName, cols, ifColExists);
+        lsnr.onColumnsDropped(schemaName, tbl.descriptor(), tbl.cacheInfo(), cols);
     }
 
     /**
@@ -1291,13 +1305,23 @@ public class SchemaManager implements GridQuerySchemaManager {
         }
 
         /** {@inheritDoc} */
-        @Override public void onColumnsAdded(String schemaName, String tblName, List<QueryField> cols, boolean ifColNotExists) {
-            lsnrs.forEach(lsnr -> executeSafe(() -> lsnr.onColumnsAdded(schemaName, tblName, cols, ifColNotExists)));
+        @Override public void onColumnsAdded(
+            String schemaName,
+            GridQueryTypeDescriptor typeDesc,
+            GridCacheContextInfo<?, ?> cacheInfo,
+            List<QueryField> cols
+        ) {
+            lsnrs.forEach(lsnr -> executeSafe(() -> lsnr.onColumnsAdded(schemaName, typeDesc, cacheInfo, cols)));
         }
 
         /** {@inheritDoc} */
-        @Override public void onColumnsDropped(String schemaName, String tblName, List<String> cols, boolean ifColExists) {
-            lsnrs.forEach(lsnr -> executeSafe(() -> lsnr.onColumnsDropped(schemaName, tblName, cols, ifColExists)));
+        @Override public void onColumnsDropped(
+            String schemaName,
+            GridQueryTypeDescriptor typeDesc,
+            GridCacheContextInfo<?, ?> cacheInfo,
+            List<String> cols
+        ) {
+            lsnrs.forEach(lsnr -> executeSafe(() -> lsnr.onColumnsDropped(schemaName, typeDesc, cacheInfo, cols)));
         }
 
         /** {@inheritDoc} */

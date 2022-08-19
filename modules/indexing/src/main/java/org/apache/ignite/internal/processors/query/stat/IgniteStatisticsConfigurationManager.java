@@ -40,6 +40,7 @@ import org.apache.ignite.internal.managers.systemview.walker.StatisticsColumnCon
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.DynamicCacheChangeBatch;
 import org.apache.ignite.internal.processors.cache.GridCacheContext;
+import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
 import org.apache.ignite.internal.processors.cache.distributed.dht.preloader.GridDhtPartitionsExchangeFuture;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.processors.cluster.GridClusterStateProcessor;
@@ -240,7 +241,12 @@ public class IgniteStatisticsConfigurationManager {
             }
         }
 
-        @Override public void onColumnsDropped(String schemaName, String tblName, List<String> cols, boolean ifColExists) {
+        @Override public void onColumnsDropped(
+            String schemaName,
+            GridQueryTypeDescriptor typeDesc,
+            GridCacheContextInfo<?, ?> cacheInfo,
+            List<String> cols
+        ) {
             if (!active)
                 return;
 
@@ -248,7 +254,7 @@ public class IgniteStatisticsConfigurationManager {
 
             // Drop statistics after columns dropped.
             dropStatistics(
-                Collections.singletonList(new StatisticsTarget(schemaName, tblName, cols.toArray(EMPTY_STRINGS))),
+                Collections.singletonList(new StatisticsTarget(schemaName, typeDesc.tableName(), cols.toArray(EMPTY_STRINGS))),
                 false
             );
         }

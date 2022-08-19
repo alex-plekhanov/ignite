@@ -50,7 +50,9 @@ import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.managers.discovery.CustomEventListener;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
 import org.apache.ignite.internal.processors.query.GridQueryProcessor;
+import org.apache.ignite.internal.processors.query.GridQueryTypeDescriptor;
 import org.apache.ignite.internal.processors.query.QueryField;
 import org.apache.ignite.internal.processors.query.QueryUtils;
 import org.apache.ignite.internal.processors.query.h2.IgniteH2Indexing;
@@ -1127,18 +1129,18 @@ public abstract class DynamicColumnsAbstractConcurrentSelfTest extends DynamicCo
 
                 @Override public void onColumnsAdded(
                     String schemaName,
-                    String tblName,
-                    List<QueryField> cols,
-                    boolean ifColNotExists
+                    GridQueryTypeDescriptor typeDesc,
+                    GridCacheContextInfo<?, ?> cacheInfo,
+                    List<QueryField> cols
                 ) {
                     awaitIndexing(ctx.localNodeId());
                 }
 
                 @Override public void onColumnsDropped(
                     String schemaName,
-                    String tblName,
-                    List<String> cols,
-                    boolean ifColExists
+                    GridQueryTypeDescriptor typeDesc,
+                    GridCacheContextInfo<?, ?> cacheInfo,
+                    List<String> cols
                 ) {
                     awaitIndexing(ctx.localNodeId());
                 }
