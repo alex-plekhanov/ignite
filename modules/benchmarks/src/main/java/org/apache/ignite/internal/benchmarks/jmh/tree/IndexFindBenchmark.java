@@ -63,7 +63,7 @@ public class IndexFindBenchmark {
     private static final int CNT = 1_000_000;
 
     /** Items in each range. */
-    private static final int RANGE = 1_000;
+    private static final int RANGE = 1;
 
     /** Cache name. */
     private static final String CACHE_NAME = "cache";

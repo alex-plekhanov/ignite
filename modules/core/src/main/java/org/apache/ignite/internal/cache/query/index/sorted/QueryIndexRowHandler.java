@@ -60,7 +60,7 @@ public class QueryIndexRowHandler implements InlineIndexRowHandler {
         List<InlineIndexKeyType> keyTypes,
         IndexKeyTypeSettings keyTypeSettings
     ) {
-        this.keyTypes = Collections.unmodifiableList(keyTypes);
+        this.keyTypes = Collections.unmodifiableList(new ArrayList<>(keyTypes));
         this.keyDefs = Collections.unmodifiableList(new ArrayList<>(keyDefs.values()));
 
         props = new GridQueryProperty[keyDefs.size()];

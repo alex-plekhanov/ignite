@@ -33,12 +33,12 @@ import static org.apache.ignite.internal.cache.query.index.sorted.inline.types.N
  * 1. NULL is the least value.
  * 2. Comparison of different types is not supported.
  */
-public class IndexRowCompartorImpl implements IndexRowComparator {
+public class IndexRowComparatorImpl implements IndexRowComparator {
     /** Key type settings for this index. */
     protected final IndexKeyTypeSettings keyTypeSettings;
 
     /** */
-    public IndexRowCompartorImpl(IndexKeyTypeSettings settings) {
+    public IndexRowComparatorImpl(IndexKeyTypeSettings settings) {
         keyTypeSettings = settings;
     }
 

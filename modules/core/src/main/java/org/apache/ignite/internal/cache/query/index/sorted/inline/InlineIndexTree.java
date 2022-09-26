@@ -281,10 +281,6 @@ public class InlineIndexTree extends BPlusTree<IndexRow, IndexRow> {
                 if (row.key(keyIdx) == null)
                     return 0;
 
-                // Other keys are not inlined. Should compare as rows.
-                if (keyIdx >= keyTypes.size())
-                    break;
-
                 int maxSize = inlineSize - fieldOff;
 
                 InlineIndexKeyType keyType = keyTypes.get(keyIdx);
