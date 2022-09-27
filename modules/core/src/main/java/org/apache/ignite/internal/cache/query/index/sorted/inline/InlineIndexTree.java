@@ -271,8 +271,7 @@ public class InlineIndexTree extends BPlusTree<IndexRow, IndexRow> {
         int off = io.offset(idx);
 
         List<IndexKeyDefinition> keyDefs = rowHnd.indexKeyDefinitions();
-
-        List<InlineIndexKeyType> keyTypes = rowHandler().inlineIndexKeyTypes();
+        List<InlineIndexKeyType> keyTypes = rowHnd.inlineIndexKeyTypes();
 
         for (keyIdx = 0; keyIdx < keyTypes.size(); keyIdx++) {
             try {
