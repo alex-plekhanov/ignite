@@ -289,4 +289,14 @@ public class FunctionsTest extends AbstractBasicIntegrationTest {
         assertQuery("SELECT ?").withParams("asd").returns("asd").check();
         assertQuery("SELECT coalesce(?, ?)").withParams("a", 10).returns("a").check();
     }
+
+    /** */
+    @Test
+    public void testNullIf() {
+        assertQuery("select NULLIF(25, 25)").returns(NULL_RESULT).check();
+        assertQuery("select NULLIF(24, 25)").returns(24).check();
+        assertQuery("select NULLIF('test', 'abc')").returns("test").check();
+        assertQuery("select NULLIF('test', 'test')").returns(NULL_RESULT).check();
+        assertQuery("select NULLIF(24 + 1, 26 - 1)").returns(NULL_RESULT).check();
+    }
 }
