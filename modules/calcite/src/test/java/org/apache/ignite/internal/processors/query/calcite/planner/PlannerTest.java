@@ -32,6 +32,7 @@ import org.apache.calcite.rel.RelRoot;
 import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.schema.SchemaPlus;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.ignite.IgniteCheckedException;
@@ -1121,5 +1122,91 @@ public class PlannerTest extends AbstractPlannerTest {
         IgniteRel phys = physicalPlan("SELECT (DATE '2021-03-01' - DATE '2021-01-01') MONTHS", publicSchema);
 
         checkSplitAndSerialization(phys, publicSchema);
+    }
+
+    /** */
+    @Test
+    public void test() throws Exception {
+        IgniteTypeFactory f = new IgniteTypeFactory(IgniteTypeSystem.INSTANCE);
+
+        TestTable t1 = new TestTable(
+            new RelDataTypeFactory.Builder(f)
+                .add("A", f.createJavaType(Integer.class))
+                .add("B", f.createJavaType(Integer.class))
+                .build()) {
+
+            @Override public IgniteDistribution distribution() {
+                return IgniteDistributions.random();
+            }
+        };
+
+        TestTable t2 = new TestTable(
+            new RelDataTypeFactory.Builder(f)
+                .add("A", f.createJavaType(Integer.class))
+                .add("B", f.createJavaType(Integer.class))
+                .build()) {
+
+            @Override public IgniteDistribution distribution() {
+                return IgniteDistributions.random();
+            }
+        };
+
+        IgniteSchema publicSchema = new IgniteSchema("PUBLIC");
+
+        publicSchema.addTable("T1", t1);
+        publicSchema.addTable("T2", t2);
+
+        SchemaPlus schema = createRootSchema(false)
+            .add("PUBLIC", publicSchema);
+
+        String sql = "SELECT * FROM T1 JOIN T2 ON (t1.a = t2.a)";
+
+        PlanningContext ctx = PlanningContext.builder()
+            .parentContext(BaseQueryContext.builder()
+                .frameworkConfig(newConfigBuilder(FRAMEWORK_CONFIG)
+                    .defaultSchema(schema)
+                    .costFactory(new IgniteCostFactory(1, 100, 1, 1))
+                    .build())
+                .logger(log)
+                .build()
+            )
+            .query(sql)
+            .build();
+
+        RelRoot relRoot;
+
+        try (IgnitePlanner planner = ctx.planner()) {
+            assertNotNull(planner);
+
+            String qry = ctx.query();
+
+            assertNotNull(qry);
+
+            // Parse
+            SqlNode sqlNode = planner.parse(qry);
+
+            // Validate
+            sqlNode = planner.validate(sqlNode);
+
+            // Convert to Relational operators graph
+            relRoot = planner.rel(sqlNode);
+
+            RelNode rel = relRoot.rel;
+
+            assertNotNull(rel);
+
+            // Transformation chain
+            RelTraitSet desired = rel.getCluster().traitSet()
+                .replace(IgniteConvention.INSTANCE)
+                .replace(IgniteDistributions.single())
+                .replace(CorrelationTrait.UNCORRELATED)
+                .simplify();
+
+            IgniteRel phys = planner.transform(PlannerPhase.OPTIMIZATION, desired, rel);
+
+            assertNotNull(phys);
+
+            System.out.println(RelOptUtil.toString(phys, SqlExplainLevel.ALL_ATTRIBUTES));
+        }
     }
 }

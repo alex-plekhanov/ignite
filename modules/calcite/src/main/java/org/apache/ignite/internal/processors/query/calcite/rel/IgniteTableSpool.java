@@ -76,6 +76,7 @@ public class IgniteTableSpool extends Spool implements IgniteRel {
     @Override public boolean isEnforcer() {
         return true;
     }
+/**/
 
     /** {@inheritDoc} */
     @Override public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {

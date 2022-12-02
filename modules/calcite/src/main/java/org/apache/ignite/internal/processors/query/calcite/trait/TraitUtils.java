@@ -154,28 +154,38 @@ public class TraitUtils {
         if (fromTrait.getType() == BROADCAST_DISTRIBUTED && toTrait.getType() == HASH_DISTRIBUTED)
             return new IgniteTrimExchange(rel.getCluster(), traits, rel, toTrait);
         else {
-            return new IgniteExchange(
+            return new IgniteTableSpool(
                 rel.getCluster(),
-                traits
-                    .replace(RewindabilityTrait.ONE_WAY)
-                    .replace(CorrelationTrait.UNCORRELATED),
-                RelOptRule.convert(
-                    rel,
-                    rel.getTraitSet()
-                        .replace(CorrelationTrait.UNCORRELATED)
-                ),
-                toTrait);
+                traits,
+                Spool.Type.LAZY,
+                new IgniteExchange(
+                    rel.getCluster(),
+                    traits
+                        .replace(RewindabilityTrait.ONE_WAY)
+                        .replace(CorrelationTrait.UNCORRELATED),
+                    RelOptRule.convert(
+                        rel,
+                        rel.getTraitSet()
+                            .replace(CorrelationTrait.UNCORRELATED)
+                    ),
+                    toTrait)
+            );
         }
     }
 
     /** */
-    @Nullable public static RelNode convertRewindability(RelOptPlanner planner,
-        RewindabilityTrait toTrait, RelNode rel) {
+    @Nullable public static RelNode convertRewindability(
+        RelOptPlanner planner,
+        RewindabilityTrait toTrait, RelNode rel)
+    {
         RewindabilityTrait fromTrait = rewindability(rel);
 
         if (fromTrait.satisfies(toTrait))
             return rel;
+        else
+            return null;
 
+/*
         RelTraitSet traits = rel.getTraitSet()
             .replace(toTrait)
             .replace(CorrelationTrait.UNCORRELATED);
@@ -186,6 +196,7 @@ public class TraitUtils {
             Spool.Type.LAZY,
             RelOptRule.convert(rel, rel.getTraitSet().replace(CorrelationTrait.UNCORRELATED))
         );
+*/
     }
 
     /** */
