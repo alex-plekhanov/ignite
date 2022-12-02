@@ -35,6 +35,7 @@ import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTrait;
 import org.apache.calcite.plan.RelTraitDef;
 import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.plan.volcano.RelSubset;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelCollations;
@@ -169,13 +170,18 @@ public class TraitUtils {
     }
 
     /** */
-    @Nullable public static RelNode convertRewindability(RelOptPlanner planner,
-        RewindabilityTrait toTrait, RelNode rel) {
+    @Nullable public static RelNode convertRewindability(
+        RelOptPlanner planner,
+        RewindabilityTrait toTrait, RelNode rel)
+    {
         RewindabilityTrait fromTrait = rewindability(rel);
 
         if (fromTrait.satisfies(toTrait))
             return rel;
+        else
+            return null;
 
+/*
         RelTraitSet traits = rel.getTraitSet()
             .replace(toTrait)
             .replace(CorrelationTrait.UNCORRELATED);
@@ -186,6 +192,7 @@ public class TraitUtils {
             Spool.Type.LAZY,
             RelOptRule.convert(rel, rel.getTraitSet().replace(CorrelationTrait.UNCORRELATED))
         );
+*/
     }
 
     /** */
