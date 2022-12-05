@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableScan;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteSchema;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
@@ -131,6 +132,14 @@ public class JoinWithUsingPlannerTest extends AbstractPlannerTest {
         // subqueries without system columns.
         //assertPlan("SELECT *, T2._KEY FROM T1 JOIN T2 USING (DEPTID)", schemas,
         //    hasColumns("DEPTID", "EMPID", "NAME", "NAME0", "PARENTID", "_KEY"));
+    }
+
+    @Test
+    public void test() throws Exception {
+/*
+        assertPlan("SELECT deptid AS aaa FROM t1 WHERE deptid = 1", schemas,
+            isInstanceOf(IgniteTableScan.class));
+*/
     }
 
     /**

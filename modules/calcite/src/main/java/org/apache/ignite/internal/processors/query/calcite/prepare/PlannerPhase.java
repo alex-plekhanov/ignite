@@ -100,6 +100,7 @@ public enum PlannerPhase {
             return ctx.rules(
                 RuleSets.ofList(
                     FilterScanMergeRule.TABLE_SCAN_SKIP_CORRELATED,
+                    //FilterScanMergeRule.TABLE_SCAN_SKIP_CORRELATED,
 
                     CoreRules.FILTER_MERGE,
                     CoreRules.FILTER_AGGREGATE_TRANSPOSE,
@@ -124,6 +125,7 @@ public enum PlannerPhase {
             return ctx.rules(
                 RuleSets.ofList(
                     ProjectScanMergeRule.TABLE_SCAN_SKIP_CORRELATED,
+                    //ProjectScanMergeRule.TABLE_SCAN_SKIP_CORRELATED,
 
                     CoreRules.JOIN_PUSH_EXPRESSIONS,
                     CoreRules.PROJECT_MERGE,
