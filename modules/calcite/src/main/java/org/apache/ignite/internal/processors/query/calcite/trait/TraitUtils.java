@@ -426,7 +426,7 @@ public class TraitUtils {
         return new PropagationContext(combinations)
             .propagate(rel::deriveCollation)
             .propagate(rel::deriveDistribution)
-            .propagate(rel::deriveRewindability)
+            //.propagate(rel::deriveRewindability)
             .propagate(rel::deriveCorrelation)
             .nodes(rel::createNode);
     }

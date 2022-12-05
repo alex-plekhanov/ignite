@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableScan;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteSchema;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
@@ -138,6 +139,9 @@ public class JoinWithUsingPlannerTest extends AbstractPlannerTest {
      */
     @Test
     public void testNaturalJoin() throws Exception {
+        assertPlan("SELECT /*+ DISABLE_RULE('NestedLoopJoinConverter', 'MergeJoinConverter') */ t2.* FROM t2 JOIN t1 ON (t1.deptid = t2.deptid)",
+            schemas, isInstanceOf(IgniteTableScan.class));
+
         // Join tables without aliases.
         assertPlan("SELECT * FROM T1 NATURAL JOIN T2", schemas,
             hasColumns("DEPTID", "NAME", "EMPID", "PARENTID"));
