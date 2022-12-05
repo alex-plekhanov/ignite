@@ -548,6 +548,25 @@ public class LogicalRelImplementor<Row> implements IgniteRelVisitor<Node<Row>> {
 
         node.register(input);
 
+        if (rel.condition() != null) {
+            Predicate<Row> pred = expressionFactory.predicate(rel.condition(), rel.getRowType());
+
+            FilterNode<Row> filterNode = new FilterNode<>(ctx, rel.getRowType(), pred);
+
+            filterNode.register(node);
+
+            return filterNode;
+        }
+        else if (rel.projects() != null) {
+            Function<Row, Row> prj = expressionFactory.project(rel.projects(), rel.getInput().getRowType());
+
+            ProjectNode<Row> projectNode = new ProjectNode<>(ctx, rel.getRowType(), prj);
+
+            projectNode.register(node);
+
+            return projectNode;
+        }
+
         return node;
     }
 

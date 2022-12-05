@@ -24,17 +24,12 @@ import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.Filter;
-import org.apache.calcite.rel.core.Spool;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.ignite.internal.processors.query.calcite.prepare.bounds.ExactBounds;
 import org.apache.ignite.internal.processors.query.calcite.prepare.bounds.SearchBounds;
-import org.apache.ignite.internal.processors.query.calcite.rel.IgniteFilter;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteHashIndexSpool;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
-import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
-import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.processors.query.calcite.util.RexUtils;
 import org.apache.ignite.internal.util.typedef.F;
@@ -55,20 +50,15 @@ public class FilterSpoolMergeToHashIndexSpoolRule extends RelRule<FilterSpoolMer
 
     /** {@inheritDoc} */
     @Override public void onMatch(RelOptRuleCall call) {
-        final IgniteFilter filter = call.rel(0);
-        final IgniteTableSpool spool = call.rel(1);
+        final IgniteTableSpool spool = call.rel(0);
 
         RelOptCluster cluster = spool.getCluster();
 
         RelTraitSet trait = spool.getTraitSet();
-        CorrelationTrait filterCorr = TraitUtils.correlation(filter);
-
-        if (filterCorr.correlated())
-            trait = trait.replace(filterCorr);
 
         RelNode input = spool.getInput();
 
-        List<SearchBounds> searchBounds = RexUtils.buildHashSearchBounds(cluster, filter.getCondition(),
+        List<SearchBounds> searchBounds = RexUtils.buildHashSearchBounds(cluster, spool.condition(),
             spool.getRowType(), null, false);
 
         if (F.isEmpty(searchBounds))
@@ -85,7 +75,7 @@ public class FilterSpoolMergeToHashIndexSpoolRule extends RelRule<FilterSpoolMer
             trait.replace(RelCollations.EMPTY),
             input,
             searchRow,
-            filter.getCondition(),
+            spool.condition(),
             searchBounds.stream().anyMatch(b -> b != null && b.condition().getKind() == SqlKind.IS_NOT_DISTINCT_FROM)
         );
 
@@ -99,18 +89,10 @@ public class FilterSpoolMergeToHashIndexSpoolRule extends RelRule<FilterSpoolMer
         /** */
         Config DEFAULT = ImmutableFilterSpoolMergeToHashIndexSpoolRule.Config.of()
             .withDescription("FilterSpoolMergeToHashIndexSpoolRule")
-            .withOperandFor(IgniteFilter.class, IgniteTableSpool.class);
-
-        /** Defines an operand tree for the given classes. */
-        default Config withOperandFor(Class<? extends Filter> filterClass, Class<? extends Spool> spoolClass) {
-            return withOperandSupplier(
-                o0 -> o0.operand(filterClass)
-                    .oneInput(o1 -> o1.operand(spoolClass)
-                        .anyInputs()
-                    )
-            )
-                .as(Config.class);
-        }
+            .withOperandSupplier(o1 -> o1.operand(IgniteTableSpool.class)
+                .predicate(s -> s.condition() != null)
+                .anyInputs())
+            .as(Config.class);
 
         /** {@inheritDoc} */
         @Override default FilterSpoolMergeToHashIndexSpoolRule toRule() {
