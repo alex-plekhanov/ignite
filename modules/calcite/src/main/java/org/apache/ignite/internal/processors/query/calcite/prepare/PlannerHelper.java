@@ -67,6 +67,7 @@ import org.apache.ignite.internal.processors.query.calcite.rule.logical.IgniteMu
 import org.apache.ignite.internal.processors.query.calcite.schema.ColumnDescriptor;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteTable;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
+import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.util.typedef.F;
 
@@ -146,6 +147,7 @@ public class PlannerHelper {
             RelTraitSet desired = rel.getCluster().traitSet()
                 .replace(IgniteConvention.INSTANCE)
                 .replace(IgniteDistributions.single())
+                .replace(RewindabilityTrait.ONE_WAY)
                 .replace(root.collation == null ? RelCollations.EMPTY : root.collation)
                 .simplify();
 
