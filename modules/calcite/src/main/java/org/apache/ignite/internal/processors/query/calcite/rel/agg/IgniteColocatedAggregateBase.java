@@ -31,6 +31,7 @@ import org.apache.ignite.internal.processors.query.calcite.rel.IgniteAggregate;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistribution;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
+import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
 import org.apache.ignite.internal.processors.query.calcite.trait.TraitsAwareIgniteRel;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
@@ -70,7 +71,8 @@ public abstract class IgniteColocatedAggregateBase extends IgniteAggregate imple
         RelTraitSet nodeTraits,
         List<RelTraitSet> inputTraits
     ) {
-        return ImmutableList.of(Pair.of(nodeTraits, ImmutableList.of(inputTraits.get(0))));
+        //return ImmutableList.of(Pair.of(nodeTraits, ImmutableList.of(inputTraits.get(0))));
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inputTraits));
     }
 
     /** {@inheritDoc} */

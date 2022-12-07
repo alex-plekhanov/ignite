@@ -137,8 +137,12 @@ public abstract class IgniteReduceAggregateBase extends SingleRel implements Tra
         RelTraitSet nodeTraits,
         List<RelTraitSet> inputTraits
     ) {
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inputTraits));
+/*
+
         return ImmutableList.of(
             Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), ImmutableList.of(inputTraits.get(0))));
+*/
     }
 
     /** {@inheritDoc} */

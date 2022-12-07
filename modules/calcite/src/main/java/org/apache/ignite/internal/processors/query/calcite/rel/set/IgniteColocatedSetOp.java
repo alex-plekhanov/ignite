@@ -42,6 +42,9 @@ public interface IgniteColocatedSetOp extends IgniteSetOp {
         RelTraitSet nodeTraits,
         List<RelTraitSet> inputTraits
     ) {
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inputTraits));
+
+/*
         boolean rewindable = inputTraits.stream()
             .map(TraitUtils::rewindability)
             .allMatch(RewindabilityTrait::rewindable);
@@ -51,6 +54,7 @@ public interface IgniteColocatedSetOp extends IgniteSetOp {
 
         return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY),
             Commons.transform(inputTraits, t -> t.replace(RewindabilityTrait.ONE_WAY))));
+*/
     }
 
     /** {@inheritDoc} */

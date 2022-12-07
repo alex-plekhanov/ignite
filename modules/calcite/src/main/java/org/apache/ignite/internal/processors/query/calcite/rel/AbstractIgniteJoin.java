@@ -105,8 +105,10 @@ public abstract class AbstractIgniteJoin extends Join implements TraitsAwareIgni
 
     /** {@inheritDoc} */
     @Override public List<Pair<RelTraitSet, List<RelTraitSet>>> deriveRewindability(RelTraitSet nodeTraits, List<RelTraitSet> inputTraits) {
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inputTraits));
         // The node is rewindable only if both sources are rewindable.
 
+/*
         RelTraitSet left = inputTraits.get(0), right = inputTraits.get(1);
 
         RewindabilityTrait leftRewindability = TraitUtils.rewindability(left);
@@ -122,6 +124,7 @@ public abstract class AbstractIgniteJoin extends Join implements TraitsAwareIgni
                 ImmutableList.of(left.replace(RewindabilityTrait.REWINDABLE), right.replace(RewindabilityTrait.REWINDABLE))));
 
         return ImmutableList.copyOf(pairs);
+*/
     }
 
     /** {@inheritDoc} */

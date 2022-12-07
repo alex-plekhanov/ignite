@@ -81,8 +81,10 @@ public class IgniteUnionAll extends Union implements TraitsAwareIgniteRel {
 
     /** {@inheritDoc} */
     @Override public List<Pair<RelTraitSet, List<RelTraitSet>>> deriveRewindability(RelTraitSet nodeTraits, List<RelTraitSet> inputTraits) {
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inputTraits));
         // Union node requires the same traits from all its inputs.
 
+/*
         boolean rewindable = inputTraits.stream()
             .map(TraitUtils::rewindability)
             .allMatch(RewindabilityTrait::rewindable);
@@ -92,6 +94,7 @@ public class IgniteUnionAll extends Union implements TraitsAwareIgniteRel {
 
         return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY),
             Commons.transform(inputTraits, t -> t.replace(RewindabilityTrait.ONE_WAY))));
+*/
     }
 
     /** {@inheritDoc} */

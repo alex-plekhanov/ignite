@@ -17,7 +17,9 @@
 
 package org.apache.calcite.plan.volcano;
 
+import java.util.stream.Stream;
 import org.apache.calcite.plan.RelOptCost;
+import org.apache.calcite.plan.RelTraitSet;
 
 /** */
 public class VolcanoUtils {
@@ -27,5 +29,10 @@ public class VolcanoUtils {
      */
     public static RelOptCost bestCost(RelSubset relSubset) {
         return relSubset.bestCost;
+    }
+
+    public static Stream<RelSubset> getSatisfyingSubsets(RelSubset relSubset, RelTraitSet traits) {
+        return relSubset.set.subsets.stream()
+            .filter(s -> traits.satisfies(s.getTraitSet()));
     }
 }

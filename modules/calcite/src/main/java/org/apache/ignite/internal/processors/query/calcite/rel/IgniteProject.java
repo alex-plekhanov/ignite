@@ -158,12 +158,15 @@ public class IgniteProject extends Project implements TraitsAwareIgniteRel {
 
     /** {@inheritDoc} */
     @Override public List<Pair<RelTraitSet, List<RelTraitSet>>> deriveRewindability(RelTraitSet nodeTraits, List<RelTraitSet> inputTraits) {
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inputTraits));
         // The node is rewindable if its input is rewindable.
 
+/*
         RelTraitSet in = inputTraits.get(0);
         RewindabilityTrait rewindability = TraitUtils.rewindability(in);
 
         return ImmutableList.of(Pair.of(nodeTraits.replace(rewindability), ImmutableList.of(in)));
+*/
     }
 
     /** {@inheritDoc} */

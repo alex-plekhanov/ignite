@@ -36,8 +36,11 @@ public interface IgniteReduceSetOp extends IgniteSetOp {
         RelTraitSet nodeTraits,
         List<RelTraitSet> inputTraits
     ) {
+/*
         return ImmutableList.of(
             Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), ImmutableList.of(inputTraits.get(0))));
+*/
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inputTraits));
     }
 
     /** {@inheritDoc} */

@@ -35,6 +35,8 @@ import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTrait;
 import org.apache.calcite.plan.RelTraitDef;
 import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.plan.volcano.RelSubset;
+import org.apache.calcite.plan.volcano.VolcanoUtils;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelCollations;
@@ -82,6 +84,15 @@ public class TraitUtils {
         int size = Math.min(fromTraits.size(), toTraits.size());
 
         if (!fromTraits.satisfies(toTraits)) {
+/*
+            if (rel instanceof RelSubset) {
+                List<RelSubset> subsets = VolcanoUtils.getSatisfyingSubsets((RelSubset)rel, toTraits).collect(Collectors.toList());
+
+                if (!subsets.isEmpty())
+                    return F.first(subsets);
+            }
+*/
+
             RelNode old = null;
 
             for (int i = 0; rel != null && i < size; i++) {
@@ -426,9 +437,16 @@ public class TraitUtils {
         return new PropagationContext(combinations)
             .propagate(rel::deriveCollation)
             .propagate(rel::deriveDistribution)
-            //.propagate(rel::deriveRewindability)
+            .propagate(TraitUtils::deriveRewindability)
+            .propagate(rel::deriveRewindability)
             .propagate(rel::deriveCorrelation)
             .nodes(rel::createNode);
+    }
+
+    private static List<Pair<RelTraitSet, List<RelTraitSet>>> deriveRewindability(RelTraitSet nodeTraits, List<RelTraitSet> inTraits) {
+        //return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inTraits));
+        //return ImmutableList.of();
+        return ImmutableList.of(Pair.of(nodeTraits.replace(RewindabilityTrait.ONE_WAY), inTraits));
     }
 
     /**
