@@ -139,9 +139,6 @@ public class JoinWithUsingPlannerTest extends AbstractPlannerTest {
      */
     @Test
     public void testNaturalJoin() throws Exception {
-        assertPlan("SELECT /*+ DISABLE_RULE('NestedLoopJoinConverter', 'MergeJoinConverter') */ t2.* FROM t2 JOIN t1 ON (t1.deptid = t2.deptid)",
-            schemas, isInstanceOf(IgniteTableScan.class));
-
         // Join tables without aliases.
         assertPlan("SELECT * FROM T1 NATURAL JOIN T2", schemas,
             hasColumns("DEPTID", "NAME", "EMPID", "PARENTID"));
