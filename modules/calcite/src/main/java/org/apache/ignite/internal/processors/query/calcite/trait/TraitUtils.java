@@ -154,6 +154,9 @@ public class TraitUtils {
         if (fromTrait.getType() == BROADCAST_DISTRIBUTED && toTrait.getType() == HASH_DISTRIBUTED)
             return new IgniteTrimExchange(rel.getCluster(), traits, rel, toTrait);
         else {
+            if (correlation(rel).correlated())
+                return null;
+
             return new IgniteExchange(
                 rel.getCluster(),
                 traits

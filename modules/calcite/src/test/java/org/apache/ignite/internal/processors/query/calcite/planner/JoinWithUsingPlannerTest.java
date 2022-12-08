@@ -134,6 +134,14 @@ public class JoinWithUsingPlannerTest extends AbstractPlannerTest {
         //    hasColumns("DEPTID", "EMPID", "NAME", "NAME0", "PARENTID", "_KEY"));
     }
 
+    @Test
+    public void test() throws Exception {
+/*
+        assertPlan("SELECT deptid AS aaa FROM t1 WHERE deptid = 1", schemas,
+            isInstanceOf(IgniteTableScan.class));
+*/
+    }
+
     /**
      * @throws Exception If failed.
      */
