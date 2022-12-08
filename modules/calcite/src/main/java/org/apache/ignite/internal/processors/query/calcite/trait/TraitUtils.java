@@ -157,17 +157,7 @@ public class TraitUtils {
             if (correlation(rel).correlated())
                 return null;
 
-            return new IgniteExchange(
-                rel.getCluster(),
-                traits
-                    .replace(RewindabilityTrait.ONE_WAY)
-                    .replace(CorrelationTrait.UNCORRELATED),
-                RelOptRule.convert(
-                    rel,
-                    rel.getTraitSet()
-                        .replace(CorrelationTrait.UNCORRELATED)
-                ),
-                toTrait);
+            return new IgniteExchange(rel.getCluster(), traits.replace(RewindabilityTrait.ONE_WAY), rel, toTrait);
         }
     }
 
@@ -179,16 +169,12 @@ public class TraitUtils {
         if (fromTrait.satisfies(toTrait))
             return rel;
 
-        RelTraitSet traits = rel.getTraitSet()
-            .replace(toTrait)
-            .replace(CorrelationTrait.UNCORRELATED);
+        if (correlation(rel).correlated())
+            return null;
 
-        return new IgniteTableSpool(
-            rel.getCluster(),
-            traits,
-            Spool.Type.LAZY,
-            RelOptRule.convert(rel, rel.getTraitSet().replace(CorrelationTrait.UNCORRELATED))
-        );
+        RelTraitSet traits = rel.getTraitSet().replace(toTrait);
+
+        return new IgniteTableSpool(rel.getCluster(), traits, Spool.Type.LAZY, rel);
     }
 
     /** */
