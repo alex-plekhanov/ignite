@@ -34,6 +34,7 @@ import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteKernal;
 import org.apache.ignite.internal.IgnitionEx;
 import org.apache.ignite.internal.processors.query.QueryEngine;
+import org.apache.ignite.internal.processors.query.calcite.rel.IgniteTableSpool;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -182,6 +183,7 @@ public class ScriptTestRunner extends Runner {
         }
         finally {
             log.info(">>> Finish: " + dirName + "/" + fileName);
+            log.info(">>> IgniteTableSpool.cnt = " + IgniteTableSpool.cnt.get());
             notifier.fireTestFinished(desc);
         }
     }
