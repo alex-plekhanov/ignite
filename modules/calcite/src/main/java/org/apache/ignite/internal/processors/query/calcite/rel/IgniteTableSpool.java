@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.query.calcite.rel;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -33,6 +34,8 @@ import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteC
  * Relational operator that returns the contents of a table.
  */
 public class IgniteTableSpool extends Spool implements IgniteRel {
+    public static AtomicInteger cnt = new AtomicInteger();
+
     /** */
     public IgniteTableSpool(
         RelOptCluster cluster,
@@ -41,6 +44,7 @@ public class IgniteTableSpool extends Spool implements IgniteRel {
         RelNode input
     ) {
         super(cluster, traits, input, readType, Type.EAGER);
+        cnt.incrementAndGet();
     }
 
     /**
