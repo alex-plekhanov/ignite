@@ -19,7 +19,6 @@ package org.apache.ignite.internal.client.thin;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -591,8 +590,16 @@ final class ReliableChannel implements AutoCloseable {
      * @param ch Channel.
      */
     private void onTopologyChanged(ClientChannel ch) {
-        if (affinityCtx.updateLastTopologyVersion(ch.serverTopologyVersion(), ch.serverNodeId()))
+        if (affinityCtx.updateLastTopologyVersion(ch.serverTopologyVersion(), ch.serverNodeId())) {
+            try {
+                discoveryCtx.refresh(ch);
+            }
+            catch (ClientException e) {
+                log.warning("Failed to get nodes endpoints", e);
+            }
+
             scheduleChannelsReinit();
+        }
     }
 
     /**
@@ -629,30 +636,6 @@ final class ReliableChannel implements AutoCloseable {
             return true;
         }
 
-        Map<InetSocketAddress, ClientChannelHolder> curAddrs = new HashMap<>();
-
-        Set<InetSocketAddress> newAddrsSet = newAddrs.stream().flatMap(Collection::stream).collect(Collectors.toSet());
-
-        // Close obsolete holders or map old but valid addresses to holders
-        if (holders != null) {
-            for (ClientChannelHolder h : holders) {
-                boolean found = false;
-
-                for (InetSocketAddress addr : h.getAddresses()) {
-                    // If new endpoints contain at least one of channel addresses, don't close this channel.
-                    if (newAddrsSet.contains(addr)) {
-                        curAddrs.put(addr, h);
-                        found = true;
-                    }
-                }
-
-                if (!found)
-                    h.close();
-            }
-        }
-
-        List<ClientChannelHolder> reinitHolders = new ArrayList<>();
-
         // The variable holds a new index of default channel after topology change.
         // Suppose that reuse of the channel is better than open new connection.
         int dfltChannelIdx = -1;
@@ -664,27 +647,71 @@ final class ReliableChannel implements AutoCloseable {
         if (idx != -1)
             currDfltHolder = holders.get(idx);
 
+        List<ClientChannelHolder> reinitHolders = new ArrayList<>();
+        List<ClientChannelHolder> toCloseHolders = new ArrayList<>();
+
+        if (holders != null) {
+            Map<InetSocketAddress, List<InetSocketAddress>> newAddrsMap = new HashMap<>();
+
+            newAddrs.forEach(addrs -> addrs.forEach(addr -> newAddrsMap.put(addr, addrs)));
+
+            for (ClientChannelHolder hld : holders) {
+                if (shouldStopChannelsReinit())
+                    return false;
+
+                boolean found = false;
+
+                // Try to find new addresses for old channel holders.
+                for (InetSocketAddress addr : hld.getAddresses()) {
+                    List<InetSocketAddress> addrs = newAddrsMap.get(addr);
+
+                    if (addrs != null) {
+                        found = true;
+
+                        if (!addrs.equals(hld.getAddresses())) // Enrich channel configuration.
+                            hld.setConfiguration(new ClientChannelConfiguration(clientCfg, addrs));
+
+                        reinitHolders.add(hld);
+
+                        if (hld == currDfltHolder)
+                            dfltChannelIdx = reinitHolders.size() - 1;
+
+                        break;
+                    }
+                }
+
+                if (!found)
+                    toCloseHolders.add(hld);
+            }
+        }
+
+        Set<InetSocketAddress> usedAddrs = reinitHolders.stream()
+            .flatMap(h -> h.getAddresses().stream())
+            .collect(Collectors.toSet());
+
         for (List<InetSocketAddress> addrs : newAddrs) {
             if (shouldStopChannelsReinit())
                 return false;
 
-            ClientChannelHolder hld = null;
+            boolean found = false;
 
             // Try to find already created channel holder.
             for (InetSocketAddress addr : addrs) {
-                hld = curAddrs.get(addr);
+                if (usedAddrs.contains(addr)) {
+                    found = true;
 
-                if (hld != null)
                     break;
+                }
             }
 
-            if (hld == null) // If not found, create the new one.
-                hld = new ClientChannelHolder(new ClientChannelConfiguration(clientCfg, addrs));
+            if (!found) {
+                ClientChannelHolder hld = new ClientChannelHolder(new ClientChannelConfiguration(clientCfg, addrs));
 
-            reinitHolders.add(hld);
+                reinitHolders.add(hld);
 
-            if (hld == currDfltHolder)
-                dfltChannelIdx = reinitHolders.size() - 1;
+                if (hld == currDfltHolder)
+                    dfltChannelIdx = reinitHolders.size() - 1;
+            }
         }
 
         if (dfltChannelIdx == -1) {
@@ -711,6 +738,8 @@ final class ReliableChannel implements AutoCloseable {
             curChannelsGuard.writeLock().unlock();
         }
 
+        toCloseHolders.forEach(ClientChannelHolder::close);
+
         finishChannelsReInit = System.currentTimeMillis();
 
         return true;
@@ -725,16 +754,15 @@ final class ReliableChannel implements AutoCloseable {
         if (!initChannelHolders())
             return;
 
-        if (affinityCtx.lastTopology() == null) { // In case of new
+        if (channelsCnt.get() == 0) {
             // Establish default channel connection and retrive nodes endpoints if applicable.
             if (applyOnDefaultChannel(discoveryCtx::refresh, null)) {
                 if (!initChannelHolders())
                     return;
             }
         }
-        else
-            // Apply no-op function. Establish default channel connection.
-            applyOnDefaultChannel(channel -> null, null, channels.size(), null);
+        else // Apply no-op function. Establish default channel connection.
+            applyOnDefaultChannel(channel -> null, null);
 
         if (partitionAwarenessEnabled)
             initAllChannelsAsync();
@@ -923,7 +951,7 @@ final class ReliableChannel implements AutoCloseable {
     @SuppressWarnings("PackageVisibleInnerClass") // Visible for tests.
     class ClientChannelHolder {
         /** Channel configuration. */
-        private final ClientChannelConfiguration chCfg;
+        private volatile ClientChannelConfiguration chCfg;
 
         /** Channel. */
         private volatile ClientChannel ch;
@@ -1056,6 +1084,13 @@ final class ReliableChannel implements AutoCloseable {
          */
         List<InetSocketAddress> getAddresses() {
             return chCfg.getAddresses();
+        }
+
+        /**
+         * Set new channel configuration.
+         */
+        void setConfiguration(ClientChannelConfiguration chCfg) {
+            this.chCfg = chCfg;
         }
     }
 

@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.ignite.IgniteCheckedException;
@@ -50,9 +49,6 @@ public class ClientDiscoveryContext {
     private static final long UNKNOWN_TOP_VER = -1;
 
     /** */
-    private final AtomicReference<TopologyInfo> topInfo = new AtomicReference<>();
-
-    /** */
     private final AtomicBoolean refreshIsInProgress = new AtomicBoolean();
 
     /** Statically configured addresses. */
@@ -61,11 +57,14 @@ public class ClientDiscoveryContext {
     /** Configured address finder. */
     @Nullable private final ClientAddressFinder addrFinder;
 
+    /** */
+    private volatile TopologyInfo topInfo;
+
     /** Cache addresses returned by {@link ClientAddressFinder}. */
     private volatile String[] prevHostAddrs;
 
     /** Previously requested endpoints for topology version. */
-    private volatile long prevTopVer;
+    private volatile long prevTopVer = UNKNOWN_TOP_VER;
 
     /** */
     public ClientDiscoveryContext(@Nullable String[] addresses, @Nullable ClientAddressFinder addrFinder) {
@@ -76,7 +75,9 @@ public class ClientDiscoveryContext {
 
     /** */
     void reset() {
-        topInfo.set(new TopologyInfo(UNKNOWN_TOP_VER, Collections.emptyMap()));
+        topInfo = new TopologyInfo(UNKNOWN_TOP_VER, Collections.emptyMap());
+        prevTopVer = UNKNOWN_TOP_VER;
+        prevHostAddrs = null;
     }
 
     /**
@@ -92,18 +93,17 @@ public class ClientDiscoveryContext {
         if (!ch.protocolCtx().isFeatureSupported(ProtocolBitmaskFeature.CLUSTER_GROUP_GET_NODES_ENDPOINTS))
             return false;
 
-        TopologyInfo oldTopInfo = topInfo.get();
-
-        if (ch.serverTopologyVersion() != null && oldTopInfo.topVer >= ch.serverTopologyVersion().topologyVersion())
+        if (ch.serverTopologyVersion() != null && topInfo.topVer >= ch.serverTopologyVersion().topologyVersion())
             return false; // Info is up to date.
 
+        // Allow only one request at time.
         if (refreshIsInProgress.compareAndSet(false, true)) {
             try {
-                Map<UUID, NodeInfo> nodes = new HashMap<>(oldTopInfo.nodes);
+                Map<UUID, NodeInfo> nodes = new HashMap<>(topInfo.nodes);
 
                 TopologyInfo newTopInfo = ch.service(ClientOperation.CLUSTER_GROUP_GET_NODE_ENDPOINTS,
                     req -> {
-                        req.out().writeLong(oldTopInfo.topVer);
+                        req.out().writeLong(topInfo.topVer);
                         req.out().writeLong(UNKNOWN_TOP_VER);
                     },
                     res -> {
@@ -147,16 +147,12 @@ public class ClientDiscoveryContext {
                     }
                 );
 
-                // Store latest topology information.
-                while (true) {
-                    TopologyInfo curTopInfo = topInfo.get();
-
-                    if (curTopInfo.topVer >= newTopInfo.topVer)
-                        return false;
-
-                    if (topInfo.compareAndSet(curTopInfo, newTopInfo))
-                        return true;
+                if (topInfo.topVer < newTopInfo.topVer) {
+                    topInfo = newTopInfo;
+                    return true;
                 }
+                else
+                    return false;
             }
             finally {
                 refreshIsInProgress.set(false);
@@ -174,7 +170,7 @@ public class ClientDiscoveryContext {
      */
     @Nullable Collection<List<InetSocketAddress>> getEndpoints() {
         Collection<List<InetSocketAddress>> endpoints = null;
-        TopologyInfo topInfo = this.topInfo.get();
+        TopologyInfo topInfo = this.topInfo;
 
         if (addrFinder != null || topInfo.topVer == UNKNOWN_TOP_VER) {
             String[] hostAddrs = addrFinder == null ? addresses : addrFinder.getAddresses();
@@ -187,8 +183,10 @@ public class ClientDiscoveryContext {
                 prevHostAddrs = hostAddrs;
             }
         }
-        else if (prevTopVer != topInfo.topVer)
+        else if (prevTopVer != topInfo.topVer) {
             endpoints = topInfo.endpoints;
+            prevTopVer = topInfo.topVer;
+        }
 
         return endpoints;
     }

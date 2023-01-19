@@ -186,7 +186,7 @@ public abstract class ThinClientAbstractPartitionAwarenessTest extends GridCommo
         String addrs[] = Arrays.stream(nodeIdxs).mapToObj(nodeIdx -> "127.0.0.1:" + (DFLT_PORT + nodeIdx))
             .toArray(String[]::new);
 
-        return new ClientConfiguration().setAddresses(addrs).setPartitionAwarenessEnabled(true);
+        return new ClientConfiguration().setAddressesFinder(() -> addrs).setPartitionAwarenessEnabled(true);
     }
 
     /**
