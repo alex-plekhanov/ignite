@@ -23,7 +23,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,9 +39,7 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.ignite.IgniteBinary;
-import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.client.ClientAuthenticationException;
 import org.apache.ignite.client.ClientAuthorizationException;
@@ -54,11 +51,8 @@ import org.apache.ignite.client.ClientRetryPolicy;
 import org.apache.ignite.client.ClientRetryPolicyContext;
 import org.apache.ignite.client.IgniteClientFuture;
 import org.apache.ignite.configuration.ClientConfiguration;
-import org.apache.ignite.configuration.ClientConnectorConfiguration;
 import org.apache.ignite.internal.client.thin.io.ClientConnectionMultiplexer;
 import org.apache.ignite.internal.client.thin.io.gridnioserver.GridNioClientConnectionMultiplexer;
-import org.apache.ignite.internal.util.HostAndPortRange;
-import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.logger.NullLogger;
 
@@ -83,6 +77,9 @@ final class ReliableChannel implements AutoCloseable {
 
     /** Cache partition awareness context. */
     private final ClientCacheAffinityContext affinityCtx;
+
+    /** Nodes discovery context. */
+    private final ClientDiscoveryContext discoveryCtx;
 
     /** Client configuration. */
     private final ClientConfiguration clientCfg;
@@ -117,8 +114,8 @@ final class ReliableChannel implements AutoCloseable {
     /** Connection manager. */
     private final ClientConnectionMultiplexer connMgr;
 
-    /** Cache addresses returned by {@code ThinClientAddressFinder}. */
-    private volatile String[] prevHostAddrs;
+    /** Open channels counter. */
+    private final AtomicInteger channelsCnt = new AtomicInteger();
 
     /** Open channels counter. */
     private final AtomicInteger channelsCnt = new AtomicInteger();
@@ -144,6 +141,7 @@ final class ReliableChannel implements AutoCloseable {
         partitionAwarenessEnabled = clientCfg.isPartitionAwarenessEnabled();
 
         affinityCtx = new ClientCacheAffinityContext(binary, clientCfg.getPartitionAwarenessMapperFactory());
+        discoveryCtx = new ClientDiscoveryContext(clientCfg.getAddresses(), clientCfg.getAddressesFinder());
 
         connMgr = new GridNioClientConnectionMultiplexer(clientCfg);
         connMgr.start();
@@ -477,6 +475,8 @@ final class ReliableChannel implements AutoCloseable {
                     // to let affinity get updated in case of reconnection to the new cluster (with lower topology
                     // version).
                     affinityCtx.reset(lastTop);
+
+                    discoveryCtx.reset();
                 }
                 finally {
                     affinityUpdateInProgress.set(false);
@@ -489,36 +489,6 @@ final class ReliableChannel implements AutoCloseable {
         }
         else
             return true;
-    }
-
-    /**
-     * @return List of host:port_range address lines parsed as {@link InetSocketAddress}.
-     */
-    private static List<InetSocketAddress> parsedAddresses(String[] addrs) throws ClientException {
-        if (F.isEmpty(addrs))
-            throw new ClientException("Empty addresses");
-
-        Collection<HostAndPortRange> ranges = new ArrayList<>(addrs.length);
-
-        for (String a : addrs) {
-            try {
-                ranges.add(HostAndPortRange.parse(
-                    a,
-                    ClientConnectorConfiguration.DFLT_PORT,
-                    ClientConnectorConfiguration.DFLT_PORT + ClientConnectorConfiguration.DFLT_PORT_RANGE,
-                    "Failed to parse Ignite server address"
-                ));
-            }
-            catch (IgniteCheckedException e) {
-                throw new ClientException(e);
-            }
-        }
-
-        return ranges.stream()
-            .flatMap(r -> IntStream
-                .rangeClosed(r.portFrom(), r.portTo()).boxed()
-                .map(p -> InetSocketAddress.createUnresolved(r.host(), p))
-            ).collect(Collectors.toList());
     }
 
     /**
@@ -561,7 +531,7 @@ final class ReliableChannel implements AutoCloseable {
      * On channel of the specified holder failure.
      */
     private void onChannelFailure(ClientChannelHolder hld, ClientChannel ch, Throwable t) {
-        log.warning("Channel failure [address=" + hld.chCfg.getAddress() + ", err=" + t.getMessage() + ']', t);
+        log.warning("Channel failure [addresses=" + hld.getAddresses() + ", err=" + t.getMessage() + ']', t);
 
         if (ch != null && ch == hld.ch)
             hld.closeChannel();
@@ -572,19 +542,8 @@ final class ReliableChannel implements AutoCloseable {
         rollCurrentChannel(hld);
 
         // For partiton awareness it's already initializing asynchronously in #onTopologyChanged.
-        if (addressFinderAddressesChanged() || (scheduledChannelsReinit.get() && !partitionAwarenessEnabled))
+        if (scheduledChannelsReinit.get() && !partitionAwarenessEnabled)
             channelsInit();
-    }
-
-    /**
-     * Checks whether addressFinder returns a different set of addresses.
-     */
-    private boolean addressFinderAddressesChanged() {
-        if (clientCfg.getAddressesFinder() == null)
-            return false;
-
-        String[] hostAddrs = clientCfg.getAddressesFinder().getAddresses();
-        return !Arrays.equals(hostAddrs, prevHostAddrs);
     }
 
     /**
@@ -603,11 +562,27 @@ final class ReliableChannel implements AutoCloseable {
                         hld.getOrCreateChannel(true);
                     }
                     catch (Exception e) {
-                        log.warning("Failed to initialize channel [address=" + hld.chCfg.getAddress() + ", err=" + e.getMessage() + ']', e);
+                        log.warning("Failed to initialize channel [addresses=" + hld.getAddresses() + ", err=" +
+                            e.getMessage() + ']', e);
                     }
                 }
             }
         );
+    }
+
+    /** */
+    private void scheduleChannelsReinit() {
+        if (scheduledChannelsReinit.compareAndSet(false, true)) {
+            // If partition awareness is disabled then only schedule and wait for the default channel to fail.
+            if (partitionAwarenessEnabled)
+                ForkJoinPool.commonPool().submit(this::channelsInit);
+        }
+    }
+
+    /** */
+    private void onAllChannelsFailed() {
+        discoveryCtx.reset();
+        scheduleChannelsReinit();
     }
 
     /**
@@ -616,13 +591,8 @@ final class ReliableChannel implements AutoCloseable {
      * @param ch Channel.
      */
     private void onTopologyChanged(ClientChannel ch) {
-        if (affinityCtx.updateLastTopologyVersion(ch.serverTopologyVersion(), ch.serverNodeId())) {
-            if (scheduledChannelsReinit.compareAndSet(false, true)) {
-                // If partition awareness is disabled then only schedule and wait for the default channel to fail.
-                if (partitionAwarenessEnabled)
-                    ForkJoinPool.commonPool().submit(this::channelsInit);
-            }
-        }
+        if (affinityCtx.updateLastTopologyVersion(ch.serverTopologyVersion(), ch.serverNodeId()))
+            scheduleChannelsReinit();
     }
 
     /**
@@ -641,7 +611,7 @@ final class ReliableChannel implements AutoCloseable {
 
     /**
      * Init channel holders to all nodes.
-     * @return boolean wheter channels was reinited.
+     * @return boolean whether channels was reinited.
      */
     synchronized boolean initChannelHolders() {
         List<ClientChannelHolder> holders = channels;
@@ -651,21 +621,7 @@ final class ReliableChannel implements AutoCloseable {
         // Enable parallel threads to schedule new init of channel holders.
         scheduledChannelsReinit.set(false);
 
-        List<InetSocketAddress> newAddrs = null;
-
-        if (clientCfg.getAddressesFinder() != null) {
-            String[] hostAddrs = clientCfg.getAddressesFinder().getAddresses();
-
-            if (hostAddrs.length == 0)
-                throw new ClientException("Empty addresses");
-
-            if (!Arrays.equals(hostAddrs, prevHostAddrs)) {
-                newAddrs = parsedAddresses(hostAddrs);
-                prevHostAddrs = hostAddrs;
-            }
-        }
-        else if (holders == null)
-            newAddrs = parsedAddresses(clientCfg.getAddresses());
+        Collection<List<InetSocketAddress>> newAddrs = discoveryCtx.getEndpoints();
 
         if (newAddrs == null) {
             finishChannelsReInit = System.currentTimeMillis();
@@ -675,16 +631,22 @@ final class ReliableChannel implements AutoCloseable {
 
         Map<InetSocketAddress, ClientChannelHolder> curAddrs = new HashMap<>();
 
-        Map<InetSocketAddress, ClientChannelHolder> newHoldersMap = new HashMap<>();
-
-        Set<InetSocketAddress> newAddrsSet = new HashSet<>(newAddrs);
+        Set<InetSocketAddress> newAddrsSet = newAddrs.stream().flatMap(Collection::stream).collect(Collectors.toSet());
 
         // Close obsolete holders or map old but valid addresses to holders
         if (holders != null) {
             for (ClientChannelHolder h : holders) {
-                if (newAddrsSet.contains(h.getAddress()))
-                    curAddrs.put(h.getAddress(), h);
-                else
+                boolean found = false;
+
+                for (InetSocketAddress addr : h.getAddresses()) {
+                    // If new endpoints contain at least one of channel addresses, don't close this channel.
+                    if (newAddrsSet.contains(addr)) {
+                        curAddrs.put(addr, h);
+                        found = true;
+                    }
+                }
+
+                if (!found)
                     h.close();
             }
         }
@@ -702,24 +664,22 @@ final class ReliableChannel implements AutoCloseable {
         if (idx != -1)
             currDfltHolder = holders.get(idx);
 
-        for (InetSocketAddress addr : newAddrs) {
+        for (List<InetSocketAddress> addrs : newAddrs) {
             if (shouldStopChannelsReinit())
                 return false;
 
-            // Create new holders for new addrs.
-            if (!curAddrs.containsKey(addr)) {
-                ClientChannelHolder hld =
-                        newHoldersMap.
-                                computeIfAbsent(addr,
-                                        a -> new ClientChannelHolder(new ClientChannelConfiguration(clientCfg, a)));
+            ClientChannelHolder hld = null;
 
-                reinitHolders.add(hld);
+            // Try to find already created channel holder.
+            for (InetSocketAddress addr : addrs) {
+                hld = curAddrs.get(addr);
 
-                continue;
+                if (hld != null)
+                    break;
             }
 
-            // This holder is up to date.
-            ClientChannelHolder hld = curAddrs.get(addr);
+            if (hld == null) // If not found, create the new one.
+                hld = new ClientChannelHolder(new ClientChannelConfiguration(clientCfg, addrs));
 
             reinitHolders.add(hld);
 
@@ -765,8 +725,16 @@ final class ReliableChannel implements AutoCloseable {
         if (!initChannelHolders())
             return;
 
-        // Apply no-op function. Establish default channel connection.
-        applyOnDefaultChannel(channel -> null, null);
+        if (affinityCtx.lastTopology() == null) { // In case of new
+            // Establish default channel connection and retrive nodes endpoints if applicable.
+            if (applyOnDefaultChannel(discoveryCtx::refresh, null)) {
+                if (!initChannelHolders())
+                    return;
+            }
+        }
+        else
+            // Apply no-op function. Establish default channel connection.
+            applyOnDefaultChannel(channel -> null, null, channels.size(), null);
 
         if (partitionAwarenessEnabled)
             initAllChannelsAsync();
@@ -859,6 +827,9 @@ final class ReliableChannel implements AutoCloseable {
                     break;
             }
         }
+
+        if (channelsCnt.get() == 0)
+            onAllChannelsFailed();
 
         throw failure;
     }
@@ -1081,10 +1052,10 @@ final class ReliableChannel implements AutoCloseable {
         }
 
         /**
-         * Get address of the channel. For test purposes.
+         * Get addresses of the channel.
          */
-        InetSocketAddress getAddress() {
-            return chCfg.getAddress();
+        List<InetSocketAddress> getAddresses() {
+            return chCfg.getAddresses();
         }
     }
 

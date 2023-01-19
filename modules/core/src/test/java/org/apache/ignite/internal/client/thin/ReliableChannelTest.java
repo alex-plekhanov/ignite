@@ -90,7 +90,7 @@ public class ReliableChannelTest {
 
         assertEquals(ClientConnectorConfiguration.DFLT_PORT_RANGE + 1, rc.getChannelHolders().size());
 
-        assertEquals(ClientConnectorConfiguration.DFLT_PORT, F.first(rc.getChannelHolders()).getAddress().getPort());
+        assertEquals(ClientConnectorConfiguration.DFLT_PORT, F.first(F.first(rc.getChannelHolders()).getAddresses()).getPort());
 
         assertEquals(0, rc.getCurrentChannelIndex());
     }
@@ -118,7 +118,7 @@ public class ReliableChannelTest {
 
             rc.channelsInit();
 
-            usedChannels.add(rc.getChannelHolders().get(rc.getCurrentChannelIndex()).getAddress().toString());
+            usedChannels.add(F.first(rc.getChannelHolders().get(rc.getCurrentChannelIndex()).getAddresses()).toString());
         }
 
         return usedChannels;
@@ -143,7 +143,7 @@ public class ReliableChannelTest {
         ReliableChannel rc = new ReliableChannel(chFactory, ccfg, null);
 
         Supplier<List<String>> holderAddresses = () -> rc.getChannelHolders().stream()
-            .map(h -> h.getAddress().toString())
+            .map(h -> F.first(h.getAddresses()).toString())
             .sorted()
             .collect(Collectors.toList());
 
@@ -403,7 +403,7 @@ public class ReliableChannelTest {
 
         /** {@inheritDoc} */
         @Override public ProtocolContext protocolCtx() {
-            return null;
+            return new ProtocolContext(ProtocolVersion.LATEST_VER, null);
         }
 
         /** {@inheritDoc} */

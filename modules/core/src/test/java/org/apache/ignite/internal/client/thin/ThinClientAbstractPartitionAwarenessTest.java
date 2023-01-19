@@ -38,6 +38,7 @@ import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.client.thin.io.ClientConnectionMultiplexer;
 import org.apache.ignite.internal.processors.cache.IgniteInternalCache;
+import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.testframework.GridTestUtils;
@@ -195,7 +196,7 @@ public abstract class ThinClientAbstractPartitionAwarenessTest extends GridCommo
     protected void initClient(ClientConfiguration clientCfg, int... chIdxs) throws IgniteInterruptedCheckedException {
         client = new TcpIgniteClient((cfg, hnd) -> {
             try {
-                log.info("Establishing connection to " + cfg.getAddress());
+                log.info("Establishing connection to " + cfg.getAddresses());
 
                 TcpClientChannel ch = new TestTcpClientChannel(cfg, hnd);
 
@@ -330,7 +331,7 @@ public abstract class ThinClientAbstractPartitionAwarenessTest extends GridCommo
 
             this.cfg = cfg;
 
-            int chIdx = cfg.getAddress().getPort() - DFLT_PORT;
+            int chIdx = F.first(cfg.getAddresses()).getPort() - DFLT_PORT;
 
             channels[chIdx] = this;
 
@@ -379,7 +380,7 @@ public abstract class ThinClientAbstractPartitionAwarenessTest extends GridCommo
 
         /** {@inheritDoc} */
         @Override public String toString() {
-            return cfg.getAddress().toString();
+            return cfg.getAddresses().toString();
         }
     }
 }
