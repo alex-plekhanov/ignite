@@ -68,6 +68,9 @@ final class ReliableChannel implements AutoCloseable {
     /** Client channel holders for each configured address. */
     private volatile List<ClientChannelHolder> channels;
 
+    /** Limit of attempts to execute each service. */
+    private volatile int attemptsLimit;
+
     /** Index of the current channel. */
     private volatile int curChIdx = -1;
 
@@ -197,7 +200,7 @@ final class ReliableChannel implements AutoCloseable {
         CompletableFuture<T> fut = new CompletableFuture<>();
 
         // Use the only one attempt to avoid blocking async method.
-        handleServiceAsync(fut, op, payloadWriter, payloadReader, 1, null);
+        handleServiceAsync(fut, op, payloadWriter, payloadReader, 0, 1, null);
 
         return new IgniteClientFutureImpl<>(fut);
     }
@@ -209,6 +212,7 @@ final class ReliableChannel implements AutoCloseable {
                                         ClientOperation op,
                                         Consumer<PayloadOutputChannel> payloadWriter,
                                         Function<PayloadInputChannel, T> payloadReader,
+                                        int attempt,
                                         int attemptsLimit,
                                         ClientConnectionException failure) {
         ClientChannel ch;
@@ -216,7 +220,7 @@ final class ReliableChannel implements AutoCloseable {
         int attemptsCnt[] = new int[1];
 
         try {
-            ch = applyOnDefaultChannel(channel -> channel, null, attemptsLimit, v -> attemptsCnt[0] = v);
+            ch = applyOnDefaultChannel(channel -> channel, null, attempt, attemptsLimit, v -> attemptsCnt[0] = v);
         }
         catch (Throwable ex) {
             if (failure != null) {
@@ -244,9 +248,11 @@ final class ReliableChannel implements AutoCloseable {
                 ClientConnectionException failure0 = failure;
 
                 if (err instanceof ClientConnectionException) {
+                    int attempt0 = attempt + (failure == null ? 0 : attemptsCnt[0] - 1);
+
                     try {
                         // Will try to reinit channels if topology changed.
-                        onChannelFailure(ch, err);
+                        onChannelFailure(ch, err, attempt0);
                     }
                     catch (Throwable ex) {
                         fut.completeExceptionally(ex);
@@ -259,15 +265,8 @@ final class ReliableChannel implements AutoCloseable {
                     else
                         failure0.addSuppressed(err);
 
-                    int attempt = attemptsCnt[0];
-                    int leftAttempts = attemptsLimit - attempt;
-
-                    // If it is a first retry then reset attempts (as for initialization we use only 1 attempt).
-                    if (failure == null)
-                        leftAttempts = getRetryLimit() - 1;
-
-                    if (leftAttempts > 0 && shouldRetry(op, attempt, failure0)) {
-                        handleServiceAsync(fut, op, payloadWriter, payloadReader, leftAttempts, failure0);
+                    if (this.attemptsLimit > attempt0 + 1 && shouldRetry(op, attempt, failure0)) {
+                        handleServiceAsync(fut, op, payloadWriter, payloadReader, attempt0 + 1, this.attemptsLimit, failure0);
 
                         return null;
                     }
@@ -387,7 +386,7 @@ final class ReliableChannel implements AutoCloseable {
 
                             try {
                                 // Will try to reinit channels if topology changed.
-                                onChannelFailure(channel, err);
+                                onChannelFailure(channel, err, 0);
                             }
                             catch (Throwable ex) {
                                 fut.completeExceptionally(ex);
@@ -397,14 +396,12 @@ final class ReliableChannel implements AutoCloseable {
                             if (err instanceof ClientConnectionException) {
                                 ClientConnectionException failure = (ClientConnectionException)err;
 
-                                int attemptsLimit = getRetryLimit() - 1;
-
-                                if (attemptsLimit == 0 || !shouldRetry(op, 0, failure)) {
+                                if (attemptsLimit == 1 || !shouldRetry(op, 0, failure)) {
                                     fut.completeExceptionally(err);
                                     return null;
                                 }
 
-                                handleServiceAsync(fut, op, payloadWriter, payloadReader, attemptsLimit, failure);
+                                handleServiceAsync(fut, op, payloadWriter, payloadReader, 1, attemptsLimit, failure);
                                 return null;
                             }
 
@@ -519,17 +516,17 @@ final class ReliableChannel implements AutoCloseable {
     /**
      * On current channel failure.
      */
-    private void onChannelFailure(ClientChannel ch, Throwable t) {
+    private void onChannelFailure(ClientChannel ch, Throwable t, int attempt) {
         // There is nothing wrong if curChIdx was concurrently changed, since channel was closed by another thread
         // when current index was changed and no other wrong channel will be closed by current thread because
         // onChannelFailure checks channel binded to the holder before closing it.
-        onChannelFailure(channels.get(curChIdx), ch, t);
+        onChannelFailure(channels.get(curChIdx), ch, t, attempt);
     }
 
     /**
      * On channel of the specified holder failure.
      */
-    private void onChannelFailure(ClientChannelHolder hld, ClientChannel ch, Throwable t) {
+    private void onChannelFailure(ClientChannelHolder hld, ClientChannel ch, Throwable t, int attempt) {
         log.warning("Channel failure [addresses=" + hld.getAddresses() + ", err=" + t.getMessage() + ']', t);
 
         if (ch != null && ch == hld.ch)
@@ -540,9 +537,15 @@ final class ReliableChannel implements AutoCloseable {
         // Roll current channel even if a topology changes. To help find working channel faster.
         rollCurrentChannel(hld);
 
-        // For partiton awareness it's already initializing asynchronously in #onTopologyChanged.
-        if (scheduledChannelsReinit.get() && !partitionAwarenessEnabled)
-            channelsInit();
+        if (channelsCnt.get() == 0 && (attempt == attemptsLimit || attempt % channels.size() == 0)) {
+            // All channels have failed.
+            discoveryCtx.reset();
+            channelsInit(attempt + 1);
+        }
+        else if (scheduledChannelsReinit.get() && !partitionAwarenessEnabled) {
+            // For partiton awareness it's already initializing asynchronously in #onTopologyChanged.
+            channelsInit(attempt + 1);
+        }
     }
 
     /**
@@ -569,21 +572,6 @@ final class ReliableChannel implements AutoCloseable {
         );
     }
 
-    /** */
-    private void scheduleChannelsReinit() {
-        if (scheduledChannelsReinit.compareAndSet(false, true)) {
-            // If partition awareness is disabled then only schedule and wait for the default channel to fail.
-            if (partitionAwarenessEnabled)
-                ForkJoinPool.commonPool().submit(this::channelsInit);
-        }
-    }
-
-    /** */
-    private void onAllChannelsFailed() {
-        discoveryCtx.reset();
-        scheduleChannelsReinit();
-    }
-
     /**
      * Topology version change detected on the channel.
      *
@@ -591,14 +579,20 @@ final class ReliableChannel implements AutoCloseable {
      */
     private void onTopologyChanged(ClientChannel ch) {
         if (affinityCtx.updateLastTopologyVersion(ch.serverTopologyVersion(), ch.serverNodeId())) {
-            try {
-                discoveryCtx.refresh(ch);
-            }
-            catch (ClientException e) {
-                log.warning("Failed to get nodes endpoints", e);
-            }
+            ForkJoinPool.commonPool().submit(() -> {
+                try {
+                    discoveryCtx.refresh(ch);
+                }
+                catch (ClientException e) {
+                    log.warning("Failed to get nodes endpoints", e);
+                }
 
-            scheduleChannelsReinit();
+                if (scheduledChannelsReinit.compareAndSet(false, true)) {
+                    // If partition awareness is disabled then only schedule and wait for the default channel to fail.
+                    if (partitionAwarenessEnabled)
+                        channelsInit();
+                }
+            });
         }
     }
 
@@ -636,6 +630,32 @@ final class ReliableChannel implements AutoCloseable {
             return true;
         }
 
+        Map<InetSocketAddress, ClientChannelHolder> curAddrs = new HashMap<>();
+
+        Set<InetSocketAddress> newAddrsSet = newAddrs.stream().flatMap(Collection::stream).collect(Collectors.toSet());
+
+        // Close obsolete holders or map old but valid addresses to holders
+        if (holders != null) {
+            for (ClientChannelHolder h : holders) {
+                boolean found = false;
+
+                for (InetSocketAddress addr : h.getAddresses()) {
+                    // If new endpoints contain at least one of channel addresses, don't close this channel.
+                    if (newAddrsSet.contains(addr)) {
+                        ClientChannelHolder oldHld = curAddrs.putIfAbsent(addr, h);
+
+                        if (oldHld == null || oldHld == h) // If not duplicate.
+                            found = true;
+                    }
+                }
+
+                if (!found)
+                    h.close();
+            }
+        }
+
+        List<ClientChannelHolder> reinitHolders = new ArrayList<>();
+
         // The variable holds a new index of default channel after topology change.
         // Suppose that reuse of the channel is better than open new connection.
         int dfltChannelIdx = -1;
@@ -647,71 +667,35 @@ final class ReliableChannel implements AutoCloseable {
         if (idx != -1)
             currDfltHolder = holders.get(idx);
 
-        List<ClientChannelHolder> reinitHolders = new ArrayList<>();
-        List<ClientChannelHolder> toCloseHolders = new ArrayList<>();
-
-        if (holders != null) {
-            Map<InetSocketAddress, List<InetSocketAddress>> newAddrsMap = new HashMap<>();
-
-            newAddrs.forEach(addrs -> addrs.forEach(addr -> newAddrsMap.put(addr, addrs)));
-
-            for (ClientChannelHolder hld : holders) {
-                if (shouldStopChannelsReinit())
-                    return false;
-
-                boolean found = false;
-
-                // Try to find new addresses for old channel holders.
-                for (InetSocketAddress addr : hld.getAddresses()) {
-                    List<InetSocketAddress> addrs = newAddrsMap.get(addr);
-
-                    if (addrs != null) {
-                        found = true;
-
-                        if (!addrs.equals(hld.getAddresses())) // Enrich channel configuration.
-                            hld.setConfiguration(new ClientChannelConfiguration(clientCfg, addrs));
-
-                        reinitHolders.add(hld);
-
-                        if (hld == currDfltHolder)
-                            dfltChannelIdx = reinitHolders.size() - 1;
-
-                        break;
-                    }
-                }
-
-                if (!found)
-                    toCloseHolders.add(hld);
-            }
-        }
-
-        Set<InetSocketAddress> usedAddrs = reinitHolders.stream()
-            .flatMap(h -> h.getAddresses().stream())
-            .collect(Collectors.toSet());
-
         for (List<InetSocketAddress> addrs : newAddrs) {
             if (shouldStopChannelsReinit())
                 return false;
 
-            boolean found = false;
+            ClientChannelHolder hld = null;
 
             // Try to find already created channel holder.
             for (InetSocketAddress addr : addrs) {
-                if (usedAddrs.contains(addr)) {
-                    found = true;
+                hld = curAddrs.get(addr);
+
+                if (hld != null) {
+                    if (!hld.getAddresses().equals(addrs)) // Enrich holder addresses.
+                        hld.setConfiguration(new ClientChannelConfiguration(clientCfg, addrs));
 
                     break;
                 }
             }
 
-            if (!found) {
-                ClientChannelHolder hld = new ClientChannelHolder(new ClientChannelConfiguration(clientCfg, addrs));
+            if (hld == null) { // If not found, create the new one.
+                hld = new ClientChannelHolder(new ClientChannelConfiguration(clientCfg, addrs));
 
-                reinitHolders.add(hld);
-
-                if (hld == currDfltHolder)
-                    dfltChannelIdx = reinitHolders.size() - 1;
+                for (InetSocketAddress addr : addrs)
+                    curAddrs.putIfAbsent(addr, hld);
             }
+
+            reinitHolders.add(hld);
+
+            if (hld == currDfltHolder)
+                dfltChannelIdx = reinitHolders.size() - 1;
         }
 
         if (dfltChannelIdx == -1) {
@@ -732,13 +716,13 @@ final class ReliableChannel implements AutoCloseable {
         try {
             channels = reinitHolders;
 
+            attemptsLimit = getRetryLimit();
+
             curChIdx = dfltChannelIdx;
         }
         finally {
             curChannelsGuard.writeLock().unlock();
         }
-
-        toCloseHolders.forEach(ClientChannelHolder::close);
 
         finishChannelsReInit = System.currentTimeMillis();
 
@@ -750,19 +734,36 @@ final class ReliableChannel implements AutoCloseable {
      * for every configured server. Otherwise only default channel is connected.
      */
     void channelsInit() {
+        channelsInit(0);
+    }
+
+    /**
+     * Establishing connections to servers. If partition awareness feature is enabled connections are created
+     * for every configured server. Otherwise only default channel is connected.
+     */
+    void channelsInit(int attempt) {
         // Do not establish connections if interrupted.
         if (!initChannelHolders())
             return;
 
-        if (channelsCnt.get() == 0) {
-            // Establish default channel connection and retrive nodes endpoints if applicable.
-            if (applyOnDefaultChannel(discoveryCtx::refresh, null)) {
-                if (!initChannelHolders())
-                    return;
+        int attemptsLimit = channels.size();
+
+        if (attempt < attemptsLimit) {
+            try {
+                if (channelsCnt.get() == 0) {
+                    // Establish default channel connection and retrive nodes endpoints if applicable.
+                    if (applyOnDefaultChannel(discoveryCtx::refresh, null, attempt, attemptsLimit, DO_NOTHING)) {
+                        if (!initChannelHolders())
+                            return;
+                    }
+                }
+                else // Apply no-op function. Establish default channel connection.
+                    applyOnDefaultChannel(channel -> null, null, attempt, attemptsLimit, DO_NOTHING);
+            }
+            catch (ClientException e) {
+                // TODO
             }
         }
-        else // Apply no-op function. Establish default channel connection.
-            applyOnDefaultChannel(channel -> null, null);
 
         if (partitionAwarenessEnabled)
             initAllChannelsAsync();
@@ -784,7 +785,7 @@ final class ReliableChannel implements AutoCloseable {
                 return function.apply(channel);
         }
         catch (ClientConnectionException e) {
-            onChannelFailure(hld, channel, e);
+            onChannelFailure(hld, channel, e, 0);
         }
 
         return null;
@@ -792,7 +793,7 @@ final class ReliableChannel implements AutoCloseable {
 
     /** */
     <T> T applyOnDefaultChannel(Function<ClientChannel, T> function, ClientOperation op) {
-        return applyOnDefaultChannel(function, op, getRetryLimit(), DO_NOTHING);
+        return applyOnDefaultChannel(function, op, 0, attemptsLimit, DO_NOTHING);
     }
 
     /**
@@ -800,11 +801,12 @@ final class ReliableChannel implements AutoCloseable {
      */
     private <T> T applyOnDefaultChannel(Function<ClientChannel, T> function,
                                         ClientOperation op,
+                                        int attempt,
                                         int attemptsLimit,
                                         Consumer<Integer> attemptsCallback) {
         ClientConnectionException failure = null;
 
-        for (int attempt = 0; attempt < attemptsLimit; attempt++) {
+        for (; attempt < attemptsLimit; attempt++) {
             ClientChannelHolder hld = null;
             ClientChannel c = null;
 
@@ -849,15 +851,12 @@ final class ReliableChannel implements AutoCloseable {
                 else
                     failure.addSuppressed(e);
 
-                onChannelFailure(hld, c, e);
+                onChannelFailure(hld, c, e, attempt);
 
                 if (op != null && !shouldRetry(op, attempt, e))
                     break;
             }
         }
-
-        if (channelsCnt.get() == 0)
-            onAllChannelsFailed();
 
         throw failure;
     }
@@ -868,8 +867,6 @@ final class ReliableChannel implements AutoCloseable {
      */
     private <T> T applyOnNodeChannelWithFallback(UUID tryNodeId, Function<ClientChannel, T> function, ClientOperation op) {
         ClientChannelHolder hld = nodeChannels.get(tryNodeId);
-
-        int retryLimit = getRetryLimit();
 
         if (hld != null) {
             ClientChannel channel = null;
@@ -882,16 +879,14 @@ final class ReliableChannel implements AutoCloseable {
 
             }
             catch (ClientConnectionException e) {
-                onChannelFailure(hld, channel, e);
+                onChannelFailure(hld, channel, e, 0);
 
-                retryLimit -= 1;
-
-                if (retryLimit == 0 || !shouldRetry(op, 0, e))
+                if (attemptsLimit == 1 || !shouldRetry(op, 0, e))
                     throw e;
             }
         }
 
-        return applyOnDefaultChannel(function, op, retryLimit, DO_NOTHING);
+        return applyOnDefaultChannel(function, op, 1, attemptsLimit, DO_NOTHING);
     }
 
     /** Get retry limit. */

@@ -48,6 +48,7 @@ import org.apache.ignite.failure.FailureHandler;
 import org.apache.ignite.internal.client.thin.AbstractThinClientTest;
 import org.apache.ignite.internal.client.thin.ClientOperation;
 import org.apache.ignite.internal.client.thin.ClientServerError;
+import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.services.Service;
 import org.apache.ignite.services.ServiceConfiguration;
@@ -76,79 +77,81 @@ public class ReliabilityTest extends AbstractThinClientTest {
 
         final int CLUSTER_SIZE = 3;
 
-        try (LocalIgniteCluster cluster = LocalIgniteCluster.start(CLUSTER_SIZE);
-             IgniteClient client = Ignition.startClient(getClientConfiguration()
-                 .setReconnectThrottlingRetries(0) // Disable throttling.
-                 .setAddresses(cluster.clientAddresses().toArray(new String[CLUSTER_SIZE]))
-             )
-        ) {
-            final Random rnd = new Random();
+        try (LocalIgniteCluster cluster = LocalIgniteCluster.start(CLUSTER_SIZE)) {
+            String [] addrs = cluster.clientAddresses().toArray(new String[CLUSTER_SIZE]);
 
-            final ClientCache<Integer, String> cache = client.getOrCreateCache(
-                new ClientCacheConfiguration().setName("testFailover").setCacheMode(CacheMode.REPLICATED)
-            );
+            try (IgniteClient client = Ignition.startClient(getClientConfiguration()
+                    .setReconnectThrottlingRetries(0) // Disable throttling.
+                    .setRetryLimit(addrs.length)
+                    .setAddressesFinder(() -> addrs))) {
+                final Random rnd = new Random();
 
-            // Simple operation failover: put/get
-            assertOnUnstableCluster(cluster, () -> {
-                Integer key = rnd.nextInt();
-                String val = key.toString();
+                final ClientCache<Integer, String> cache = client.getOrCreateCache(
+                    new ClientCacheConfiguration().setName("testFailover").setCacheMode(CacheMode.REPLICATED)
+                );
 
-                cachePut(cache, key, val);
+                // Simple operation failover: put/get
+                assertOnUnstableCluster(cluster, () -> {
+                    Integer key = rnd.nextInt();
+                    String val = key.toString();
 
-                String cachedVal = cache.get(key);
+                    cachePut(cache, key, val);
 
-                assertEquals(val, cachedVal);
-            });
+                    String cachedVal = cache.get(key);
 
-            cache.clear();
+                    assertEquals(val, cachedVal);
+                });
 
-            // Composite operation failover: query
-            Map<Integer, String> data = IntStream.rangeClosed(1, 1000).boxed()
-                .collect(Collectors.toMap(i -> i, i -> String.format("String %s", i)));
+                cache.clear();
 
-            assertOnUnstableCluster(cluster, () -> {
-                cache.putAll(data);
+                // Composite operation failover: query
+                Map<Integer, String> data = IntStream.rangeClosed(1, 1000).boxed()
+                    .collect(Collectors.toMap(i -> i, i -> String.format("String %s", i)));
 
-                Query<Cache.Entry<Integer, String>> qry =
-                    new ScanQuery<Integer, String>().setPageSize(data.size() / 10);
+                assertOnUnstableCluster(cluster, () -> {
+                    cache.putAll(data);
 
-                try {
-                    try (QueryCursor<Cache.Entry<Integer, String>> cur = cache.query(qry)) {
-                        List<Cache.Entry<Integer, String>> res = cur.getAll();
+                    Query<Cache.Entry<Integer, String>> qry =
+                        new ScanQuery<Integer, String>().setPageSize(data.size() / 10);
 
-                        assertEquals("Unexpected number of entries", data.size(), res.size());
+                    try {
+                        try (QueryCursor<Cache.Entry<Integer, String>> cur = cache.query(qry)) {
+                            List<Cache.Entry<Integer, String>> res = cur.getAll();
 
-                        Map<Integer, String> act = res.stream()
+                            assertEquals("Unexpected number of entries", data.size(), res.size());
+
+                            Map<Integer, String> act = res.stream()
                                 .collect(Collectors.toMap(Cache.Entry::getKey, Cache.Entry::getValue));
 
-                        assertEquals("Unexpected entries", data, act);
+                            assertEquals("Unexpected entries", data, act);
+                        }
                     }
+                    catch (ClientConnectionException ignored) {
+                        // QueryCursor.getAll always executes on the same channel where the cursor is open,
+                        // so failover is not possible, and the call will fail when connection drops.
+                    }
+                });
+
+                // Client fails if all nodes go down
+                cluster.close();
+
+                boolean igniteUnavailable = false;
+
+                try {
+                    cachePut(cache, 1, "1");
                 }
-                catch (ClientConnectionException ignored) {
-                    // QueryCursor.getAll always executes on the same channel where the cursor is open,
-                    // so failover is not possible, and the call will fail when connection drops.
+                catch (ClientConnectionException ex) {
+                    igniteUnavailable = true;
+
+                    Throwable[] suppressed = ex.getSuppressed();
+
+                    assertEquals(CLUSTER_SIZE - 1, suppressed.length);
+
+                    assertTrue(Stream.of(suppressed).allMatch(t -> t instanceof ClientConnectionException));
                 }
-            });
 
-            // Client fails if all nodes go down
-            cluster.close();
-
-            boolean igniteUnavailable = false;
-
-            try {
-                cachePut(cache, 1, "1");
+                assertTrue(igniteUnavailable);
             }
-            catch (ClientConnectionException ex) {
-                igniteUnavailable = true;
-
-                Throwable[] suppressed = ex.getSuppressed();
-
-                assertEquals(CLUSTER_SIZE - 1, suppressed.length);
-
-                assertTrue(Stream.of(suppressed).allMatch(t -> t instanceof ClientConnectionException));
-            }
-
-            assertTrue(igniteUnavailable);
         }
     }
 
@@ -183,9 +186,10 @@ public class ReliabilityTest extends AbstractThinClientTest {
     public void testSingleServerDuplicatedFailover() throws Exception {
         try (LocalIgniteCluster cluster = LocalIgniteCluster.start(1);
              IgniteClient client = Ignition.startClient(getClientConfiguration()
-                 .setAddresses(
-                     cluster.clientAddresses().iterator().next(),
-                     cluster.clientAddresses().iterator().next()))
+                 .setAddressesFinder(() -> new String[] {
+                     F.first(cluster.clientAddresses()),
+                     F.first(cluster.clientAddresses())
+                 }))
         ) {
             ClientCache<Integer, Integer> cache = client.createCache("cache");
 
@@ -208,9 +212,10 @@ public class ReliabilityTest extends AbstractThinClientTest {
         try (LocalIgniteCluster cluster = LocalIgniteCluster.start(1);
              IgniteClient client = Ignition.startClient(getClientConfiguration()
                  .setRetryPolicy(new ClientRetryReadPolicy())
-                 .setAddresses(
-                     cluster.clientAddresses().iterator().next(),
-                     cluster.clientAddresses().iterator().next()))
+                 .setAddressesFinder(() -> new String[] {
+                     F.first(cluster.clientAddresses()),
+                     F.first(cluster.clientAddresses())
+                 }))
         ) {
             ClientCache<Integer, Integer> cache = client.createCache("cache");
 
@@ -236,9 +241,10 @@ public class ReliabilityTest extends AbstractThinClientTest {
         try (LocalIgniteCluster cluster = LocalIgniteCluster.start(1);
              IgniteClient client = Ignition.startClient(getClientConfiguration()
                  .setRetryPolicy(new ExceptionRetryPolicy())
-                 .setAddresses(
-                     cluster.clientAddresses().iterator().next(),
-                     cluster.clientAddresses().iterator().next()))
+                 .setAddressesFinder(() -> new String[] {
+                     F.first(cluster.clientAddresses()),
+                     F.first(cluster.clientAddresses())
+                 }))
         ) {
             ClientCache<Integer, Integer> cache = client.createCache("cache");
             dropAllThinClientConnections(Ignition.allGrids().get(0));
@@ -266,9 +272,10 @@ public class ReliabilityTest extends AbstractThinClientTest {
         try (LocalIgniteCluster cluster = LocalIgniteCluster.start(1);
              IgniteClient client = Ignition.startClient(getClientConfiguration()
                  .setRetryLimit(1)
-                 .setAddresses(
-                     cluster.clientAddresses().iterator().next(),
-                     cluster.clientAddresses().iterator().next()))
+                 .setAddressesFinder(() -> new String[] {
+                     F.first(cluster.clientAddresses()),
+                     F.first(cluster.clientAddresses())
+                 }))
         ) {
             ClientCache<Integer, Integer> cache = client.createCache("cache");
 
