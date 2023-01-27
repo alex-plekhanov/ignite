@@ -500,7 +500,7 @@ final class ReliableChannel implements AutoCloseable {
     /**
      * On current channel failure.
      */
-    private void onChannelFailure(ClientChannel ch, Throwable t, List<ClientConnectionException> failures) {
+    private void onChannelFailure(ClientChannel ch, Throwable t, @Nullable List<ClientConnectionException> failures) {
         // There is nothing wrong if curChIdx was concurrently changed, since channel was closed by another thread
         // when current index was changed and no other wrong channel will be closed by current thread because
         // onChannelFailure checks channel binded to the holder before closing it.
@@ -514,7 +514,7 @@ final class ReliableChannel implements AutoCloseable {
         ClientChannelHolder hld,
         ClientChannel ch,
         Throwable t,
-        List<ClientConnectionException> failures
+        @Nullable List<ClientConnectionException> failures
     ) {
         log.warning("Channel failure [addresses=" + hld.getAddresses() + ", err=" + t.getMessage() + ']', t);
 
@@ -526,7 +526,7 @@ final class ReliableChannel implements AutoCloseable {
         // Roll current channel even if a topology changes. To help find working channel faster.
         rollCurrentChannel(hld);
 
-        if (channelsCnt.get() == 0 && failures.size() == attemptsLimit) {
+        if (channelsCnt.get() == 0 && F.size(failures) == attemptsLimit) {
             // All channels have failed.
             discoveryCtx.reset();
             channelsInit(failures);
@@ -748,7 +748,11 @@ final class ReliableChannel implements AutoCloseable {
                     applyOnDefaultChannel(channel -> null, null, failures);
             }
             catch (ClientException e) {
-                // TODO
+                // If method was called recursively from applyOnDefaultChannel method (failures != null) we should
+                // rethrow an exception to the caller. Otherwise (method was called on client initialization or
+                // after topology change) exception can be ignored (to start async channels initialization)
+                if (failures != null)
+                    throw e;
             }
         }
 
@@ -795,13 +799,14 @@ final class ReliableChannel implements AutoCloseable {
     /**
      * Apply specified {@code function} on any of available channel.
      */
-    private <T> T applyOnDefaultChannel(Function<ClientChannel, T> function,
-                                        ClientOperation op,
-                                        @Nullable List<ClientConnectionException> failures) {
+    private <T> T applyOnDefaultChannel(
+        Function<ClientChannel, T> function,
+        ClientOperation op,
+        @Nullable List<ClientConnectionException> failures
+    ) {
+        boolean firstAttempt = true;
 
-        int attemptsLimit = this.attemptsLimit - (failures == null ? 0 : failures.size());
-
-        for (int attempt = 0; attempt < attemptsLimit; attempt++) {
+        while (attemptsLimit > (failures == null ? 0 : failures.size())) {
             ClientChannelHolder hld = null;
             ClientChannel c = null;
 
@@ -812,7 +817,7 @@ final class ReliableChannel implements AutoCloseable {
                 curChannelsGuard.readLock().lock();
 
                 try {
-                    if (!partitionAwarenessEnabled || channelsCnt.get() <= 1 || attempt != 0)
+                    if (!partitionAwarenessEnabled || channelsCnt.get() <= 1 || !firstAttempt)
                         hld = channels.get(curChIdx);
                     else {
                         // Make first attempt with the random open channel.
@@ -827,15 +832,35 @@ final class ReliableChannel implements AutoCloseable {
                         }
                         while (hld.ch == null && idx != idx0);
                     }
+
+                    firstAttempt = false;
                 }
                 finally {
                     curChannelsGuard.readLock().unlock();
                 }
 
+                ClientChannel c0 = hld.ch;
+
                 c = hld.getOrCreateChannel();
 
-                if (c != null)
-                    return function.apply(c);
+                if (c != null) {
+                    try {
+                        return function.apply(c);
+                    }
+                    catch (ClientConnectionException e) {
+                        if (c0 == c && partitionAwarenessEnabled) {
+                            // In case of stale channel, when partition awareness is enabled, try to reconnect to the
+                            // same channel and repeat the operation.
+                            onChannelFailure(hld, c, e, failures);
+
+                            c = hld.getOrCreateChannel();
+
+                            return function.apply(c);
+                        }
+                        else
+                            throw e;
+                    }
+                }
             }
             catch (ClientConnectionException e) {
                 if (failures == null)
@@ -845,7 +870,7 @@ final class ReliableChannel implements AutoCloseable {
 
                 onChannelFailure(hld, c, e, failures);
 
-                if (op != null && !shouldRetry(op, attempt, e))
+                if (op != null && !shouldRetry(op, failures.size() - 1, e))
                     break;
             }
         }
@@ -879,7 +904,6 @@ final class ReliableChannel implements AutoCloseable {
 
                 if (channel != null)
                     return function.apply(channel);
-
             }
             catch (ClientConnectionException e) {
                 failures = new ArrayList<>();

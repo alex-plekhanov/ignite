@@ -37,6 +37,7 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMode;
+import org.apache.ignite.cache.CacheWriteSynchronizationMode;
 import org.apache.ignite.cache.query.Query;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
@@ -72,9 +73,6 @@ public class ReliabilityTest extends AbstractThinClientTest {
      */
     @Test
     public void testFailover() throws Exception {
-        if (isPartitionAware())
-            return;
-
         final int CLUSTER_SIZE = 3;
 
         try (LocalIgniteCluster cluster = LocalIgniteCluster.start(CLUSTER_SIZE);
@@ -86,7 +84,10 @@ public class ReliabilityTest extends AbstractThinClientTest {
             final Random rnd = new Random();
 
             final ClientCache<Integer, String> cache = client.getOrCreateCache(
-                new ClientCacheConfiguration().setName("testFailover").setCacheMode(CacheMode.REPLICATED)
+                new ClientCacheConfiguration()
+                    .setName("testFailover")
+                    .setCacheMode(CacheMode.REPLICATED)
+                    .setWriteSynchronizationMode(CacheWriteSynchronizationMode.FULL_SYNC)
             );
 
             // Simple operation failover: put/get
