@@ -61,7 +61,7 @@ public abstract class AbstractThinClientTest extends GridCommonAbstractTest {
             addrs[i] = clientHost(node) + ":" + clientPort(node);
         }
 
-        return getClientConfiguration().setAddressesFinder(() -> addrs); // Disable nodes discovery.
+        return getClientConfiguration().setAddresses(addrs); // Disable nodes discovery.
     }
 
     /**
