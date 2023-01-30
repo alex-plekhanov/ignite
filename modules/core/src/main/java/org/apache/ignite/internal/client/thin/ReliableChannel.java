@@ -736,24 +736,15 @@ final class ReliableChannel implements AutoCloseable {
             return;
 
         if (failures == null || failures.size() < attemptsLimit) {
-            try {
-                if (channelsCnt.get() == 0) {
-                    // Establish default channel connection and retrive nodes endpoints if applicable.
-                    if (applyOnDefaultChannel(discoveryCtx::refresh, null, failures)) {
-                        if (!initChannelHolders())
-                            return;
-                    }
+            if (channelsCnt.get() == 0) {
+                // Establish default channel connection and retrive nodes endpoints if applicable.
+                if (applyOnDefaultChannel(discoveryCtx::refresh, null, failures)) {
+                    if (!initChannelHolders())
+                        return;
                 }
-                else // Apply no-op function. Establish default channel connection.
-                    applyOnDefaultChannel(channel -> null, null, failures);
             }
-            catch (ClientException e) {
-                // If method was called recursively from applyOnDefaultChannel method (failures != null) we should
-                // rethrow an exception to the caller. Otherwise (method was called on client initialization or
-                // after topology change) exception can be ignored (to start async channels initialization)
-                if (failures != null)
-                    throw e;
-            }
+            else // Apply no-op function. Establish default channel connection.
+                applyOnDefaultChannel(channel -> null, null, failures);
         }
 
         if (partitionAwarenessEnabled)
@@ -804,11 +795,13 @@ final class ReliableChannel implements AutoCloseable {
         ClientOperation op,
         @Nullable List<ClientConnectionException> failures
     ) {
-        boolean firstAttempt = true;
+        ClientChannelHolder randomTriedHld = null;
+        boolean rollChannel;
 
         while (attemptsLimit > (failures == null ? 0 : failures.size())) {
             ClientChannelHolder hld = null;
             ClientChannel c = null;
+            rollChannel = false;
 
             try {
                 if (closed)
@@ -817,8 +810,16 @@ final class ReliableChannel implements AutoCloseable {
                 curChannelsGuard.readLock().lock();
 
                 try {
-                    if (!partitionAwarenessEnabled || channelsCnt.get() <= 1 || !firstAttempt)
+                    if (!partitionAwarenessEnabled || channelsCnt.get() <= 1 || F.size(failures) > 0) {
                         hld = channels.get(curChIdx);
+
+                        if (hld == randomTriedHld && hld.ch == null) {
+                            // We've already tried this holder, have failed, and channel still not restored, so skip
+                            // this channel and retry on the next.
+                            // Channel should be rolled outside of read lock/unlock block to avoid deadlocks.
+                            rollChannel = true;
+                        }
+                    }
                     else {
                         // Make first attempt with the random open channel.
                         int idx = ThreadLocalRandom.current().nextInt(channels.size());
@@ -831,35 +832,39 @@ final class ReliableChannel implements AutoCloseable {
                                 idx = 0;
                         }
                         while (hld.ch == null && idx != idx0);
-                    }
 
-                    firstAttempt = false;
+                        randomTriedHld = hld;
+                    }
                 }
                 finally {
                     curChannelsGuard.readLock().unlock();
+                }
+
+                if (rollChannel) {
+                    rollCurrentChannel(hld);
+
+                    continue;
                 }
 
                 ClientChannel c0 = hld.ch;
 
                 c = hld.getOrCreateChannel();
 
-                if (c != null) {
-                    try {
+                try {
+                    return function.apply(c);
+                }
+                catch (ClientConnectionException e) {
+                    if (c0 == c && partitionAwarenessEnabled) {
+                        // In case of stale channel, when partition awareness is enabled, try to reconnect to the
+                        // same channel and repeat the operation.
+                        onChannelFailure(hld, c, e, failures);
+
+                        c = hld.getOrCreateChannel();
+
                         return function.apply(c);
                     }
-                    catch (ClientConnectionException e) {
-                        if (c0 == c && partitionAwarenessEnabled) {
-                            // In case of stale channel, when partition awareness is enabled, try to reconnect to the
-                            // same channel and repeat the operation.
-                            onChannelFailure(hld, c, e, failures);
-
-                            c = hld.getOrCreateChannel();
-
-                            return function.apply(c);
-                        }
-                        else
-                            throw e;
-                    }
+                    else
+                        throw e;
                 }
             }
             catch (ClientConnectionException e) {
@@ -902,8 +907,7 @@ final class ReliableChannel implements AutoCloseable {
             try {
                 channel = hld.getOrCreateChannel();
 
-                if (channel != null)
-                    return function.apply(channel);
+                return function.apply(channel);
             }
             catch (ClientConnectionException e) {
                 failures = new ArrayList<>();
@@ -1032,11 +1036,15 @@ final class ReliableChannel implements AutoCloseable {
          * Get or create channel.
          */
         private ClientChannel getOrCreateChannel(boolean ignoreThrottling)
-            throws ClientConnectionException, ClientAuthenticationException, ClientProtocolError {
-            if (ch == null && !close) {
+            throws ClientConnectionException, ClientAuthenticationException, ClientProtocolError
+        {
+            if (close)
+                throw new ClientConnectionException("Channel is closed");
+
+            if (ch == null) {
                 synchronized (this) {
                     if (close)
-                        return null;
+                        throw new ClientConnectionException("Channel is closed");
 
                     if (ch != null)
                         return ch;
