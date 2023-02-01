@@ -53,7 +53,7 @@ import static org.apache.ignite.configuration.ClientConnectorConfiguration.DFLT_
 @SuppressWarnings("rawtypes")
 public abstract class ThinClientAbstractPartitionAwarenessTest extends GridCommonAbstractTest {
     /** Wait timeout. */
-    private static final long WAIT_TIMEOUT = 5_000L;
+    protected static final long WAIT_TIMEOUT = 5_000L;
 
     /** Replicated cache name. */
     protected static final String REPL_CACHE_NAME = "replicated_cache";
@@ -186,7 +186,7 @@ public abstract class ThinClientAbstractPartitionAwarenessTest extends GridCommo
         String addrs[] = Arrays.stream(nodeIdxs).mapToObj(nodeIdx -> "127.0.0.1:" + (DFLT_PORT + nodeIdx))
             .toArray(String[]::new);
 
-        return new ClientConfiguration().setAddressesFinder(() -> addrs).setPartitionAwarenessEnabled(true);
+        return new ClientConfiguration().setAddresses(addrs).setPartitionAwarenessEnabled(true);
     }
 
     /**
@@ -344,8 +344,11 @@ public abstract class ThinClientAbstractPartitionAwarenessTest extends GridCommo
             Function<PayloadInputChannel, T> payloadReader) throws ClientException {
             T res = super.service(op, payloadWriter, payloadReader);
 
-            // Store all operations except binary type registration in queue to check later.
-            if (op != ClientOperation.REGISTER_BINARY_TYPE_NAME && op != ClientOperation.PUT_BINARY_TYPE)
+            // Store all operations except some implicit system ops in queue to check later.
+            if (op != ClientOperation.REGISTER_BINARY_TYPE_NAME
+                && op != ClientOperation.PUT_BINARY_TYPE
+                && op != ClientOperation.CLUSTER_GROUP_GET_NODE_ENDPOINTS
+            )
                 opsQueue.offer(new T2<>(this, op));
 
             return res;
@@ -357,8 +360,11 @@ public abstract class ThinClientAbstractPartitionAwarenessTest extends GridCommo
                 Consumer<PayloadOutputChannel> payloadWriter,
                 Function<PayloadInputChannel, T> payloadReader)
                 throws ClientException {
-            // Store all operations except binary type registration in queue to check later.
-            if (op != ClientOperation.REGISTER_BINARY_TYPE_NAME && op != ClientOperation.PUT_BINARY_TYPE)
+            // Store all operations except some implicit system ops in queue to check later.
+            if (op != ClientOperation.REGISTER_BINARY_TYPE_NAME
+                && op != ClientOperation.PUT_BINARY_TYPE
+                && op != ClientOperation.CLUSTER_GROUP_GET_NODE_ENDPOINTS
+            )
                 opsQueue.offer(new T2<>(this, op));
 
             return super.serviceAsync(op, payloadWriter, payloadReader);

@@ -102,6 +102,8 @@ public class ReliabilityTest extends AbstractThinClientTest {
      */
     @Test
     public void testFailover() throws Exception {
+        Assume.assumeFalse(partitionAware);
+
         final int CLUSTER_SIZE = 3;
 
         try (LocalIgniteCluster cluster = LocalIgniteCluster.start(CLUSTER_SIZE);
