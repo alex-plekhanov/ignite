@@ -64,11 +64,25 @@ public class ThinClientEnpointsDiscoveryTest extends ThinClientAbstractPartition
     public void testDiscoveryAfterAllNodesFailed() throws Exception {
         startGrids(2);
 
+        awaitPartitionMapExchange();
+
         initClient(getClientConfiguration(0), 0, 1);
+
+        Integer key = primaryKey(grid(1).cache(PART_CACHE_NAME));
+
+        // Any request to cache through any channel to initialize cache's partitions map.
+        client.cache(PART_CACHE_NAME).get(0);
+
+        assertOpOnChannel(null, ClientOperation.CACHE_PARTITIONS);
+        assertOpOnChannel(null, ClientOperation.CACHE_GET);
 
         stopGrid(0);
 
-        detectTopologyChange();
+        // Send request through channel 1 to ensure that channel 0 is closed due to discovered topology change
+        // (not by failure on channel 0).
+        client.cache(PART_CACHE_NAME).put(key, key);
+
+        assertOpOnChannel(channels[1], ClientOperation.CACHE_PUT);
 
         assertTrue(GridTestUtils.waitForCondition(() -> channels[0].isClosed(), WAIT_TIMEOUT));
 

@@ -570,17 +570,10 @@ final class ReliableChannel implements AutoCloseable {
     }
 
     /**
-     * Should the channel initialization be stopped.
-     */
-    private boolean shouldStopChannelsReinit() {
-        return scheduledChannelsReinit.get() || closed;
-    }
-
-    /**
      * Init channel holders to all nodes.
      * @return boolean whether channels was reinited.
      */
-    synchronized boolean initChannelHolders() {
+    synchronized void initChannelHolders() {
         List<ClientChannelHolder> holders = channels;
 
         startChannelsReInit = System.currentTimeMillis();
@@ -593,7 +586,7 @@ final class ReliableChannel implements AutoCloseable {
         if (newAddrs == null) {
             finishChannelsReInit = System.currentTimeMillis();
 
-            return true;
+            return;
         }
 
         Map<InetSocketAddress, ClientChannelHolder> curAddrs = new HashMap<>();
@@ -634,9 +627,6 @@ final class ReliableChannel implements AutoCloseable {
             currDfltHolder = holders.get(idx);
 
         for (List<InetSocketAddress> addrs : newAddrs) {
-            if (shouldStopChannelsReinit())
-                return false;
-
             ClientChannelHolder hld = null;
 
             // Try to find already created channel holder.
@@ -691,8 +681,6 @@ final class ReliableChannel implements AutoCloseable {
         }
 
         finishChannelsReInit = System.currentTimeMillis();
-
-        return true;
     }
 
     /**
@@ -708,17 +696,13 @@ final class ReliableChannel implements AutoCloseable {
      * for every configured server. Otherwise only default channel is connected.
      */
     void channelsInit(@Nullable List<ClientConnectionException> failures) {
-        // Do not establish connections if interrupted.
-        if (!initChannelHolders())
-            return;
+        initChannelHolders();
 
         if (failures == null || failures.size() < attemptsLimit) {
             if (channelsCnt.get() == 0) {
                 // Establish default channel connection and retrive nodes endpoints if applicable.
-                if (applyOnDefaultChannel(discoveryCtx::refresh, null, failures)) {
-                    if (!initChannelHolders())
-                        return;
-                }
+                if (applyOnDefaultChannel(discoveryCtx::refresh, null, failures))
+                    initChannelHolders();
             }
             else // Apply no-op function. Establish default channel connection.
                 applyOnDefaultChannel(channel -> null, null, failures);
@@ -772,13 +756,9 @@ final class ReliableChannel implements AutoCloseable {
         ClientOperation op,
         @Nullable List<ClientConnectionException> failures
     ) {
-        int randomHldIdx = -1;
-        boolean rollChannel;
-
         while (attemptsLimit > (failures == null ? 0 : failures.size())) {
             ClientChannelHolder hld = null;
             ClientChannel c = null;
-            rollChannel = false;
 
             try {
                 if (closed)
@@ -787,38 +767,24 @@ final class ReliableChannel implements AutoCloseable {
                 curChannelsGuard.readLock().lock();
 
                 try {
-                    if (!partitionAwarenessEnabled || channelsCnt.get() <= 1 || F.size(failures) > 0) {
+                    if (!partitionAwarenessEnabled || channelsCnt.get() <= 1 || F.size(failures) > 0)
                         hld = channels.get(curChIdx);
-
-                        if (curChIdx == randomHldIdx && hld.ch == null) {
-                            // We've already tried this holder, have failed, and channel still not restored, so skip
-                            // this channel and retry on the next.
-                            // Channel should be rolled outside of read lock/unlock block to avoid deadlocks.
-                            rollChannel = true;
-                        }
-                    }
                     else {
                         // Make first attempt with the random open channel.
-                        randomHldIdx = ThreadLocalRandom.current().nextInt(channels.size());
-                        int idx0 = randomHldIdx;
+                        int idx = ThreadLocalRandom.current().nextInt(channels.size());
+                        int idx0 = idx;
 
                         do {
-                            hld = channels.get(randomHldIdx);
+                            hld = channels.get(idx);
 
-                            if (++randomHldIdx == channels.size())
-                                randomHldIdx = 0;
+                            if (++idx == channels.size())
+                                idx = 0;
                         }
-                        while (hld.ch == null && randomHldIdx != idx0);
+                        while (hld.ch == null && idx != idx0);
                     }
                 }
                 finally {
                     curChannelsGuard.readLock().unlock();
-                }
-
-                if (rollChannel) {
-                    rollCurrentChannel(hld);
-
-                    continue;
                 }
 
                 ClientChannel c0 = hld.ch;

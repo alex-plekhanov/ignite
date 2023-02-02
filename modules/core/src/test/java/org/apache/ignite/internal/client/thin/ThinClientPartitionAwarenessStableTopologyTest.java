@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.client.thin;
 
+import java.util.Arrays;
 import java.util.function.Function;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.cache.CacheAtomicityMode;
@@ -84,6 +85,8 @@ public class ThinClientPartitionAwarenessStableTopologyTest extends ThinClientAb
     public void testPartitionedCustomAffinityCacheWithMapper() throws Exception {
         client.close();
 
+        Arrays.fill(channels, null);
+
         initClient(getClientConfiguration(1, 2, 3)
             .setPartitionAwarenessMapperFactory(new ClientPartitionAwarenessMapperFactory() {
                 /** {@inheritDoc} */
@@ -94,7 +97,7 @@ public class ThinClientPartitionAwarenessStableTopologyTest extends ThinClientAb
 
                     return aff::partition;
                 }
-            }), 1, 2);
+            }), 0, 1, 2); // Wait for all channels, including channel received by discovery, to avoid races.
 
         testApplicableCache(PART_CUSTOM_AFFINITY_CACHE_NAME, i -> i);
     }
