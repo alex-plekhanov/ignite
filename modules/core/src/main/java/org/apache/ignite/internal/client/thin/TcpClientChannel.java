@@ -195,7 +195,7 @@ class TcpClientChannel implements ClientChannel, ClientMessageHandler, ClientCon
                 sock = connMgr.open(addr, this, this);
 
                 if (log.isDebugEnabled())
-                    log.debug("Connection establised: " + addr);
+                    log.debug("Connection established: " + addr);
 
                 break;
             }
@@ -837,6 +837,11 @@ class TcpClientChannel implements ClientChannel, ClientMessageHandler, ClientCon
                     ", recommended: " + recommendedHeartbeatInterval + ", server-side IdleTimeout: " + serverIdleTimeoutMs + ")");
 
         return res;
+    }
+
+    /** {@inheritDoc} */
+    @Override public String toString() {
+        return "TcpClientChannel [srvNodeId=" + srvNodeId + ", addr=" + sock.getAddress() + ']';
     }
 
     /**

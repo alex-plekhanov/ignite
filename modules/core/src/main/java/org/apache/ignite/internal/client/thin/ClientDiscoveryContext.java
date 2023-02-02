@@ -33,12 +33,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.client.ClientAddressFinder;
 import org.apache.ignite.client.ClientException;
+import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.configuration.ClientConnectorConfiguration;
 import org.apache.ignite.internal.binary.BinaryReaderExImpl;
 import org.apache.ignite.internal.util.HostAndPortRange;
 import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.logger.NullLogger;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -50,6 +53,9 @@ public class ClientDiscoveryContext {
 
     /** */
     private final AtomicBoolean refreshIsInProgress = new AtomicBoolean();
+
+    /** */
+    private final IgniteLogger log;
 
     /** Statically configured addresses. */
     @Nullable private final String[] addresses;
@@ -67,9 +73,10 @@ public class ClientDiscoveryContext {
     private volatile long prevTopVer = UNKNOWN_TOP_VER;
 
     /** */
-    public ClientDiscoveryContext(@Nullable String[] addresses, @Nullable ClientAddressFinder addrFinder) {
-        this.addresses = addresses != null ? addresses.clone() : null;
-        this.addrFinder = addrFinder;
+    public ClientDiscoveryContext(ClientConfiguration clientCfg) {
+        log = NullLogger.whenNull(clientCfg.getLogger());
+        addresses = clientCfg.getAddresses();
+        addrFinder = clientCfg.getAddressesFinder();
         reset();
     }
 
@@ -93,11 +100,18 @@ public class ClientDiscoveryContext {
         if (!ch.protocolCtx().isFeatureSupported(ProtocolBitmaskFeature.CLUSTER_GROUP_GET_NODES_ENDPOINTS))
             return false;
 
-        if (ch.serverTopologyVersion() != null && topInfo.topVer >= ch.serverTopologyVersion().topologyVersion())
+        if (ch.serverTopologyVersion() != null && topInfo.topVer >= ch.serverTopologyVersion().topologyVersion()) {
+            if (log.isDebugEnabled())
+                log.debug("Endpoints information is up to date, no update required");
+
             return false; // Info is up to date.
+        }
 
         // Allow only one request at time.
         if (refreshIsInProgress.compareAndSet(false, true)) {
+            if (log.isDebugEnabled())
+                log.debug("Updating nodes endpoints");
+
             try {
                 Map<UUID, NodeInfo> nodes = new HashMap<>(topInfo.nodes);
 
@@ -147,6 +161,11 @@ public class ClientDiscoveryContext {
                     }
                 );
 
+                if (log.isDebugEnabled()) {
+                    log.debug("Updated nodes endpoints [topVer=" + newTopInfo.topVer +
+                        ", nodesCnt=" + newTopInfo.nodes.size() + ']');
+                }
+
                 if (topInfo.topVer < newTopInfo.topVer) {
                     topInfo = newTopInfo;
                     return true;
@@ -158,8 +177,12 @@ public class ClientDiscoveryContext {
                 refreshIsInProgress.set(false);
             }
         }
-        else
+        else {
+            if (log.isDebugEnabled())
+                log.debug("Concurrent nodes endpoints update already in progress, skipping");
+
             return false;
+        }
     }
 
     /**
@@ -219,18 +242,6 @@ public class ClientDiscoveryContext {
                 .rangeClosed(r.portFrom(), r.portTo()).boxed()
                 .map(p -> Collections.singletonList(InetSocketAddress.createUnresolved(r.host(), p)))
             ).collect(Collectors.toList());
-    }
-
-    /**
-     * Checks whether addressFinder returns a different set of addresses.
-     */
-    boolean addressFinderAddressesChanged() {
-        // TODO check this
-        if (addrFinder == null)
-            return false;
-
-        String[] hostAddrs = addrFinder.getAddresses();
-        return !Arrays.equals(hostAddrs, prevHostAddrs);
     }
 
     /** */

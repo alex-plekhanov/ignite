@@ -139,7 +139,7 @@ final class ReliableChannel implements AutoCloseable {
         partitionAwarenessEnabled = clientCfg.isPartitionAwarenessEnabled();
 
         affinityCtx = new ClientCacheAffinityContext(binary, clientCfg.getPartitionAwarenessMapperFactory());
-        discoveryCtx = new ClientDiscoveryContext(clientCfg.getAddresses(), clientCfg.getAddressesFinder());
+        discoveryCtx = new ClientDiscoveryContext(clientCfg);
 
         connMgr = new GridNioClientConnectionMultiplexer(clientCfg);
         connMgr.start();
@@ -412,6 +412,8 @@ final class ReliableChannel implements AutoCloseable {
                     if (lastTop == null)
                         return false;
 
+                    List<ClientConnectionException> failures = new ArrayList<>();
+
                     for (UUID nodeId : lastTop.nodes()) {
                         // Abort iterations when topology changed.
                         if (lastTop != affinityCtx.lastTopology())
@@ -421,19 +423,26 @@ final class ReliableChannel implements AutoCloseable {
                             channel.service(ClientOperation.CACHE_PARTITIONS,
                                 affinityCtx::writePartitionsUpdateRequest,
                                 affinityCtx::readPartitionsUpdateResponse),
-                            null
+                            failures
                         );
 
-                        if (result != null)
+                        if (result != null) {
+                            if (log.isDebugEnabled()) {
+                                log.debug("Cache partitions mapping updated [cacheId=" + cacheId +
+                                    ", nodeId=" + nodeId + ']');
+                            }
+
                             return result;
+                        }
                     }
+
+                    log.warning("Failed to update cache partitions mapping [cacheId=" + cacheId + ']',
+                        composeException(failures));
 
                     // There is no one alive node found for last topology version, we should reset affinity context
                     // to let affinity get updated in case of reconnection to the new cluster (with lower topology
                     // version).
                     affinityCtx.reset(lastTop);
-
-                    discoveryCtx.reset();
                 }
                 finally {
                     affinityUpdateInProgress.set(false);
@@ -493,7 +502,7 @@ final class ReliableChannel implements AutoCloseable {
         Throwable t,
         @Nullable List<ClientConnectionException> failures
     ) {
-        log.warning("Channel failure [addresses=" + hld.getAddresses() + ", err=" + t.getMessage() + ']', t);
+        log.warning("Channel failure [channel=" + ch + ", err=" + t.getMessage() + ']', t);
 
         if (ch != null && ch == hld.ch)
             hld.closeChannel();
@@ -544,6 +553,9 @@ final class ReliableChannel implements AutoCloseable {
      * @param ch Channel.
      */
     private void onTopologyChanged(ClientChannel ch) {
+        if (log.isDebugEnabled())
+            log.debug("Topology change detected [ch=" + ch + ", top=" + ch.serverTopologyVersion() + ']');
+
         if (affinityCtx.updateLastTopologyVersion(ch.serverTopologyVersion(), ch.serverNodeId())) {
             ForkJoinPool.commonPool().submit(() -> {
                 try {
@@ -571,7 +583,6 @@ final class ReliableChannel implements AutoCloseable {
 
     /**
      * Init channel holders to all nodes.
-     * @return boolean whether channels was reinited.
      */
     synchronized void initChannelHolders() {
         List<ClientChannelHolder> holders = channels;
@@ -696,6 +707,9 @@ final class ReliableChannel implements AutoCloseable {
      * for every configured server. Otherwise only default channel is connected.
      */
     void channelsInit(@Nullable List<ClientConnectionException> failures) {
+        if (log.isDebugEnabled())
+            log.debug("Init channel holders");
+
         initChannelHolders();
 
         if (failures == null || failures.size() < attemptsLimit) {
@@ -826,6 +840,9 @@ final class ReliableChannel implements AutoCloseable {
 
     /** */
     private ClientConnectionException composeException(List<ClientConnectionException> failures) {
+        if (F.isEmpty(failures))
+            return null;
+
         ClientConnectionException failure = failures.get(0);
 
         failures.subList(1, failures.size()).forEach(failure::addSuppressed);

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.client;
+package org.apache.ignite.internal.client.thin;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -43,14 +43,24 @@ import org.apache.ignite.cache.CacheWriteSynchronizationMode;
 import org.apache.ignite.cache.query.Query;
 import org.apache.ignite.cache.query.QueryCursor;
 import org.apache.ignite.cache.query.ScanQuery;
+import org.apache.ignite.client.ClientCache;
+import org.apache.ignite.client.ClientCacheConfiguration;
+import org.apache.ignite.client.ClientConnectionException;
+import org.apache.ignite.client.ClientException;
+import org.apache.ignite.client.ClientOperationType;
+import org.apache.ignite.client.ClientReconnectedException;
+import org.apache.ignite.client.ClientRetryNonePolicy;
+import org.apache.ignite.client.ClientRetryReadPolicy;
+import org.apache.ignite.client.ClientTransaction;
+import org.apache.ignite.client.ExceptionRetryPolicy;
+import org.apache.ignite.client.IgniteClient;
+import org.apache.ignite.client.LocalIgniteCluster;
+import org.apache.ignite.client.PersonExternalizable;
 import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.configuration.ClientConnectorConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.failure.FailureHandler;
-import org.apache.ignite.internal.client.thin.AbstractThinClientTest;
-import org.apache.ignite.internal.client.thin.ClientOperation;
-import org.apache.ignite.internal.client.thin.ClientServerError;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.services.Service;
@@ -443,18 +453,21 @@ public class ReliabilityTest extends AbstractThinClientTest {
     public void testTxWithIdIntersection() throws Exception {
         // Partition-aware client connects to all known servers at the start, and dropAllThinClientConnections
         // causes failure on all channels, so the logic in this test is not applicable.
-        Assume.assumeFalse(partitionAware);
+        //Assume.assumeFalse(partitionAware);
 
         int CLUSTER_SIZE = 2;
 
         try (LocalIgniteCluster cluster = LocalIgniteCluster.start(CLUSTER_SIZE);
              IgniteClient client = Ignition.startClient(getClientConfiguration()
+                 //.setAddressesFinder(new StaticAddressFinder(cluster.clientAddresses().toArray(new String[CLUSTER_SIZE]))))
                  .setAddresses(cluster.clientAddresses().toArray(new String[CLUSTER_SIZE])))
         ) {
             ClientCache<Integer, Integer> cache = client.createCache(new ClientCacheConfiguration().setName("cache")
                 .setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL));
 
             CyclicBarrier barrier = new CyclicBarrier(2);
+
+            int[] txId = new int[1];
 
             GridTestUtils.runAsync(() -> {
                 try {
@@ -465,6 +478,8 @@ public class ReliabilityTest extends AbstractThinClientTest {
                         dropAllThinClientConnections(Ignition.allGrids().get(i));
 
                     ClientTransaction tx = client.transactions().txStart();
+
+                    txId[0] = ((TcpClientTransactions.TcpClientTransaction)tx).txId();
 
                     barrier.await(1, TimeUnit.SECONDS);
 
@@ -487,6 +502,8 @@ public class ReliabilityTest extends AbstractThinClientTest {
             // Another thread drops connections and create new transaction here, which started on another node with the
             // same transaction id as we started in this thread.
             barrier.await(1, TimeUnit.SECONDS);
+
+            assertEquals(((TcpClientTransactions.TcpClientTransaction)tx).txId(), txId[0]);
 
             GridTestUtils.assertThrows(null, () -> {
                 cachePut(cache, 0, 0);
