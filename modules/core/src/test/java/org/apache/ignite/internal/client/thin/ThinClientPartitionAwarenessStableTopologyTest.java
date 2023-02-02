@@ -33,6 +33,7 @@ import org.apache.ignite.client.ClientIgniteSet;
 import org.apache.ignite.client.ClientPartitionAwarenessMapper;
 import org.apache.ignite.client.ClientPartitionAwarenessMapperFactory;
 import org.apache.ignite.configuration.AtomicConfiguration;
+import org.apache.ignite.configuration.ClientConfiguration;
 import org.apache.ignite.internal.processors.cache.IgniteInternalCache;
 import org.apache.ignite.internal.processors.datastructures.GridCacheAtomicLongEx;
 import org.junit.Test;
@@ -59,6 +60,15 @@ public class ThinClientPartitionAwarenessStableTopologyTest extends ThinClientAb
 
         // Add one extra node address to the list, skip 0 node.
         initClient(getClientConfiguration(1, 2, 3), 1, 2);
+    }
+
+    /** {@inheritDoc} */
+    @Override protected ClientConfiguration getClientConfiguration(int... nodeIdxs) {
+        ClientConfiguration cfg = super.getClientConfiguration(nodeIdxs);
+
+        // We need undiscovered nodes for this test to cover more cases, so disable endpoints discovery
+        // by setting addresses finder.
+        return cfg.setAddressesFinder(cfg::getAddresses);
     }
 
     /**
@@ -97,7 +107,7 @@ public class ThinClientPartitionAwarenessStableTopologyTest extends ThinClientAb
 
                     return aff::partition;
                 }
-            }), 0, 1, 2); // Wait for all channels, including channel received by discovery, to avoid races.
+            }), 1, 2);
 
         testApplicableCache(PART_CUSTOM_AFFINITY_CACHE_NAME, i -> i);
     }

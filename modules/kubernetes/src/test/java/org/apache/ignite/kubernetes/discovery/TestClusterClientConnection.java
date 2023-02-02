@@ -90,6 +90,8 @@ public class TestClusterClientConnection extends KubernetesDiscoveryAbstractTest
         try {
             cache = client.getOrCreateCache("cache");
             cache.put(1, 3);
+
+            fail();
         }
         catch (Exception ignored) {
             // No-op.
