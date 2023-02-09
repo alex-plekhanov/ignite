@@ -77,14 +77,29 @@ public class ClientDiscoveryContext {
         log = NullLogger.whenNull(clientCfg.getLogger());
         addresses = clientCfg.getAddresses();
         addrFinder = clientCfg.getAddressesFinder();
-        reset();
-    }
-
-    /** */
-    void reset() {
         topInfo = new TopologyInfo(UNKNOWN_TOP_VER, Collections.emptyMap());
         prevTopVer = UNKNOWN_TOP_VER;
-        prevHostAddrs = null;
+    }
+
+    /**
+     * Reset discovery context.
+     *
+     * @return {@code True} if discovery context after reset differs from the previous.
+     */
+    boolean reset() {
+        if (prevTopVer != UNKNOWN_TOP_VER) {
+            topInfo = new TopologyInfo(UNKNOWN_TOP_VER, Collections.emptyMap());
+            prevTopVer = UNKNOWN_TOP_VER;
+
+            return true;
+        }
+        else if (addrFinder != null) {
+            String[] hostAddrs = addrFinder.getAddresses();
+
+            return !Arrays.equals(hostAddrs, prevHostAddrs);
+        }
+
+        return false;
     }
 
     /**

@@ -514,8 +514,8 @@ final class ReliableChannel implements AutoCloseable {
 
         if (channelsCnt.get() == 0 && F.size(failures) == attemptsLimit) {
             // All channels have failed.
-            discoveryCtx.reset();
-            channelsInit(failures);
+            if (discoveryCtx.reset())
+                channelsInit(failures);
         }
         else if (scheduledChannelsReinit.get() && !partitionAwarenessEnabled) {
             // For partiton awareness it's already initializing asynchronously in #onTopologyChanged.
