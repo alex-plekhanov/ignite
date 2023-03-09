@@ -17,10 +17,11 @@
 
 package org.apache.ignite.internal.commandline;
 
-import java.util.Collections;
 import java.util.Map;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.client.GridClientConfiguration;
+import org.apache.ignite.internal.commandline.distribution.DistributionArgs;
+import org.apache.ignite.internal.commandline.distribution.DistributionCommand;
 import org.apache.ignite.internal.util.typedef.F;
 
 /**
@@ -29,6 +30,9 @@ import org.apache.ignite.internal.util.typedef.F;
 public class CommandsProviderExtImpl implements CommandsProvider {
     /** */
     public static final Command<?> TEST_COMMAND = new TestCommand();
+
+    /** */
+    public static final Command<DistributionArgs> DISTRIBUTION_COMMAND = new DistributionCommand();
 
     /** */
     public static final String TEST_COMMAND_OUTPUT = "Test command executed";
@@ -41,7 +45,8 @@ public class CommandsProviderExtImpl implements CommandsProvider {
 
     /** {@inheritDoc} */
     @Override public Map<String, Command<?>> commands() {
-        return Collections.singletonMap(TEST_COMMAND.name(), TEST_COMMAND);
+        return F.asMap(TEST_COMMAND.name(), TEST_COMMAND,
+            DISTRIBUTION_COMMAND.name(), DISTRIBUTION_COMMAND);
     }
 
     /** */

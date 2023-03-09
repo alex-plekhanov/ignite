@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.cache.persistence;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,10 +36,12 @@ import org.apache.ignite.internal.pagemem.wal.WALIterator;
 import org.apache.ignite.internal.pagemem.wal.record.WALRecord;
 import org.apache.ignite.internal.processors.cache.persistence.checkpoint.CheckpointEntry.GroupStateLazyStore;
 import org.apache.ignite.internal.processors.cache.persistence.checkpoint.CheckpointMarkersStorage;
+import org.apache.ignite.internal.processors.cache.persistence.checkpoint.EarliestCheckpointMapSnapshot;
 import org.apache.ignite.internal.processors.cache.persistence.wal.FileWriteAheadLogManager;
 import org.apache.ignite.internal.processors.cache.persistence.wal.WALPointer;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.lang.IgniteBiPredicate;
+import org.apache.ignite.marshaller.jdk.JdkMarshaller;
 import org.apache.ignite.plugin.AbstractTestPluginProvider;
 import org.apache.ignite.plugin.PluginContext;
 import org.apache.ignite.testframework.junits.WithSystemProperty;
@@ -150,6 +153,14 @@ public class IgnitePdsCheckpointMapSnapshotTest extends GridCommonAbstractTest {
     @Test
     public void testRestartWithoutCheckpointMapSnapshot() throws Exception {
         testRestart(true);
+    }
+
+    @Test
+    public void test() throws Exception {
+        File cpSnapshotMap = new File("/Users/sbt-plekhanov-as-mobile/Downloads/cpMapSnapshot.bin");
+        byte[] bytes = Files.readAllBytes(cpSnapshotMap.toPath());
+        EarliestCheckpointMapSnapshot snap = JdkMarshaller.DEFAULT.unmarshal(bytes, null);
+        System.out.println(snap);
     }
 
     /**
