@@ -46,6 +46,7 @@ import org.apache.ignite.internal.IgniteCodeGeneratingFail;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.processors.cache.mvcc.DeadlockProbe;
 import org.apache.ignite.internal.processors.cache.mvcc.ProbedTx;
+import org.apache.ignite.internal.processors.query.calcite.message.QueryStartRequest;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.typedef.internal.SB;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -166,15 +167,15 @@ public class MessageCodeGenerator {
      * @throws Exception In case of error.
      */
     public static void main(String[] args) throws Exception {
-        String srcDir = DFLT_SRC_DIR;
+        String srcDir = CALCITE_SRC_DIR;
 
         if (args != null && args.length > 0)
             srcDir = args[0];
 
         MessageCodeGenerator gen = new MessageCodeGenerator(srcDir);
 
-        gen.generateAndWrite(ProbedTx.class);
-        gen.generateAndWrite(DeadlockProbe.class);
+//        gen.generateAndWrite(ProbedTx.class);
+//        gen.generateAndWrite(DeadlockProbe.class);
 
 //        gen.generateAll(true);
 
@@ -249,6 +250,7 @@ public class MessageCodeGenerator {
 //        gen.generateAndWrite(GridNearTxEnlistResponse.class);
 //        gen.generateAndWrite(GenerateEncryptionKeyRequest.class);
 //        gen.generateAndWrite(GenerateEncryptionKeyResponse.class);
+        gen.generateAndWrite(QueryStartRequest.class);
     }
 
     /**
@@ -917,7 +919,6 @@ public class MessageCodeGenerator {
      * @param col Classes.
      * @throws Exception In case of error.
      */
-    @SuppressWarnings("unchecked")
     private void processFile(File file, ClassLoader ldr, int prefixLen,
         Collection<Class<? extends Message>> col) throws Exception {
         assert file != null;

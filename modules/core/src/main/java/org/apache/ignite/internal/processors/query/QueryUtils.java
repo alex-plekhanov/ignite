@@ -1570,7 +1570,7 @@ public class QueryUtils {
      * @return {@code true} if exception is caused by cancel.
      */
     public static boolean wasCancelled(Throwable e) {
-        return X.cause(e, QueryCancelledException.class) != null;
+        return X.cause(e, QueryCancelledException.class) != null; // TODO check SQL exception cancelled code
     }
 
     /**

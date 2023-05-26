@@ -30,6 +30,7 @@ import org.apache.ignite.internal.processors.query.RunningQuery;
 import org.apache.ignite.internal.processors.query.RunningQueryManager;
 import org.apache.ignite.internal.processors.query.calcite.util.AbstractService;
 import org.apache.ignite.internal.util.IgniteUtils;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Registry of the running queries.
@@ -77,10 +78,10 @@ public class QueryRegistryImpl extends AbstractService implements QueryRegistry 
     }
 
     /** {@inheritDoc} */
-    @Override public void unregister(UUID id) {
+    @Override public void unregister(UUID id, @Nullable Throwable failReason) {
         RunningQuery val = runningQrys.remove(id);
         if (val instanceof RootQuery<?>)
-            kctx.query().runningQueryManager().unregister(((RootQuery<?>)val).localQueryId(), null);
+            kctx.query().runningQueryManager().unregister(((RootQuery<?>)val).localQueryId(), failReason);
     }
 
     /** {@inheritDoc} */
