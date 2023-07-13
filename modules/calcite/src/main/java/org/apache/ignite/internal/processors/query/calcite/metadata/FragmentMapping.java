@@ -20,10 +20,13 @@ package org.apache.ignite.internal.processors.query.calcite.metadata;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.ignite.internal.GridDirectCollection;
+import org.apache.ignite.internal.GridDirectTransient;
 import org.apache.ignite.internal.processors.query.calcite.message.MarshalableMessage;
 import org.apache.ignite.internal.processors.query.calcite.message.MarshallingContext;
 import org.apache.ignite.internal.processors.query.calcite.message.MessageType;
@@ -43,6 +46,10 @@ public class FragmentMapping implements MarshalableMessage {
     /** */
     @GridDirectCollection(ColocationGroup.class)
     private List<ColocationGroup> colocationGroups;
+
+    /** */
+    @GridDirectTransient
+    private final Map<UUID, FragmentMapping> locMappingCache = new ConcurrentHashMap<>();
 
     /** */
     public FragmentMapping() {
@@ -118,7 +125,8 @@ public class FragmentMapping implements MarshalableMessage {
 
     /** */
     public FragmentMapping local(UUID nodeId) throws ColocationMappingException {
-        return new FragmentMapping(Commons.transform(colocationGroups, c -> c.local(nodeId)));
+        return locMappingCache.computeIfAbsent(nodeId,
+            k -> new FragmentMapping(Commons.transform(colocationGroups, c -> c.local(nodeId))));
     }
 
     /** */
