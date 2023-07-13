@@ -23,6 +23,7 @@ import org.apache.ignite.internal.processors.query.calcite.exec.LogicalRelImplem
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.IgniteSqlFunctionsTest;
 import org.apache.ignite.internal.processors.query.calcite.exec.tracker.MemoryTrackerTest;
 import org.apache.ignite.internal.processors.query.calcite.message.CalciteCommunicationMessageSerializationTest;
+import org.apache.ignite.internal.processors.query.calcite.metadata.CompactedIntArrayTest;
 import org.apache.ignite.internal.processors.query.calcite.sql.SqlCustomParserTest;
 import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
@@ -39,6 +40,7 @@ import org.junit.runners.Suite;
     ClosableIteratorsHolderTest.class,
     MemoryTrackerTest.class,
     QueryCheckerTest.class,
+    CompactedIntArrayTest.class,
     SqlCustomParserTest.class,
     IgniteSqlFunctionsTest.class,
     LogicalRelImplementorTest.class,
