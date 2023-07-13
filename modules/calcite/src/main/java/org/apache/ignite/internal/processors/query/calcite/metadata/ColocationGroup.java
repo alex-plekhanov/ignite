@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.query.calcite.metadata;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -50,6 +51,9 @@ import org.jetbrains.annotations.NotNull;
 /** */
 public class ColocationGroup implements MarshalableMessage {
     /** */
+    private static final boolean BIT_SET_OPT = false;
+
+    /** */
     private long[] sourceIds;
 
     /** */
@@ -61,7 +65,7 @@ public class ColocationGroup implements MarshalableMessage {
     private List<List<UUID>> assignments;
 
     /** Marshalled assignments. */
-    private int[] marshalledAssignments;
+    private long[] marshalledAssignments;
 
     /** */
     public static ColocationGroup forNodes(List<UUID> nodeIds) {
@@ -279,7 +283,7 @@ public class ColocationGroup implements MarshalableMessage {
 
         switch (writer.state()) {
             case 0:
-                if (!writer.writeIntArray("marshalledAssignments", marshalledAssignments))
+                if (!writer.writeLongArray("marshalledAssignments", marshalledAssignments))
                     return false;
 
                 writer.incrementState();
@@ -310,7 +314,7 @@ public class ColocationGroup implements MarshalableMessage {
 
         switch (reader.state()) {
             case 0:
-                marshalledAssignments = reader.readIntArray("marshalledAssignments");
+                marshalledAssignments = reader.readLongArray("marshalledAssignments");
 
                 if (!reader.isLastRead())
                     return false;
@@ -346,85 +350,114 @@ public class ColocationGroup implements MarshalableMessage {
     /** {@inheritDoc} */
     @Override public void prepareMarshal(MarshallingContext ctx) {
         if (assignments != null && marshalledAssignments == null) {
-            Map<UUID, Integer> nodeIdxs = new HashMap<>();
-
-            for (int i = 0; i < nodeIds.size(); i++)
-                nodeIdxs.put(nodeIds.get(i), i);
-
-            int bitsPerPart = Integer.SIZE - Integer.numberOfLeadingZeros(nodeIds.size());
-
-            CompactedIntArray.Builder builder = CompactedIntArray.builder(bitsPerPart, assignments.size());
-
-            for (List<UUID> assignment : assignments) {
-                assert F.isEmpty(assignment) || assignment.size() == 1;
-
-                if (F.isEmpty(assignment))
-                    builder.add(nodeIds.size());
-                else {
-                    Integer nodeIdx = nodeIdxs.get(assignment.get(0));
-
-                    builder.add(nodeIdx);
+            if (nodeIds.size() == 1 && BIT_SET_OPT) {
+                // Simplified marshalling to BitSet for case when there is only one node.
+                UUID nodeId = nodeIds.get(0);
+                BitSet parts = new BitSet(assignments.size() + Long.SIZE); // Reserve first element for actual size.
+                for (int i = 0; i < assignments.size(); i++) {
+                    if (nodeId.equals(F.first(assignments.get(i))))
+                        parts.set(i + Long.SIZE);
                 }
+                marshalledAssignments = parts.toLongArray();
+                marshalledAssignments[0] = assignments.size();
             }
+            else {
+                Map<UUID, Integer> nodeIdxs = new HashMap<>();
 
-            marshalledAssignments = builder.build().buffer();
+                for (int i = 0; i < nodeIds.size(); i++)
+                    nodeIdxs.put(nodeIds.get(i), i);
+
+                int bitsPerPart = Integer.SIZE - Integer.numberOfLeadingZeros(nodeIds.size());
+
+                CompactedIntArray.Builder builder = CompactedIntArray.builder(bitsPerPart, assignments.size());
+
+                for (List<UUID> assignment : assignments) {
+                    assert F.isEmpty(assignment) || assignment.size() == 1;
+
+                    if (F.isEmpty(assignment))
+                        builder.add(nodeIds.size());
+                    else {
+                        Integer nodeIdx = nodeIdxs.get(assignment.get(0));
+
+                        builder.add(nodeIdx);
+                    }
+                }
+
+                marshalledAssignments = builder.build().buffer();
+            }
         }
     }
 
     /** {@inheritDoc} */
     @Override public void prepareUnmarshal(MarshallingContext ctx) {
         if (marshalledAssignments != null && assignments == null) {
-            int bitsPerPart = Integer.SIZE - Integer.numberOfLeadingZeros(nodeIds.size());
+            if (nodeIds.size() == 1 && BIT_SET_OPT) {
+                // Simplified unmarshalling from bitset for case when there is only one node.
+                int partsCnt = (int)marshalledAssignments[0];
+                BitSet parts = BitSet.valueOf(marshalledAssignments);
+                assignments = new ArrayList<>(partsCnt);
 
-            CompactedIntArray compactedArr = CompactedIntArray.of(bitsPerPart, marshalledAssignments);
+                for (int i = 0; i < partsCnt; i++) {
+                    if (parts.get(i + Long.SIZE))
+                        assignments.add(nodeIds);
+                    else
+                        assignments.add(Collections.emptyList());
+                }
+            }
+            else {
+                int nodeIdsSize = nodeIds.size();
+                int bitsPerPart = Integer.SIZE - Integer.numberOfLeadingZeros(nodeIdsSize);
 
-            assignments = new ArrayList<>(compactedArr.size());
+                CompactedIntArray compactedArr = CompactedIntArray.of(bitsPerPart, marshalledAssignments);
 
-            for (GridIntIterator iter = compactedArr.iterator(); iter.hasNext(); ) {
-                int nodeIdx = iter.next();
+                assignments = new ArrayList<>(compactedArr.size());
 
-                assignments.add(nodeIdx >= nodeIds.size() ? Collections.emptyList() :
-                    Collections.singletonList(nodeIds.get(nodeIdx)));
+                for (GridIntIterator iter = compactedArr.iterator(); iter.hasNext(); ) {
+                    int nodeIdx = iter.next();
+
+                    assignments.add(nodeIdx >= nodeIdsSize ? Collections.emptyList() :
+                        nodeIdsSize == 1 ? nodeIds : Collections.singletonList(nodeIds.get(nodeIdx)));
+                }
             }
         }
     }
 
     /** */
-    private static class CompactedIntArray {
+    static class CompactedIntArray {
         /** */
-        protected static final int BUF_POS_MASK = Integer.SIZE - 1;
+        protected static final int BUF_POS_MASK = Long.SIZE - 1;
 
         /** */
-        protected static final int BUF_POS_LOG2 = Integer.SIZE - Integer.numberOfLeadingZeros(Integer.SIZE - 1);
+        protected static final int BUF_POS_LOG2 = Long.SIZE - Long.numberOfLeadingZeros(Long.SIZE - 1);
 
         /** */
-        protected static final int[] BIT_MASKS = new int[Integer.SIZE];
+        protected static final long[] BIT_MASKS = new long[Long.SIZE];
 
         static {
-            for (int i = 0; i < Integer.SIZE; i++)
-                BIT_MASKS[i] = ~(-1 << i);
+            for (int i = 0; i < Long.SIZE; i++)
+                BIT_MASKS[i] = ~(-1L << i);
         }
 
         /** Buffer. */
-        private final int[] buf;
+        private final long[] buf;
 
         /** Bits count per each item. */
         private final int bitsPerItem;
 
         /** Ctor. */
-        private CompactedIntArray(int bitsPerItem, int[] buf) {
+        private CompactedIntArray(int bitsPerItem, long[] buf) {
             this.bitsPerItem = bitsPerItem;
             this.buf = buf;
         }
 
         /** */
-        public int[] buffer() {
+        public long[] buffer() {
             return buf;
         }
 
         /** */
         public int size() {
-            return buf[0];
+            return (int)buf[0];
         }
 
         /** */
@@ -433,7 +466,7 @@ public class ColocationGroup implements MarshalableMessage {
         }
 
         /** */
-        public static CompactedIntArray of(int bitsPerItem, int[] buf) {
+        public static CompactedIntArray of(int bitsPerItem, long[] buf) {
             return new CompactedIntArray(bitsPerItem, buf);
         }
 
@@ -443,15 +476,15 @@ public class ColocationGroup implements MarshalableMessage {
         }
 
         /** */
-        private static class Builder {
+        static class Builder {
             /** Current bit position. */
-            private int bitPos = Integer.SIZE; // Skip first element.
+            private int bitPos = Long.SIZE; // Skip first element.
 
             /** Current size. */
             private int size;
 
             /** Buffer. */
-            protected final int[] buf;
+            protected final long[] buf;
 
             /** Bits count per each item. */
             protected final int bitsPerItem;
@@ -459,7 +492,7 @@ public class ColocationGroup implements MarshalableMessage {
             /** Ctor. */
             public Builder(int bitsPerItem, int capacity) {
                 this.bitsPerItem = bitsPerItem;
-                buf = new int[(capacity * bitsPerItem + Integer.SIZE - 1) / Integer.SIZE + 1];
+                buf = new long[(capacity * bitsPerItem + Long.SIZE - 1) / Long.SIZE + 1];
                 buf[0] = capacity;
             }
 
@@ -471,9 +504,9 @@ public class ColocationGroup implements MarshalableMessage {
                 int bitPos = this.bitPos;
 
                 do {
-                    int bitsToWriteCurBuf = Math.min(bitsToWrite, Integer.SIZE - (bitPos & BUF_POS_MASK));
+                    int bitsToWriteCurBuf = Math.min(bitsToWrite, Long.SIZE - (bitPos & BUF_POS_MASK));
 
-                    int writeVal = (val & BIT_MASKS[bitsToWriteCurBuf]) << (bitPos & BUF_POS_MASK);
+                    long writeVal = (val & BIT_MASKS[bitsToWriteCurBuf]) << (bitPos & BUF_POS_MASK);
 
                     val >>= bitsToWriteCurBuf;
 
@@ -501,13 +534,13 @@ public class ColocationGroup implements MarshalableMessage {
         /** */
         private class Iterator implements GridIntIterator {
             /** Current bit position. */
-            private int bitPos = Integer.SIZE; // Skip first element.
+            private int bitPos = Long.SIZE; // Skip first element.
 
             /** Current item position. */
             private int pos;
 
             /** Array size. */
-            private final int size = buf[0];
+            private final int size = (int)buf[0];
 
             /** {@inheritDoc} */
             @Override public boolean hasNext() {
@@ -520,9 +553,9 @@ public class ColocationGroup implements MarshalableMessage {
 
                 int bitPos = this.bitPos;
 
-                int bitsFirstBuf = Math.min(bitsPerItem, Integer.SIZE - (bitPos & BUF_POS_MASK));
+                int bitsFirstBuf = Math.min(bitsPerItem, Long.SIZE - (bitPos & BUF_POS_MASK));
 
-                int val = ((buf[bitPos >> BUF_POS_LOG2] >> (bitPos & BUF_POS_MASK)) & BIT_MASKS[bitsFirstBuf]);
+                int val = (int)((buf[bitPos >> BUF_POS_LOG2] >> (bitPos & BUF_POS_MASK)) & BIT_MASKS[bitsFirstBuf]);
 
                 bitPos += bitsFirstBuf;
 
