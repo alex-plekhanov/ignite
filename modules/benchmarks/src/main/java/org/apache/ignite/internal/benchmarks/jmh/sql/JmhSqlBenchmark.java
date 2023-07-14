@@ -77,7 +77,7 @@ public class JmhSqlBenchmark {
     private static final TcpDiscoveryVmIpFinder IP_FINDER = new TcpDiscoveryVmIpFinder(true);
 
     /** Query engine. */
-    @Param({"H2", "CALCITE"})
+    @Param({"CALCITE"})
     private String engine;
 
     /** Ignite client. */
@@ -141,19 +141,6 @@ public class JmhSqlBenchmark {
     }
 
     /**
-     * Query unique value (full scan).
-     */
-    @Benchmark
-    public void querySimpleUnique() {
-        int key = ThreadLocalRandom.current().nextInt(KEYS_CNT);
-
-        List<?> res = executeSql("SELECT name FROM Item WHERE fld=?", key);
-
-        if (res.size() != 1)
-            throw new AssertionError("Unexpected result size: " + res.size());
-    }
-
-    /**
      * Query unique value (indexed).
      */
     @Benchmark
@@ -164,91 +151,6 @@ public class JmhSqlBenchmark {
 
         if (res.size() != 1)
             throw new AssertionError("Unexpected result size: " + res.size());
-    }
-
-    /**
-     * Query batch (full scan).
-     */
-    @Benchmark
-    public void querySimpleBatch() {
-        int key = ThreadLocalRandom.current().nextInt(KEYS_CNT);
-
-        List<?> res = executeSql("SELECT name FROM Item WHERE fldBatch=?", key / BATCH_SIZE);
-
-        if (res.size() != BATCH_SIZE)
-            throw new AssertionError("Unexpected result size: " + res.size());
-    }
-
-    /**
-     * Query batch (indexed).
-     */
-    @Benchmark
-    public void querySimpleBatchIndexed() {
-        int key = ThreadLocalRandom.current().nextInt(KEYS_CNT);
-
-        List<?> res = executeSql("SELECT name FROM Item WHERE fldIdxBatch=?", key / BATCH_SIZE);
-
-        if (res.size() != BATCH_SIZE)
-            throw new AssertionError("Unexpected result size: " + res.size());
-    }
-
-    /**
-     * Query with group by and aggregate.
-     */
-    @Benchmark
-    public void queryGroupBy() {
-        List<?> res = executeSql("SELECT fldBatch, AVG(fld) FROM Item GROUP BY fldBatch");
-
-        if (res.size() != KEYS_CNT / BATCH_SIZE)
-            throw new AssertionError("Unexpected result size: " + res.size());
-    }
-
-    /**
-     * Query with indexed field group by and aggregate.
-     */
-    @Benchmark
-    public void queryGroupByIndexed() {
-        List<?> res = executeSql("SELECT fldIdxBatch, AVG(fld) FROM Item GROUP BY fldIdxBatch");
-
-        if (res.size() != KEYS_CNT / BATCH_SIZE)
-            throw new AssertionError("Unexpected result size: " + res.size());
-    }
-
-    /**
-     * Query with sorting (full set).
-     */
-    @Benchmark
-    public void queryOrderByFull() {
-        List<?> res = executeSql("SELECT name, fld FROM Item ORDER BY fld DESC");
-
-        if (res.size() != KEYS_CNT)
-            throw new AssertionError("Unexpected result size: " + res.size());
-    }
-
-    /**
-     * Query with sorting (batch).
-     */
-    @Benchmark
-    public void queryOrderByBatch() {
-        int key = ThreadLocalRandom.current().nextInt(KEYS_CNT);
-
-        List<?> res = executeSql("SELECT name, fld FROM Item WHERE fldIdxBatch=? ORDER BY fld DESC", key / BATCH_SIZE);
-
-        if (res.size() != BATCH_SIZE)
-            throw new AssertionError("Unexpected result size: " + res.size());
-    }
-
-    /**
-     * Query sum of indexed field.
-     */
-    @Benchmark
-    public void querySumIndexed() {
-        List<List<?>> res = executeSql("SELECT sum(fldIdx) FROM Item");
-
-        Long expRes = ((long)KEYS_CNT) * (KEYS_CNT - 1) / 2;
-
-        if (!expRes.equals(res.get(0).get(0)))
-            throw new AssertionError("Unexpected result: " + res.get(0));
     }
 
     /** */

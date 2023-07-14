@@ -335,6 +335,7 @@ public class IndexScan<Row> extends AbstractIndexScan<Row, IndexRow> {
 
         try {
             for (GridDhtLocalPartition part : toReserve) {
+/*
                 if (part == null || !part.reserve()) {
                     throw new ClusterTopologyException(
                         "Failed to reserve partition for query execution. Retry on stable topology."
@@ -347,6 +348,7 @@ public class IndexScan<Row> extends AbstractIndexScan<Row, IndexRow> {
                         "Failed to reserve partition for query execution. Retry on stable topology."
                     );
                 }
+*/
 
                 reserved.add(part);
             }
@@ -366,8 +368,10 @@ public class IndexScan<Row> extends AbstractIndexScan<Row, IndexRow> {
         if (reserved == null)
             return;
 
+/*
         for (GridDhtLocalPartition part : reserved)
             part.release();
+*/
 
         reserved = null;
     }

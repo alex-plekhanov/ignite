@@ -52,6 +52,10 @@ public class FragmentMapping implements MarshalableMessage {
     private final Map<UUID, FragmentMapping> locMappingCache = new ConcurrentHashMap<>();
 
     /** */
+    @GridDirectTransient
+    private List<UUID> nodeIds;
+
+    /** */
     public FragmentMapping() {
     }
 
@@ -63,6 +67,9 @@ public class FragmentMapping implements MarshalableMessage {
     /** */
     private FragmentMapping(List<ColocationGroup> colocationGroups) {
         this.colocationGroups = colocationGroups;
+        nodeIds = colocationGroups.stream()
+            .flatMap(g -> g.nodeIds().stream())
+            .distinct().collect(Collectors.toList());
     }
 
     /** */
@@ -131,9 +138,7 @@ public class FragmentMapping implements MarshalableMessage {
 
     /** */
     public List<UUID> nodeIds() {
-        return colocationGroups.stream()
-            .flatMap(g -> g.nodeIds().stream())
-            .distinct().collect(Collectors.toList());
+        return nodeIds;
     }
 
     /** */

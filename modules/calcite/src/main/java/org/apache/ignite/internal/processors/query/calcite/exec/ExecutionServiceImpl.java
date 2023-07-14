@@ -75,7 +75,6 @@ import org.apache.ignite.internal.processors.query.calcite.message.MessageType;
 import org.apache.ignite.internal.processors.query.calcite.message.QueryStartRequest;
 import org.apache.ignite.internal.processors.query.calcite.message.QueryStartResponse;
 import org.apache.ignite.internal.processors.query.calcite.metadata.AffinityService;
-import org.apache.ignite.internal.processors.query.calcite.metadata.ColocationGroup;
 import org.apache.ignite.internal.processors.query.calcite.metadata.FragmentDescription;
 import org.apache.ignite.internal.processors.query.calcite.metadata.FragmentMapping;
 import org.apache.ignite.internal.processors.query.calcite.metadata.MappingService;
@@ -611,14 +610,18 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
         // Start remote execution.
         for (int i = 1; i < fragments.size(); i++) {
             fragment = fragments.get(i);
-            FragmentMapping mapping = plan.mapping(fragment);
-            ColocationGroup target = plan.target(fragment);
-            Map<Long, List<UUID>> remotes = plan.remotes(fragment);
+            fragmentDesc = new FragmentDescription(
+                fragment.fragmentId(),
+                plan.mapping(fragment),
+                plan.target(fragment),
+                plan.remotes(fragment));
+
+            //fragmentDesc.prepareMarshal((MarshallingContext)msgSvc);
 
             Throwable ex = null;
             byte[] parametersMarshalled = null;
 
-            for (UUID nodeId : mapping.nodeIds()) {
+            for (UUID nodeId : fragmentDesc.nodeIds()) {
                 if (ex != null)
                     qry.onResponse(nodeId, fragment.fragmentId(), ex);
                 else {
@@ -629,7 +632,7 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
                             qry.context().schemaName(),
                             fragment.serialized(),
                             ectx.topologyVersion(),
-                            new FragmentDescription(fragment.fragmentId(), mapping.local(nodeId), target, remotes),
+                            fragmentDesc, //.local(nodeId),
                             fragmentsPerNode.get(nodeId).intValue(),
                             qry.parameters(),
                             parametersMarshalled
@@ -646,6 +649,13 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
                     }
                 }
             }
+        }
+
+        if (true) {
+            Iterator<List<?>> it = new ConvertingClosableIterator<>(iteratorsHolder().iterator(qry.iterator()), ectx,
+                null, null, null);
+
+            return new ListFieldsQueryCursor<>(plan, it, ectx);
         }
 
         QueryProperties qryProps = qry.context().unwrap(QueryProperties.class);

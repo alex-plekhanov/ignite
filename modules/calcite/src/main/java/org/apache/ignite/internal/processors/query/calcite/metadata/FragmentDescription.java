@@ -218,4 +218,13 @@ public class FragmentDescription implements MarshalableMessage {
                 remoteSources.put(e.getKey(), new ArrayList<>(e.getValue().uuids()));
         }
     }
+
+    /** */
+    public FragmentDescription local(UUID id) throws ColocationMappingException {
+        FragmentDescription loc = new FragmentDescription(fragmentId, mapping.local(id), target, remoteSources);
+
+        loc.remoteSources0 = remoteSources0;
+
+        return loc;
+    }
 }
