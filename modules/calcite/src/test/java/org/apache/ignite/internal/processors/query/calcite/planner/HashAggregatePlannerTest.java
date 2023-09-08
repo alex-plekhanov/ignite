@@ -224,7 +224,7 @@ public class HashAggregatePlannerTest extends AbstractAggregatePlannerTest {
             @Override public IgniteDistribution distribution() {
                 return IgniteDistributions.affinity(0, "Employers", "hash");
             }
-        };
+        }.addIndex("TST", 2);
 
         IgniteSchema publicSchema = new IgniteSchema("PUBLIC");
 
@@ -236,6 +236,8 @@ public class HashAggregatePlannerTest extends AbstractAggregatePlannerTest {
             sql,
             publicSchema
         );
+
+        System.out.println(RelOptUtil.toString(phys));
 
         assertNotNull(phys);
 

@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.query.calcite.planner;
 import java.util.List;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.util.ImmutableIntList;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteExchange;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteIndexScan;
@@ -142,6 +143,8 @@ public class JoinColocationPlannerTest extends AbstractPlannerTest {
 
         RelNode phys = physicalPlan(sql, schema, "NestedLoopJoinConverter", "CorrelatedNestedLoopJoin");
 
+        System.out.println(RelOptUtil.toString(phys, SqlExplainLevel.ALL_ATTRIBUTES));
+
         IgniteMergeJoin join = findFirstNode(phys, byClass(IgniteMergeJoin.class));
 
         String invalidPlanMsg = "Invalid plan:\n" + RelOptUtil.toString(phys);
@@ -156,6 +159,41 @@ public class JoinColocationPlannerTest extends AbstractPlannerTest {
         assertThat(invalidPlanMsg, exchanges.get(0).getInput(0), instanceOf(IgniteIndexScan.class));
         assertThat(invalidPlanMsg, exchanges.get(0).getInput(0)
             .getTable().unwrap(TestTable.class), equalTo(complexTbl));
+    }
+
+    /** */
+    @Test
+    public void joinSimpleToSimpleAff() throws Exception {
+        TestTable complexTbl = createTable(
+            "SIMPLE_TBL0",
+            2 * DEFAULT_TBL_SIZE,
+            IgniteDistributions.affinity(ImmutableIntList.of(0), CU.cacheId("default"), "hash"),
+            "ID1", Integer.class,
+            "ID2", Integer.class,
+            "VAL", String.class
+        );
+
+        complexTbl.addIndex("PK", 1);
+
+        TestTable simpleTbl = createTable(
+            "SIMPLE_TBL1",
+            DEFAULT_TBL_SIZE,
+            IgniteDistributions.affinity(0, "default", "hash"),
+            "ID", Integer.class,
+            "VAL", String.class
+        );
+
+        simpleTbl.addIndex("PK", 0);
+
+        IgniteSchema schema = createSchema(complexTbl, simpleTbl);
+
+        String sql = "select count(*) " +
+            "from SIMPLE_TBL0 t1 " +
+            "join SIMPLE_TBL1 t2 on t1.id2 = t2.id";
+
+        RelNode phys = physicalPlan(sql, schema);
+
+        System.out.println(RelOptUtil.toString(phys, SqlExplainLevel.ALL_ATTRIBUTES));
     }
 
     /**

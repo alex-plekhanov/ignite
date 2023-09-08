@@ -50,6 +50,8 @@ import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 
+import static org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions.broadcast;
+import static org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions.single;
 import static org.apache.ignite.internal.processors.query.calcite.util.Commons.maxPrefix;
 
 /**
@@ -183,6 +185,7 @@ public class IgniteCorrelatedNestedLoopJoin extends AbstractIgniteJoin {
         RelTraitSet rightTraits = inputTraits.get(1);
 
         IgniteDistribution leftDistr = TraitUtils.distribution(inputTraits.get(0));
+        IgniteDistribution rightDistr = TraitUtils.distribution(inputTraits.get(1));
 
         if (leftDistr.getType() == RelDistribution.Type.HASH_DISTRIBUTED && variablesSet.size() == 1) {
             // Add artifitial correlated distribution which can be restored to hash distribution by the filter node.
@@ -192,6 +195,15 @@ public class IgniteCorrelatedNestedLoopJoin extends AbstractIgniteJoin {
                 ImmutableList.of(
                     leftTraits,
                     rightTraits.replace(IgniteDistributions.correlated(F.first(variablesSet), leftDistr)))));
+        }
+
+        if (leftDistr != single() && leftDistr != broadcast()) {
+            traits = new ArrayList<>(traits);
+
+            traits.add(Pair.of(nodeTraits.replace(rightDistr),
+                ImmutableList.of(
+                    leftTraits.replace(broadcast()),
+                    rightTraits)));
         }
 
         return traits;

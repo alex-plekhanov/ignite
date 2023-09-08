@@ -23,6 +23,8 @@ import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
+import org.apache.calcite.rel.RelCollation;
+import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.hint.RelHint;
@@ -34,6 +36,7 @@ import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.ignite.internal.processors.query.calcite.externalize.RelInputEx;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCost;
+import org.apache.ignite.internal.processors.query.calcite.prepare.bounds.MultiBounds;
 import org.apache.ignite.internal.processors.query.calcite.prepare.bounds.SearchBounds;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteIndex;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteTable;
@@ -110,6 +113,17 @@ public abstract class AbstractIndexScan extends ProjectableFilterableTableScan {
     }
 
     /** {@inheritDoc} */
+    @Override public double estimateRowCount(RelMetadataQuery mq) {
+        IgniteTable tbl = table.unwrap(IgniteTable.class);
+        IgniteIndex idx = tbl.getIndex(idxName);
+
+        if (isUniqueScan(idx.collation(), searchBounds))
+            return 1;
+        else
+            return super.estimateRowCount(mq);
+    }
+
+    /** {@inheritDoc} */
     @Override public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
         double rows = table.getRowCount();
 
@@ -131,13 +145,17 @@ public abstract class AbstractIndexScan extends ProjectableFilterableTableScan {
             cost = 0;
 
             if (searchBounds != null) {
-                selectivity = mq.getSelectivity(this, RexUtil.composeConjunction(builder,
+                if (isUniqueScan(idx.collation(), searchBounds))
+                    rows = 1;
+                else {
+                    selectivity = mq.getSelectivity(this, RexUtil.composeConjunction(builder,
                         Commons.transform(searchBounds, b -> b == null ? null : b.condition())));
 
-                cost = Math.log(rows) * IgniteCost.ROW_COMPARISON_COST;
-            }
+                    cost = Math.log(rows) * IgniteCost.ROW_COMPARISON_COST;
 
-            rows *= selectivity;
+                    rows *= selectivity;
+                }
+            }
 
             if (rows <= 0)
                 rows = 1;
@@ -147,6 +165,26 @@ public abstract class AbstractIndexScan extends ProjectableFilterableTableScan {
 
         // additional tiny cost for preventing equality with table scan.
         return planner.getCostFactory().makeCost(rows, cost, 0).plus(planner.getCostFactory().makeTinyCost());
+    }
+
+    /** */
+    private static boolean isUniqueScan(RelCollation collation, List<SearchBounds> bounds) {
+        if (bounds == null)
+            return false;
+
+        for (RelFieldCollation fldCol : collation.getFieldCollations()) {
+            SearchBounds bound = bounds.get(fldCol.getFieldIndex());
+
+            if (bound == null || bound.type() == SearchBounds.Type.RANGE)
+                return false;
+
+            if (bound.type() == SearchBounds.Type.MULTI) {
+                if (((MultiBounds)bound).bounds().stream().anyMatch(b -> b.type() != SearchBounds.Type.EXACT))
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     /** */
