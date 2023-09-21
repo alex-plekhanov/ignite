@@ -32,6 +32,7 @@ import org.apache.ignite.compute.ComputeJobResultPolicy;
 import org.apache.ignite.compute.ComputeTaskAdapter;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.util.typedef.F;
+import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.resources.IgniteInstanceResource;
 import org.jetbrains.annotations.Nullable;
 
@@ -74,6 +75,8 @@ public abstract class AbstractSnapshotVerificationTask extends
 
         metas.putAll(clusterMetas);
 
+        long startTime = U.currentTimeMillis();
+
         while (!allMetas.isEmpty()) {
             for (Map.Entry<ClusterNode, List<SnapshotMetadata>> e : clusterMetas.entrySet()) {
                 SnapshotMetadata meta = F.find(e.getValue(), null, allMetas::remove);
@@ -88,6 +91,7 @@ public abstract class AbstractSnapshotVerificationTask extends
                         arg.incrementIndex(),
                         meta.consistentId(),
                         arg.cacheGroupNames(),
+                        startTime,
                         arg.check()
                     ),
                     e.getKey()
@@ -136,6 +140,7 @@ public abstract class AbstractSnapshotVerificationTask extends
      * @param incIdx Incremental snapshot index.
      * @param constId Snapshot metadata file name.
      * @param groups Cache groups to be restored from the snapshot. May be empty if all cache groups are being restored.
+     * @param startTime Operation start time.
      * @param check If {@code true} check snapshot before restore.
      * @return Compute job.
      */
@@ -145,6 +150,7 @@ public abstract class AbstractSnapshotVerificationTask extends
         int incIdx,
         String constId,
         Collection<String> groups,
+        long startTime,
         boolean check
     );
 }

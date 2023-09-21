@@ -55,9 +55,10 @@ public class SnapshotHandlerRestoreTask extends AbstractSnapshotVerificationTask
         int incIdx,
         String constId,
         Collection<String> groups,
+        long startTime,
         boolean check
     ) {
-        return new SnapshotHandlerRestoreJob(name, path, constId, groups, check);
+        return new SnapshotHandlerRestoreJob(name, path, constId, groups, startTime, check);
     }
 
     /** {@inheritDoc} */
@@ -124,6 +125,9 @@ public class SnapshotHandlerRestoreTask extends AbstractSnapshotVerificationTask
         /** Snapshot directory path. */
         private final String snpPath;
 
+        /** Operation start time. */
+        private final long startTime;
+
         /** If {@code true} check snapshot before restore. */
         private final boolean check;
 
@@ -132,6 +136,7 @@ public class SnapshotHandlerRestoreTask extends AbstractSnapshotVerificationTask
          * @param snpPath Snapshot directory path.
          * @param consistentId String representation of the consistent node ID.
          * @param grps Cache group names.
+         * @param startTime Operation start time.
          * @param check If {@code true} check snapshot before restore.
          */
         public SnapshotHandlerRestoreJob(
@@ -139,12 +144,14 @@ public class SnapshotHandlerRestoreTask extends AbstractSnapshotVerificationTask
             @Nullable String snpPath,
             String consistentId,
             Collection<String> grps,
+            long startTime,
             boolean check
         ) {
             this.snpName = snpName;
             this.snpPath = snpPath;
             this.consistentId = consistentId;
             this.grps = grps;
+            this.startTime = startTime;
             this.check = check;
         }
 
@@ -156,7 +163,7 @@ public class SnapshotHandlerRestoreTask extends AbstractSnapshotVerificationTask
                 SnapshotMetadata meta = snpMgr.readSnapshotMetadata(snpDir, consistentId);
 
                 return snpMgr.handlers().invokeAll(SnapshotHandlerType.RESTORE,
-                    new SnapshotHandlerContext(meta, grps, ignite.localNode(), snpDir, false, check));
+                    new SnapshotHandlerContext(meta, startTime, grps, ignite.localNode(), snpDir, false, check));
             }
             catch (IgniteCheckedException | IOException e) {
                 throw new IgniteException(e);

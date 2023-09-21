@@ -29,6 +29,9 @@ public class SnapshotHandlerContext {
     /** Snapshot metadata. */
     private final SnapshotMetadata metadata;
 
+    /** Operation start time. */
+    private final long startTime;
+
     /** The full path to the snapshot files. */
     private final File snpDir;
 
@@ -46,6 +49,7 @@ public class SnapshotHandlerContext {
 
     /**
      * @param metadata Snapshot metadata.
+     * @param startTime Operation start time.
      * @param grps The names of the cache groups on which the operation is performed.
      * {@code False} otherwise. Always {@code false} for snapshot restoration.
      * @param locNode Local node.
@@ -55,6 +59,7 @@ public class SnapshotHandlerContext {
      */
     public SnapshotHandlerContext(
         SnapshotMetadata metadata,
+        long startTime,
         @Nullable Collection<String> grps,
         ClusterNode locNode,
         File snpDir,
@@ -62,6 +67,7 @@ public class SnapshotHandlerContext {
         boolean check
     ) {
         this.metadata = metadata;
+        this.startTime = startTime;
         this.grps = grps;
         this.locNode = locNode;
         this.snpDir = snpDir;
@@ -74,6 +80,13 @@ public class SnapshotHandlerContext {
      */
     public SnapshotMetadata metadata() {
         return metadata;
+    }
+
+    /**
+     * @return Operation start time.
+     */
+    public long startTime() {
+        return startTime;
     }
 
     /**

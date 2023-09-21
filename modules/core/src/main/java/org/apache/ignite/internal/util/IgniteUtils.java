@@ -12345,10 +12345,10 @@ public abstract class IgniteUtils {
 
     /**
      * Converts duration to a human-readable format.
-     * Examples: 10 -> 10ms, 6_0000 -> 6s, 65_000 -> 1m5s, (65 * 60_000 + 32_000) -> 1h5m32s, etc.
+     * Examples: 10 -> 10ms, 6_000 -> 6s, 65_000 -> 1m5s, (65 * 60_000 + 32_000) -> 1h5m32s, etc.
      *
      * @param millis Duration in milliseconds.
-     * @return Human readable format for duration.
+     * @return Human-readable format for duration.
      */
     public static String humanReadableDuration(long millis) {
         StringBuilder sb = new StringBuilder();
@@ -12393,6 +12393,50 @@ public abstract class IgniteUtils {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Converts human-readable format duration to millis.
+     * Examples: 10ms -> 10, 6s -> 6_000, 1m5s -> 65_000, 1h5m32s -> (65 * 60_000 + 32_000), etc.
+     *
+     * @param duration Human-readable format for duration.
+     * @return Duration in milliseconds.
+     */
+    public static long parseHumanReadableDuration(String duration) {
+        int curVal = 0;
+        int retVal = 0;
+
+        for (int i = 0; i < duration.length(); i++) {
+            char c = duration.charAt(i);
+
+            if (c >= '0' && c <= '9')
+                curVal = curVal * 10 + (c - '0');
+            else if (c == 'd') {
+                retVal += TimeUnit.DAYS.toMillis(curVal);
+                curVal = 0;
+            }
+            else if (c == 'h') {
+                retVal += TimeUnit.HOURS.toMillis(curVal);
+                curVal = 0;
+            }
+            else if (c == 'm') {
+                if (i < duration.length() - 1 && duration.charAt(i + 1) == 's') {
+                    retVal += curVal;
+                    i++;
+                }
+                else
+                    retVal += TimeUnit.MINUTES.toMillis(curVal);
+                curVal = 0;
+            }
+            else if (c == 's') {
+                retVal += TimeUnit.SECONDS.toMillis(curVal);
+                curVal = 0;
+            }
+            else
+                throw new IllegalArgumentException("Unexpected char '" + c + "' for duration " + duration);
+        }
+
+        return retVal;
     }
 
     /**

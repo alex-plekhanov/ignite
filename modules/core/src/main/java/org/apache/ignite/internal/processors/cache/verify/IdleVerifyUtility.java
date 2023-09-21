@@ -261,6 +261,7 @@ public class IdleVerifyUtility {
      * @param state Partition state to check.
      * @param isPrimary {@code true} if partition is primary.
      * @param partSize Partition size on disk.
+     * @param expiringTs Skip expiring entries, which will be expired before provided timestamp.
      * @param it Iterator though partition data rows.
      * @throws IgniteCheckedException If fails.
      * @return Map of calculated partition.
@@ -272,6 +273,7 @@ public class IdleVerifyUtility {
         GridDhtPartitionState state,
         boolean isPrimary,
         long partSize,
+        long expiringTs,
         GridIterator<CacheDataRow> it
     ) throws IgniteCheckedException {
         if (state == GridDhtPartitionState.MOVING || state == GridDhtPartitionState.LOST) {
@@ -304,7 +306,23 @@ public class IdleVerifyUtility {
         while (it.hasNextX()) {
             CacheDataRow row = it.nextX();
 
+            if (row.expireTime() > 0 && row.expireTime() <= expiringTs) {
+                // Decrement partition size only to be more accurate when dumping partition state. Partition size is
+                // not compared during conflicts detection, only hashes and partition counters are compared.
+                // We can't guarantee equality of partition size on each node, since entries are concurrently expiring,
+                // and some entry can be expired after we get partSize and before we iterate over this entry by
+                // partition iterator (entry is skipped by iterator). We can provide such a guarantee only if we
+                // temporarely disable expiring.
+                partSize--;
+
+                continue;
+            }
+
+            if (row.key().hashCode() >= 0 && row.key().hashCode() <= 9 )
+                System.out.println(">>>> key=" + row.key() + ", expireTs=" + row.expireTime());
+
             partHash += row.key().hashCode();
+            partHash += row.expireTime();
             partVerHash += row.version().hashCode(); // Detects ABA problem.
 
             // Object context is not required since the valueBytes have been read directly from page.

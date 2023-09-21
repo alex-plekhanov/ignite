@@ -152,6 +152,7 @@ public class IncrementalSnapshotVerificationTask extends AbstractSnapshotVerific
         int incIdx,
         String constId,
         Collection<String> groups,
+        long startTime,
         boolean check
     ) {
         return new VerifyIncrementalSnapshotJob(name, path, incIdx, constId);

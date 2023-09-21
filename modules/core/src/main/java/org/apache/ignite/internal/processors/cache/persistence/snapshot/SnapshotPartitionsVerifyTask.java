@@ -58,9 +58,10 @@ public class SnapshotPartitionsVerifyTask extends AbstractSnapshotVerificationTa
         int incIdx,
         String constId,
         Collection<String> groups,
+        long startTime,
         boolean check
     ) {
-        return new VerifySnapshotPartitionsJob(name, path, constId, groups, check);
+        return new VerifySnapshotPartitionsJob(name, path, constId, groups, startTime, check);
     }
 
     /** {@inheritDoc} */
@@ -93,6 +94,9 @@ public class SnapshotPartitionsVerifyTask extends AbstractSnapshotVerificationTa
         /** Set of cache groups to be checked in the snapshot or {@code empty} to check everything. */
         private final Collection<String> rqGrps;
 
+        /** Operation start time. */
+        private final long startTime;
+
         /** If {@code true} check snapshot before restore. */
         private final boolean check;
 
@@ -101,6 +105,7 @@ public class SnapshotPartitionsVerifyTask extends AbstractSnapshotVerificationTa
          * @param consId Consistent snapshot metadata file name.
          * @param rqGrps Set of cache groups to be checked in the snapshot or {@code empty} to check everything.
          * @param snpPath Snapshot directory path.
+         * @param startTime Operation start time.
          * @param check If {@code true} check snapshot before restore.
          */
         public VerifySnapshotPartitionsJob(
@@ -108,12 +113,14 @@ public class SnapshotPartitionsVerifyTask extends AbstractSnapshotVerificationTa
             @Nullable String snpPath,
             String consId,
             Collection<String> rqGrps,
+            long startTime,
             boolean check
         ) {
             this.snpName = snpName;
             this.consId = consId;
             this.rqGrps = rqGrps;
             this.snpPath = snpPath;
+            this.startTime = startTime;
             this.check = check;
         }
 
@@ -131,7 +138,7 @@ public class SnapshotPartitionsVerifyTask extends AbstractSnapshotVerificationTa
                 SnapshotMetadata meta = cctx.snapshotMgr().readSnapshotMetadata(snpDir, consId);
 
                 return new SnapshotPartitionsVerifyHandler(cctx)
-                    .invoke(new SnapshotHandlerContext(meta, rqGrps, ignite.localNode(), snpDir, false, check));
+                    .invoke(new SnapshotHandlerContext(meta, startTime, rqGrps, ignite.localNode(), snpDir, false, check));
             }
             catch (IgniteCheckedException | IOException e) {
                 throw new IgniteException(e);

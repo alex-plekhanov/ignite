@@ -57,6 +57,14 @@ public class CacheIdleVerifyCommandArg extends IgniteDataTransferObject {
     @Argument(optional = true)
     private CacheFilterEnum cacheFilter = CacheFilterEnum.DEFAULT;
 
+    /** */
+    @Argument(description = "skip entries, which are expiring during the specified period (for example '1h20m30s', by default '1h')",
+        optional = true, example = "period")
+    private String skipExpiring = "1h";
+
+    /** */
+    private long expireTs = U.currentTimeMillis() + U.parseHumanReadableDuration(skipExpiring);
+
     /**
      * @param string To validate that given name is valed regex.
      */
@@ -78,6 +86,7 @@ public class CacheIdleVerifyCommandArg extends IgniteDataTransferObject {
         out.writeBoolean(checkCrc);
         U.writeArray(out, excludeCaches);
         U.writeEnum(out, cacheFilter);
+        out.writeLong(expireTs);
     }
 
     /** {@inheritDoc} */
@@ -87,6 +96,7 @@ public class CacheIdleVerifyCommandArg extends IgniteDataTransferObject {
         checkCrc = in.readBoolean();
         excludeCaches = U.readArray(in, String.class);
         cacheFilter = U.readEnum(in, CacheFilterEnum.class);
+        expireTs = in.readLong();
     }
 
     /** */
@@ -139,5 +149,22 @@ public class CacheIdleVerifyCommandArg extends IgniteDataTransferObject {
     /** */
     public void cacheFilter(CacheFilterEnum cacheFilter) {
         this.cacheFilter = cacheFilter;
+    }
+
+    /** */
+    public void skipExpiring(String skipExpiring) {
+        this.skipExpiring = skipExpiring;
+
+        expireTs = U.currentTimeMillis() + U.parseHumanReadableDuration(skipExpiring);
+    }
+
+    /** */
+    public String skipExpiring() {
+        return skipExpiring;
+    }
+
+    /** */
+    public long expireTs() {
+        return expireTs;
     }
 }

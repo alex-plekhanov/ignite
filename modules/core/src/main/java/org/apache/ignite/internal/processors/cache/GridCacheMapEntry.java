@@ -6092,9 +6092,10 @@ public abstract class GridCacheMapEntry extends GridMetadataAwareAdapter impleme
                         return;
                     }
                     else {
-                        newSysExpireTime = CU.EXPIRE_TIME_CALCULATE;
+                        //newSysExpireTime = CU.EXPIRE_TIME_CALCULATE;
                         newTtl = newSysTtl;
                         newExpireTime = CU.toExpireTime(newTtl);
+                        newSysExpireTime = newExpireTime;
                     }
                 }
             }

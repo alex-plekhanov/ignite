@@ -1390,32 +1390,44 @@ public class IgniteUtilsSelfTest extends GridCommonAbstractTest {
      */
     @Test
     public void testHumanReadableDuration() {
-        assertEquals("0ms", U.humanReadableDuration(0));
-        assertEquals("10ms", U.humanReadableDuration(10));
+        checkHumanReadableDuration("0ms", 0);
+        checkHumanReadableDuration("10ms", 10);
 
-        assertEquals("1s", U.humanReadableDuration(SECONDS.toMillis(1)));
+        checkHumanReadableDuration("1s", SECONDS.toMillis(1));
         assertEquals("1s", U.humanReadableDuration(SECONDS.toMillis(1) + 10));
-        assertEquals("12s", U.humanReadableDuration(SECONDS.toMillis(12)));
+        checkHumanReadableDuration("12s", SECONDS.toMillis(12));
 
-        assertEquals("1m", U.humanReadableDuration(MINUTES.toMillis(1)));
-        assertEquals("2m", U.humanReadableDuration(MINUTES.toMillis(2)));
-        assertEquals("1m5s", U.humanReadableDuration(SECONDS.toMillis(65)));
+        checkHumanReadableDuration("1m", MINUTES.toMillis(1));
+        checkHumanReadableDuration("2m", MINUTES.toMillis(2));
+        checkHumanReadableDuration("1m5s", SECONDS.toMillis(65));
         assertEquals("1m5s", U.humanReadableDuration(SECONDS.toMillis(65) + 10));
 
-        assertEquals("1h", U.humanReadableDuration(HOURS.toMillis(1)));
-        assertEquals("3h", U.humanReadableDuration(HOURS.toMillis(3)));
+        checkHumanReadableDuration("1h", HOURS.toMillis(1));
+        checkHumanReadableDuration("3h", HOURS.toMillis(3));
         assertEquals(
             "1h5m12s",
             U.humanReadableDuration(MINUTES.toMillis(65) + SECONDS.toMillis(12) + 10)
         );
 
-        assertEquals("1d", U.humanReadableDuration(DAYS.toMillis(1)));
-        assertEquals("15d", U.humanReadableDuration(DAYS.toMillis(15)));
-        assertEquals("1d4h", U.humanReadableDuration(HOURS.toMillis(28)));
-        assertEquals(
+        checkHumanReadableDuration("1d", DAYS.toMillis(1));
+        checkHumanReadableDuration("15d", DAYS.toMillis(15));
+        checkHumanReadableDuration("1d4h", HOURS.toMillis(28));
+        checkHumanReadableDuration(
             "4d6h15m",
-            U.humanReadableDuration(DAYS.toMillis(4) + HOURS.toMillis(6) + MINUTES.toMillis(15))
+            DAYS.toMillis(4) + HOURS.toMillis(6) + MINUTES.toMillis(15)
         );
+
+        assertThrows(log, () -> U.parseHumanReadableDuration("10a"), IllegalArgumentException.class,
+            "Unexpected char 'a'");
+
+        assertThrows(log, () -> U.parseHumanReadableDuration("10mb"), IllegalArgumentException.class,
+            "Unexpected char 'b'");
+    }
+
+    /** */
+    private void checkHumanReadableDuration(String humanReadableDuration, long millis) {
+        assertEquals(humanReadableDuration, U.humanReadableDuration(millis));
+        assertEquals(millis, U.parseHumanReadableDuration(humanReadableDuration));
     }
 
     /**
