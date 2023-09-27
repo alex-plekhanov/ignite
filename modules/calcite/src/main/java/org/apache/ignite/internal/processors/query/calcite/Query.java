@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.cache.query.QueryCancelledException;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
@@ -235,6 +236,10 @@ public class Query<RowT> {
      * Callback after the last batch of the query fragment is sent to all nodes.
      */
     public void onOutboundExchangeFinished(long exchangeId) {
+        if (exch.localNodeId().toString().endsWith("0"))
+            log.warning(">>>> exchangeFinished qryId=" + id + ", exchId=" + exchangeId +
+                ", totalFragments=" + totalFragmentsCnt + ", finishedFragments=" + finishedFragmentsCnt.get());
+
         if (finishedFragmentsCnt.incrementAndGet() == totalFragmentsCnt) {
             QueryState state0;
 

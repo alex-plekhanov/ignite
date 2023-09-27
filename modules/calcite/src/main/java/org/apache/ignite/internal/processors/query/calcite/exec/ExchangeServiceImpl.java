@@ -226,6 +226,10 @@ public class ExchangeServiceImpl extends AbstractService implements ExchangeServ
         if (qry != null)
             qry.cancel();
         else {
+            for (Inbox<?> inbox : mailboxRegistry().inboxes(msg.queryId(), -1, -1))
+                mailboxRegistry().unregister(inbox);
+
+            //log.warning(">>>> stale qryId=" + msg.queryId());
             if (log.isDebugEnabled()) {
                 log.debug("Stale query close message received: [" +
                     "nodeId=" + nodeId +

@@ -22,9 +22,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-
 import org.apache.ignite.events.EventType;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.managers.eventstorage.DiscoveryEventListener;
@@ -41,6 +41,12 @@ import org.jetbrains.annotations.Nullable;
  *
  */
 public class MailboxRegistryImpl extends AbstractService implements MailboxRegistry {
+    /** */
+    private final AtomicInteger unbinded = new AtomicInteger();
+
+    /** */
+    private final GridKernalContext ctx;
+
     /** */
     private static final Predicate<Mailbox<?>> ALWAYS_TRUE = o -> true;
 
@@ -64,6 +70,7 @@ public class MailboxRegistryImpl extends AbstractService implements MailboxRegis
     public MailboxRegistryImpl(GridKernalContext ctx) {
         super(ctx);
 
+        this.ctx = ctx;
         locals = new ConcurrentHashMap<>();
         remotes = new ConcurrentHashMap<>();
 
@@ -89,13 +96,30 @@ public class MailboxRegistryImpl extends AbstractService implements MailboxRegis
 
     /** {@inheritDoc} */
     @Override public Inbox<?> register(Inbox<?> inbox) {
+        if (ctx.igniteInstanceName().endsWith("0"))
+            log.warning(">>>> register qryId=" + inbox.queryId() + ", exchId=" + inbox.exchangeId());
+
         Inbox<?> old = remotes.putIfAbsent(new MailboxKey(inbox.queryId(), inbox.exchangeId()), inbox);
+
+        if (old == null && inbox.context().topologyVersion() == null) {
+            unbinded.incrementAndGet();
+            if (ctx.igniteInstanceName().endsWith("0"))
+                log.warning(">>>> unbind " + unbinded.get() + ", exchId=" + inbox.exchangeId() + ", remotes=" + remotes.size());
+        }
+        else if (old != null && old.context().topologyVersion() == null && inbox.context().topologyVersion() != null) {
+            unbinded.decrementAndGet();
+            if (ctx.igniteInstanceName().endsWith("0"))
+                log.warning(">>>> bind " + unbinded.get() + ", exchId=" + inbox.exchangeId());
+        }
 
         return old != null ? old : inbox;
     }
 
     /** {@inheritDoc} */
     @Override public void unregister(Inbox<?> inbox) {
+        if (ctx.igniteInstanceName().endsWith("0"))
+            log.warning(">>>> unregister qryId=" + inbox.queryId() + ", exchId=" + inbox.exchangeId());
+
         remotes.remove(new MailboxKey(inbox.queryId(), inbox.exchangeId()), inbox);
     }
 
