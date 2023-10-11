@@ -95,6 +95,12 @@ public class AbstractBasicIntegrationTest extends GridCommonAbstractTest {
             ExecutionServiceImpl<Object[]> execSvc = (ExecutionServiceImpl<Object[]>)qryProc.executionService();
             assertEquals("Tracked memory must be 0 after test [ignite=" + ign.name() + ']',
                 0, execSvc.memoryTracker().allocated());
+
+            assertEquals("Count of inboxes must be 0 after test [ignite=" + ign.name() + ']',
+                0, qryProc.mailboxRegistry().inboxes().size());
+
+            assertEquals("Count of outboxes must be 0 after test [ignite=" + ign.name() + ']',
+                0, qryProc.mailboxRegistry().outboxes().size());
         }
 
         awaitPartitionMapExchange();

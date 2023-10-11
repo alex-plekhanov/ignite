@@ -17,18 +17,8 @@
 
 package org.apache.ignite.internal.processors.query.calcite.integration;
 
-import org.apache.ignite.Ignite;
-import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.CacheAtomicityMode;
-import org.apache.ignite.cache.affinity.AffinityKeyMapped;
-import org.apache.ignite.cache.query.SqlFieldsQuery;
-import org.apache.ignite.calcite.CalciteQueryEngineConfiguration;
 import org.apache.ignite.configuration.CacheConfiguration;
-import org.apache.ignite.configuration.IgniteConfiguration;
-import org.apache.ignite.configuration.SqlConfiguration;
-import org.apache.ignite.indexing.IndexingQueryEngineConfiguration;
-import org.apache.ignite.internal.processors.query.calcite.QueryChecker;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.junit.Test;
 
