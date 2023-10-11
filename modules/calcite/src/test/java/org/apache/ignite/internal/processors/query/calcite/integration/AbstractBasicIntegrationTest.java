@@ -51,6 +51,7 @@ import org.apache.ignite.testframework.junits.WithSystemProperty;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.jetbrains.annotations.Nullable;
 
+import static org.apache.ignite.internal.processors.query.calcite.exec.ExchangeServiceImpl.INBOX_INITIALIZATION_TIMEOUT;
 import static org.apache.ignite.testframework.GridTestUtils.assertThrowsAnyCause;
 import static org.apache.ignite.testframework.GridTestUtils.waitForCondition;
 
@@ -83,11 +84,20 @@ public class AbstractBasicIntegrationTest extends GridCommonAbstractTest {
         assertTrue("Not finished queries found on client", waitForCondition(
             () -> queryProcessor(client).queryRegistry().runningQueries().isEmpty(), 1_000L));
 
+        waitForCondition(() -> {
+            for (Ignite ign : G.allGrids()) {
+                if (!queryProcessor(ign).mailboxRegistry().inboxes().isEmpty())
+                    return false;
+            }
+
+            return true;
+        }, INBOX_INITIALIZATION_TIMEOUT * 2);
+
         for (Ignite ign : G.allGrids()) {
             for (String cacheName : ign.cacheNames())
                 ign.destroyCache(cacheName);
 
-            CalciteQueryProcessor qryProc = queryProcessor(((IgniteEx)ign));
+            CalciteQueryProcessor qryProc = queryProcessor(ign);
 
             assertEquals("Not finished queries found [ignite=" + ign.name() + ']',
                 0, qryProc.queryRegistry().runningQueries().size());
@@ -195,8 +205,8 @@ public class AbstractBasicIntegrationTest extends GridCommonAbstractTest {
     }
 
     /** */
-    protected CalciteQueryProcessor queryProcessor(IgniteEx ignite) {
-        return Commons.lookupComponent(ignite.context(), CalciteQueryProcessor.class);
+    protected CalciteQueryProcessor queryProcessor(Ignite ignite) {
+        return Commons.lookupComponent(((IgniteEx)ignite).context(), CalciteQueryProcessor.class);
     }
 
     /** */
