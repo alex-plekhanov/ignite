@@ -572,7 +572,7 @@ public class InlineIndexTree extends BPlusTree<IndexRow, IndexRow> {
         CorruptedTreeException e = new CorruptedTreeException(msg, cause, grpName, cacheName,
             idxName, grpId, pageIds);
 
-        String errorMsg = "Index " + idx + " of the table " + tableName + " (cache " + cacheName + ") is " +
+        String errorMsg = "Index " + idxName + " of the table " + tableName + " (cache " + cacheName + ") is " +
             "corrupted, to fix this issue a rebuild is required. On the next restart, node will enter the " +
             "maintenance mode and rebuild corrupted indexes.";
 
