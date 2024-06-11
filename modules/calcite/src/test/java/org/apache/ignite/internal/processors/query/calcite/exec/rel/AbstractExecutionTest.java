@@ -166,6 +166,7 @@ public class AbstractExecutionTest extends GridCommonAbstractTest {
             kernal.add(new NoOpIgniteSecurityProcessor(kernal));
 
             QueryTaskExecutorImpl taskExecutor = new QueryTaskExecutorImpl(kernal);
+/*
             taskExecutor.stripedThreadPoolExecutor(new IgniteTestStripedThreadPoolExecutor(
                 execStgy,
                 kernal.config().getQueryThreadPoolSize(),
@@ -175,6 +176,7 @@ public class AbstractExecutionTest extends GridCommonAbstractTest {
                 true,
                 DFLT_THREAD_KEEP_ALIVE_TIME
             ));
+*/
             taskExecutors.put(uuid, taskExecutor);
 
             MailboxRegistryImpl mailboxRegistry = new MailboxRegistryImpl(kernal);

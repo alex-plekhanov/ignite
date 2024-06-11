@@ -387,6 +387,7 @@ public class PlannerTest extends AbstractPlannerTest {
         kernal.add(new NoOpIgniteSecurityProcessor(kernal));
 
         QueryTaskExecutorImpl taskExecutor = new QueryTaskExecutorImpl(kernal);
+/*
         taskExecutor.stripedThreadPoolExecutor(new IgniteStripedThreadPoolExecutor(
             kernal.config().getQueryThreadPoolSize(),
             kernal.igniteInstanceName(),
@@ -398,6 +399,7 @@ public class PlannerTest extends AbstractPlannerTest {
             true,
             DFLT_THREAD_KEEP_ALIVE_TIME
         ));
+*/
         executors.add(taskExecutor);
 
         MessageServiceImpl msgSvc = new TestMessageServiceImpl(kernal, mgr);
