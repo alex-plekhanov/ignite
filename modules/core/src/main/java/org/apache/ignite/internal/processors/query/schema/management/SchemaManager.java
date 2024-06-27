@@ -1354,6 +1354,16 @@ public class SchemaManager {
             lsnrs.forEach(lsnr -> executeSafe(() -> lsnr.onSystemViewCreated(schemaName, sysView)));
         }
 
+        /** {@inheritDoc} */
+        @Override public void onViewCreated(String schemaName, String viewName, String viewSql) {
+            lsnrs.forEach(lsnr -> executeSafe(() -> lsnr.onViewCreated(schemaName, viewName, viewSql)));
+        }
+
+        /** {@inheritDoc} */
+        @Override public void onViewDropped(String schemaName, String viewName) {
+            lsnrs.forEach(lsnr -> executeSafe(() -> lsnr.onViewDropped(schemaName, viewName)));
+        }
+
         /** */
         private void executeSafe(Runnable r) {
             try {

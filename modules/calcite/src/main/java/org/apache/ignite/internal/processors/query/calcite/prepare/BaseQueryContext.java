@@ -41,6 +41,7 @@ import org.apache.calcite.rel.metadata.UnboundMetadata;
 import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.schema.SchemaPlus;
+import org.apache.calcite.schema.impl.MaterializedViewTable;
 import org.apache.calcite.sql.SqlOperatorTable;
 import org.apache.calcite.sql.util.SqlOperatorTables;
 import org.apache.calcite.tools.FrameworkConfig;
@@ -50,6 +51,7 @@ import org.apache.ignite.internal.processors.query.GridQueryCancel;
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.IgniteRexBuilder;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCostFactory;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
+import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.logger.NullLogger;
 import org.jetbrains.annotations.NotNull;
 
@@ -105,6 +107,14 @@ public final class BaseQueryContext extends AbstractQueryContext {
 
         RelDataTypeSystem typeSys = CALCITE_CONNECTION_CONFIG.typeSystem(RelDataTypeSystem.class, FRAMEWORK_CONFIG.getTypeSystem());
         TYPE_FACTORY = new IgniteTypeFactory(typeSys);
+
+        try {
+            U.findField(MaterializedViewTable.MATERIALIZATION_CONNECTION.getClass(), "typeFactory")
+                .set(MaterializedViewTable.MATERIALIZATION_CONNECTION, TYPE_FACTORY);
+        }
+        catch (IllegalAccessException e) {
+            throw new IllegalStateException("Can't initialize type factory for Calcite connection", e);
+        }
 
         REX_BUILDER = new IgniteRexBuilder(TYPE_FACTORY);
 

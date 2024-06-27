@@ -383,6 +383,16 @@ public class H2SchemaManager implements SchemaChangeListener {
             tbl.markRebuildFromHashInProgress(false);
     }
 
+    /** {@inheritDoc} */
+    @Override public void onViewCreated(String schemaName, String viewName, String viewSql) {
+        // TODO
+    }
+
+    /** {@inheritDoc} */
+    @Override public void onViewDropped(String schemaName, String viewName) {
+        // TODO
+    }
+
     /**
      * Get table descriptor.
      *
