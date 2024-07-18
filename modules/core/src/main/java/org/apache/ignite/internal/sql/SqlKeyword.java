@@ -335,6 +335,18 @@ public class SqlKeyword {
     /** Keyword: REFRESH. */
     public static final String REFRESH = "REFRESH";
 
+    /** Keyword: OR. */
+    public static final String OR = "OR";
+
+    /** Keyword: REPLACE. */
+    public static final String REPLACE = "REPLACE";
+
+    /** Keyword: VIEW. */
+    public static final String VIEW = "VIEW";
+
+    /** Keyword: SELECT. */
+    public static final String SELECT = "SELECT";
+
     /** All keywords. */
     private static final HashSet<String> KEYWORDS;
 

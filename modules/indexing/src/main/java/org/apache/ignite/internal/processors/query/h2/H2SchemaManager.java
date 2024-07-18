@@ -385,12 +385,26 @@ public class H2SchemaManager implements SchemaChangeListener {
 
     /** {@inheritDoc} */
     @Override public void onViewCreated(String schemaName, String viewName, String viewSql) {
-        // TODO
+        try (H2PooledConnection conn = connMgr.connection(schemaName)) {
+            try (Statement s = conn.connection().createStatement()) {
+                s.execute("CREATE OR REPLACE VIEW " + viewName + " AS " + viewSql);
+            }
+        }
+        catch (SQLException e) {
+            throw new IgniteException("Failed to create view: " + viewName, e);
+        }
     }
 
     /** {@inheritDoc} */
     @Override public void onViewDropped(String schemaName, String viewName) {
-        // TODO
+        try (H2PooledConnection conn = connMgr.connection(schemaName)) {
+            try (Statement s = conn.connection().createStatement()) {
+                s.execute("DROP VIEW IF EXISTS " + viewName);
+            }
+        }
+        catch (SQLException e) {
+            throw new IgniteException("Failed to drop view: " + viewName, e);
+        }
     }
 
     /**

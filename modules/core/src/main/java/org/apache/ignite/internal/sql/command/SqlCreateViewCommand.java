@@ -18,11 +18,12 @@
 package org.apache.ignite.internal.sql.command;
 
 import org.apache.ignite.internal.sql.SqlLexer;
+import org.apache.ignite.internal.sql.SqlLexerTokenType;
 import org.apache.ignite.internal.util.typedef.internal.S;
 
 import static org.apache.ignite.internal.sql.SqlKeyword.AS;
+import static org.apache.ignite.internal.sql.SqlKeyword.SELECT;
 import static org.apache.ignite.internal.sql.SqlParserUtils.parseQualifiedIdentifier;
-import static org.apache.ignite.internal.sql.SqlParserUtils.parseString;
 import static org.apache.ignite.internal.sql.SqlParserUtils.skipIfMatchesKeyword;
 
 /**
@@ -82,6 +83,15 @@ public class SqlCreateViewCommand implements SqlCommand {
         return replace;
     }
 
+    /**
+     * Sets REPLACE flag.
+     */
+    public SqlCreateViewCommand replace(boolean replace) {
+        this.replace = replace;
+
+        return this;
+    }
+
     /** {@inheritDoc} */
     @Override public String schemaName() {
         return schemaName;
@@ -94,7 +104,6 @@ public class SqlCreateViewCommand implements SqlCommand {
 
     /** {@inheritDoc} */
     @Override public SqlCommand parse(SqlLexer lex) {
-        // TODO
         SqlQualifiedName viewQName = parseQualifiedIdentifier(lex);
 
         schemaName = viewQName.schemaName();
@@ -102,7 +111,16 @@ public class SqlCreateViewCommand implements SqlCommand {
 
         skipIfMatchesKeyword(lex, AS);
 
-        viewSql = parseString(lex);
+        // TODO check
+        int viewSqlPos = lex.tokenPosition();
+
+        skipIfMatchesKeyword(lex, SELECT);
+
+        while (lex.shift() && lex.tokenType() != SqlLexerTokenType.SEMICOLON); // No-op loop.
+
+        viewSql = lex.tokenType() == SqlLexerTokenType.SEMICOLON ?
+            lex.sql().substring(viewSqlPos, lex.tokenPosition()) :
+            lex.sql().substring(viewSqlPos);
 
         return this;
     }
