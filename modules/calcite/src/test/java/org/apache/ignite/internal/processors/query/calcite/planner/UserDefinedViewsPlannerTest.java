@@ -17,12 +17,15 @@
 
 package org.apache.ignite.internal.processors.query.calcite.planner;
 
+import org.apache.calcite.rel.core.Join;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteSchema;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
 import org.junit.Test;
 
+import static org.apache.calcite.sql.type.SqlTypeName.INTEGER;
+
 /**
- *
+ * User defined views test.
  */
 public class UserDefinedViewsPlannerTest extends AbstractPlannerTest {
     /**
@@ -31,16 +34,21 @@ public class UserDefinedViewsPlannerTest extends AbstractPlannerTest {
     @Test
     public void testView() throws Exception {
         IgniteSchema schema = createSchema(
-            createTable("T1", IgniteDistributions.single(), "C1", Integer.class, "C2", Integer.class, "C3", Integer.class),
-            createTable("T2", IgniteDistributions.single(), "C1", Integer.class, "C2", Integer.class, "C3", Integer.class)
+            createTable("T1", IgniteDistributions.single(), "C1", INTEGER, "C2", INTEGER, "C3", INTEGER),
+            createTable("T2", IgniteDistributions.single(), "C1", INTEGER, "C2", INTEGER, "C3", INTEGER)
         );
 
         String viewSql = "SELECT T1.C1 AS C1_1, T1.C2 AS C1_2, T2.C1 AS C2_1, T2.C2 AS C2_2 FROM T1 JOIN T2 ON (T1.C3 = T2.C3)";
 
         schema.addView("V", viewSql);
 
-        String sql = "select * from v where c1_1 = 1";
+        String sql = "select * from v where c1_1 = 1 AND c2_2 = 2";
 
-        assertPlan(sql, schema, hasChildThat(isTableScan("T1")).and(hasChildThat(isTableScan("T2"))));
+        assertPlan(sql, schema, hasChildThat(isInstanceOf(Join.class)
+            .and(hasChildThat(isTableScan("T1")
+                .and(t -> "=($t0, 1)".equals(t.condition().toString()))))
+            .and(hasChildThat(isTableScan("T2")
+                .and(t -> "=($t1, 2)".equals(t.condition().toString()))))
+        ));
     }
 }

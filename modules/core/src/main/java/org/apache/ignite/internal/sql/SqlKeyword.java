@@ -53,6 +53,9 @@ public class SqlKeyword {
     /** Keyword: ALLOW_OVERWRITE */
     public static final String ALLOW_OVERWRITE = "ALLOW_OVERWRITE";
 
+    /** Keyword: AS. */
+    public static final String AS = "AS";
+
     /** Keyword: ASC. */
     public static final String ASC = "ASC";
 
