@@ -18,8 +18,10 @@
 package org.apache.ignite.internal.processors.query.calcite.planner;
 
 import org.apache.calcite.rel.core.Join;
+import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteSchema;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
+import org.apache.ignite.testframework.GridTestUtils;
 import org.junit.Test;
 
 import static org.apache.calcite.sql.type.SqlTypeName.INTEGER;
@@ -32,7 +34,7 @@ public class UserDefinedViewsPlannerTest extends AbstractPlannerTest {
      * @throws Exception If failed.
      */
     @Test
-    public void testView() throws Exception {
+    public void testSimpleView() throws Exception {
         IgniteSchema schema = createSchema(
             createTable("T1", IgniteDistributions.single(), "C1", INTEGER, "C2", INTEGER, "C3", INTEGER),
             createTable("T2", IgniteDistributions.single(), "C1", INTEGER, "C2", INTEGER, "C3", INTEGER)
@@ -40,9 +42,9 @@ public class UserDefinedViewsPlannerTest extends AbstractPlannerTest {
 
         String viewSql = "SELECT T1.C1 AS C1_1, T1.C2 AS C1_2, T2.C1 AS C2_1, T2.C2 AS C2_2 FROM T1 JOIN T2 ON (T1.C3 = T2.C3)";
 
-        schema.addView("V", viewSql);
+        schema.addView("V1", viewSql);
 
-        String sql = "select * from v where c1_1 = 1 AND c2_2 = 2";
+        String sql = "select * from v1 where c1_1 = 1 AND c2_2 = 2";
 
         assertPlan(sql, schema, hasChildThat(isInstanceOf(Join.class)
             .and(hasChildThat(isTableScan("T1")
@@ -50,5 +52,33 @@ public class UserDefinedViewsPlannerTest extends AbstractPlannerTest {
             .and(hasChildThat(isTableScan("T2")
                 .and(t -> "=($t1, 2)".equals(t.condition().toString()))))
         ));
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testViewOnView() throws Exception {
+        IgniteSchema schema = createSchema(
+            createTable("T1", IgniteDistributions.single(), "C1", INTEGER, "C2", INTEGER, "C3", INTEGER)
+        );
+
+        schema.addView("V1", "SELECT C1, C2 FROM T1");
+        schema.addView("V2", "SELECT C1 FROM V1");
+
+        assertPlan("select * from v2", schema, isTableScan("T1")
+            .and(t -> t.requiredColumns().equals(ImmutableBitSet.of(0))));
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testRecursiveView() throws Exception {
+        IgniteSchema schema = createSchema();
+
+        schema.addView("V1", "SELECT * FROM V1");
+
+        GridTestUtils.assertThrowsAnyCause(log, () -> physicalPlan("select * from v1", schema), Exception.class, "");
     }
 }
