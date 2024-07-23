@@ -79,6 +79,6 @@ public class UserDefinedViewsPlannerTest extends AbstractPlannerTest {
 
         schema.addView("V1", "SELECT * FROM V1");
 
-        GridTestUtils.assertThrowsAnyCause(log, () -> physicalPlan("select * from v1", schema), Exception.class, "");
+        GridTestUtils.assertThrows(log, () -> physicalPlan("select * from v1", schema), Exception.class, "");
     }
 }

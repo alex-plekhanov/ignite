@@ -121,6 +121,8 @@ import org.apache.ignite.internal.processors.query.schema.operation.SchemaAlterT
 import org.apache.ignite.internal.processors.query.schema.operation.SchemaAlterTableDropColumnOperation;
 import org.apache.ignite.internal.processors.query.schema.operation.SchemaIndexCreateOperation;
 import org.apache.ignite.internal.processors.query.schema.operation.SchemaIndexDropOperation;
+import org.apache.ignite.internal.processors.query.schema.operation.SchemaViewCreateOperation;
+import org.apache.ignite.internal.processors.query.schema.operation.SchemaViewDropOperation;
 import org.apache.ignite.internal.processors.query.stat.IgniteStatisticsManager;
 import org.apache.ignite.internal.processors.query.stat.IgniteStatisticsManagerImpl;
 import org.apache.ignite.internal.processors.timeout.GridTimeoutProcessor;
@@ -2168,6 +2170,16 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                         log.info("Rebuilding indexes for the cache is already in progress: " + cacheInfo.name());
                 }
             }
+            else if (op instanceof SchemaViewCreateOperation) {
+                SchemaViewCreateOperation op0 = (SchemaViewCreateOperation)op;
+
+                schemaMgr.createView(op0.schemaName(), op0.viewName(), op0.viewSql(), op0.replace());
+            }
+            else if (op instanceof SchemaViewDropOperation) {
+                SchemaViewDropOperation op0 = (SchemaViewDropOperation)op;
+
+                schemaMgr.dropView(op0.schemaName(), op0.viewName(), op0.ifExists());
+            }
             else
                 throw new SchemaOperationException("Unsupported operation: " + op);
         }
@@ -3361,7 +3373,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     }
 
     /**
-     * Entry point for index procedure.
+     * Entry point for index create procedure.
      *
      * @param cacheName Cache name.
      * @param schemaName Schema name.
@@ -3376,7 +3388,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         SchemaAbstractOperation op = new SchemaIndexCreateOperation(UUID.randomUUID(), cacheName, schemaName, tblName,
             idx, ifNotExists, parallel);
 
-        return startIndexOperationDistributed(op);
+        return startSchemaOperationDistributed(op);
     }
 
     /**
@@ -3386,14 +3398,52 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @param schemaName Schema name.
      * @param idxName Index name.
      * @param ifExists When set to {@code true} operation fill fail if index doesn't exists.
-     * @return Future completed when index is created.
+     * @return Future completed when index is dropped.
      */
     public IgniteInternalFuture<?> dynamicIndexDrop(String cacheName, String schemaName, String idxName,
         boolean ifExists) {
         SchemaAbstractOperation op = new SchemaIndexDropOperation(UUID.randomUUID(), cacheName, schemaName, idxName,
             ifExists);
 
-        return startIndexOperationDistributed(op);
+        return startSchemaOperationDistributed(op);
+    }
+
+    /**
+     * Entry point for view create procedure.
+     *
+     * @param cacheName Cache name.
+     * @param schemaName Schema name.
+     * @param viewName View name.
+     * @param replace When set to {@code true} view will be replaced if the view is already exists.
+     * @return Future completed when view is created.
+     */
+    public IgniteInternalFuture<?> dynamicViewCreate(
+        String cacheName,
+        String schemaName,
+        String viewName,
+        String viewSql,
+        boolean replace
+    ) {
+        SchemaAbstractOperation op = new SchemaViewCreateOperation(UUID.randomUUID(), cacheName, schemaName, viewName,
+            viewSql, replace);
+
+        return startSchemaOperationDistributed(op);
+    }
+
+    /**
+     * Entry point for view drop procedure
+     *
+     * @param cacheName Cache name.
+     * @param schemaName Schema name.
+     * @param viewName View name.
+     * @param ifExists When set to {@code true} operation fill fail if view doesn't exists.
+     * @return Future completed when view is dropped.
+     */
+    public IgniteInternalFuture<?> dynamicViewDrop(String cacheName, String schemaName, String viewName, boolean ifExists) {
+        SchemaAbstractOperation op = new SchemaViewDropOperation(UUID.randomUUID(), cacheName, schemaName, viewName,
+            ifExists);
+
+        return startSchemaOperationDistributed(op);
     }
 
     /**
@@ -3410,7 +3460,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         SchemaAlterTableAddColumnOperation op = new SchemaAlterTableAddColumnOperation(UUID.randomUUID(), cacheName,
             schemaName, tblName, cols, ifTblExists, ifNotExists);
 
-        return startIndexOperationDistributed(op);
+        return startSchemaOperationDistributed(op);
     }
 
     /**
@@ -3428,7 +3478,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         SchemaAlterTableDropColumnOperation op = new SchemaAlterTableDropColumnOperation(UUID.randomUUID(), cacheName,
             schemaName, tblName, cols, ifTblExists, ifExists);
 
-        return startIndexOperationDistributed(op);
+        return startSchemaOperationDistributed(op);
     }
 
     /**
@@ -3464,16 +3514,16 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                 qryParallelism != null ? qryParallelism : CacheConfiguration.DFLT_QUERY_PARALLELISM,
                 sqlEscape);
 
-        return startIndexOperationDistributed(op);
+        return startSchemaOperationDistributed(op);
     }
 
     /**
-     * Start distributed index change operation.
+     * Start distributed schema change operation.
      *
      * @param op Operation.
      * @return Future.
      */
-    private IgniteInternalFuture<?> startIndexOperationDistributed(SchemaAbstractOperation op) {
+    private IgniteInternalFuture<?> startSchemaOperationDistributed(SchemaAbstractOperation op) {
         SchemaOperationClientFuture fut = new SchemaOperationClientFuture(op.id());
 
         SchemaOperationClientFuture oldFut = schemaCliFuts.put(op.id(), fut);

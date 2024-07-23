@@ -884,6 +884,65 @@ public class SchemaManager {
     }
 
     /**
+     * Create view.
+     *
+     * @param schemaName Schema name.
+     * @param viewName View name.
+     * @param replace Replace view if exists.
+     */
+    public void createView(
+        String schemaName,
+        String viewName,
+        String viewSql,
+        boolean replace
+    ) throws IgniteCheckedException {
+        lock.writeLock().lock();
+
+        try {
+            ViewDescriptor viewDesc = view(schemaName, viewName);
+
+            if (viewDesc == null || replace)
+                schema(schemaName).add(new ViewDescriptor(viewName, viewSql));
+            else
+                throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_EXISTS, viewName);
+
+            lsnr.onViewCreated(schemaName, viewName, viewSql);
+        }
+        finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Drop view.
+     *
+     * @param schemaName Schema name.
+     * @param viewName View name.
+     * @param ifExists If exists.
+     */
+    public void dropView(String schemaName, String viewName, boolean ifExists) throws IgniteCheckedException {
+        lock.writeLock().lock();
+
+        try {
+            ViewDescriptor viewDesc = view(schemaName, viewName);
+
+            if (viewDesc == null) {
+                if (ifExists)
+                    return;
+                else
+                    throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_NOT_FOUND, viewName);
+            }
+
+            schema(schemaName).drop(viewDesc);
+
+            lsnr.onViewDropped(schemaName, viewName);
+        }
+        finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /**
      * Initialize table's cache context created for not started cache.
      *
      * @param cctx Cache context.
@@ -1088,6 +1147,29 @@ public class SchemaManager {
     }
 
     /**
+     * Find view by its identifier.
+     *
+     * @param schemaName Schema name.
+     * @param viewName View name.
+     * @return View or {@code null} if none found.
+     */
+    @Nullable public ViewDescriptor view(String schemaName, String viewName) {
+        lock.readLock().lock();
+
+        try {
+            SchemaDescriptor schema = schema(schemaName);
+
+            if (schema == null)
+                return null;
+
+            return schema.viewByName(viewName);
+        }
+        finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
      * @return Collection of all present index descriptors.
      */
     public Collection<IndexDescriptor> allIndexes() {
@@ -1141,11 +1223,21 @@ public class SchemaManager {
                 .forEach(infos::add);
         }
 
-        if ((allTypes || types.contains(JdbcUtils.TYPE_VIEW)) && matches(QueryUtils.SCHEMA_SYS, schemaNamePtrn)) {
-            sysViews.stream()
-                .filter(t -> matches(MetricUtils.toSqlName(t.name()), tblNamePtrn))
-                .map(v -> new TableInformation(QueryUtils.SCHEMA_SYS, MetricUtils.toSqlName(v.name()), JdbcUtils.TYPE_VIEW))
-                .forEach(infos::add);
+        if ((allTypes || types.contains(JdbcUtils.TYPE_VIEW))) {
+            schemas.values().stream()
+                .filter(s -> matches(s.schemaName(), schemaNamePtrn))
+                .forEach(s -> s.views().stream()
+                    .filter(v -> matches(s.schemaName(), schemaNamePtrn))
+                    .filter(v -> matches(v.name(), tblNamePtrn))
+                    .map(v -> new TableInformation(s.schemaName(), v.name(), JdbcUtils.TYPE_VIEW))
+                    .forEach(infos::add));
+
+            if (matches(QueryUtils.SCHEMA_SYS, schemaNamePtrn)) {
+                sysViews.stream()
+                    .filter(t -> matches(MetricUtils.toSqlName(t.name()), tblNamePtrn))
+                    .map(v -> new TableInformation(QueryUtils.SCHEMA_SYS, MetricUtils.toSqlName(v.name()), JdbcUtils.TYPE_VIEW))
+                    .forEach(infos::add);
+            }
         }
 
         return infos;
