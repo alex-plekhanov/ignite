@@ -19,7 +19,6 @@ package org.apache.ignite.internal.processors.cache;
 
 import java.io.Serializable;
 import java.util.Collection;
-import java.util.Map;
 import org.apache.ignite.cache.QueryEntity;
 import org.apache.ignite.cdc.CdcCacheEvent;
 import org.apache.ignite.configuration.CacheConfiguration;
@@ -31,7 +30,6 @@ import org.apache.ignite.internal.util.typedef.internal.A;
 import org.apache.ignite.internal.util.typedef.internal.CU;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.marshaller.jdk.JdkMarshaller;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Cache data to write to and read from {@link IgnitePageStoreManager}. In a nutshell, contains (most importantly)
@@ -65,10 +63,6 @@ public class StoredCacheData implements Serializable, CdcCacheEvent {
      * encryption keys there.
      */
     private GroupKeyEncrypted grpKeyEncrypted;
-
-    /** SQL views (view name -> view SQL). */
-    @GridToStringInclude
-    private Map<String, String> sqlViews;
 
     /**
      * Constructor.
@@ -149,22 +143,6 @@ public class StoredCacheData implements Serializable, CdcCacheEvent {
      */
     public void groupKeyEncrypted(GroupKeyEncrypted grpKeyEncrypted) {
         this.grpKeyEncrypted = grpKeyEncrypted;
-    }
-
-    /**
-     * @return SQL views for the cache or {@code null} if empty.
-     */
-    @SuppressWarnings("AssignmentOrReturnOfFieldWithMutableType")
-    public @Nullable Map<String, String> sqlViews() {
-        return sqlViews;
-    }
-
-    /**
-     * @param sqlViews Ciphered encryption key for this cache or cache group.
-     */
-    @SuppressWarnings("AssignmentOrReturnOfFieldWithMutableType")
-    public void sqlViews(Map<String, String> sqlViews) {
-        this.sqlViews = sqlViews;
     }
 
     /**

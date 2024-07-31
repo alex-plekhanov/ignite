@@ -1867,7 +1867,9 @@ public class GridCacheProcessor extends GridProcessorAdapter {
                         if (!cctx.isRecoveryMode()) {
                             ctx.query().onCacheStart(
                                 new GridCacheContextInfo(cctx, cacheInfo.isClientCache()),
-                                cacheInfo.getCacheDescriptor().schema(),
+                                cacheInfo.getCacheDescriptor().schema() != null
+                                    ? cacheInfo.getCacheDescriptor().schema()
+                                    : new QuerySchema(),
                                 cacheInfo.getCacheDescriptor().sql()
                             );
                         }
@@ -1928,7 +1930,7 @@ public class GridCacheProcessor extends GridProcessorAdapter {
         else {
             ctx.query().onCacheStart(
                     new GridCacheContextInfo(cacheCtx, clientCache),
-                    desc.schema(),
+                    desc.schema() != null ? desc.schema() : new QuerySchema(),
                     desc.sql()
             );
 
@@ -2329,7 +2331,8 @@ public class GridCacheProcessor extends GridProcessorAdapter {
 
         grpCtx.onCacheStarted(cacheCtx);
 
-        ctx.query().onCacheStart(new GridCacheContextInfo(cacheCtx, false), desc.schema(), desc.sql());
+        ctx.query().onCacheStart(new GridCacheContextInfo(cacheCtx, false),
+            desc.schema() != null ? desc.schema() : new QuerySchema(), desc.sql());
 
         if (log.isInfoEnabled()) {
             String expPlcInfo = buildExpirePolicyInfo(cacheCtx);
@@ -3535,8 +3538,7 @@ public class GridCacheProcessor extends GridProcessorAdapter {
                     null,
                     ccfg != null && ccfg.isEncryptionEnabled() ? grpKeys.iterator().next() : null,
                     null,
-                    ccfg != null && ccfg.isEncryptionEnabled() ? masterKeyDigest : null,
-                    null);
+                    ccfg != null && ccfg.isEncryptionEnabled() ? masterKeyDigest : null);
 
                 if (req != null) {
                     if (req.clientStartOnly())
@@ -3794,8 +3796,7 @@ public class GridCacheProcessor extends GridProcessorAdapter {
                     ccfg.queryEntities(),
                     encrKey != null ? encrKey.key() : null,
                     encrKey != null ? encrKey.id() : null,
-                    encrKey != null ? masterKeyDigest : null,
-                    ccfg.sqlViews()
+                    encrKey != null ? masterKeyDigest : null
                 );
 
                 if (req != null) {
@@ -5097,8 +5098,7 @@ public class GridCacheProcessor extends GridProcessorAdapter {
         @Nullable Collection<QueryEntity> qryEntities,
         @Nullable byte[] encKey,
         @Nullable Integer encKeyId,
-        @Nullable byte[] masterKeyDigest,
-        @Nullable Map<String, String> sqlViews
+        @Nullable byte[] masterKeyDigest
     ) throws IgniteCheckedException {
         DynamicCacheDescriptor desc = cacheDescriptor(cacheName);
 
@@ -5174,10 +5174,10 @@ public class GridCacheProcessor extends GridProcessorAdapter {
                 cfg = splitCfg.get1();
 
                 if (restartId != null)
-                    req.schema(new QuerySchema(qryEntities == null ? cfg.getQueryEntities() : qryEntities, sqlViews));
+                    req.schema(new QuerySchema(qryEntities == null ? cfg.getQueryEntities() : qryEntities));
                 else
                     req.schema(new QuerySchema(qryEntities != null ? QueryUtils.normalizeQueryEntities(ctx, qryEntities, cfg)
-                            : cfg.getQueryEntities(), sqlViews));
+                            : cfg.getQueryEntities()));
             }
         }
         else {

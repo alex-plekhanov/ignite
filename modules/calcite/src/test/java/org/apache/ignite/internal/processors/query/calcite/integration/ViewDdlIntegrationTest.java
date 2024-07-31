@@ -20,8 +20,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
-import org.apache.ignite.client.Person;
-import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.cache.query.index.Index;
 import org.apache.ignite.internal.cache.query.index.SortOrder;
@@ -41,33 +39,6 @@ public class ViewDdlIntegrationTest extends AbstractDdlIntegrationTest {
     /** {@inheritDoc} */
     @Override protected void beforeTest() throws Exception {
         sql("create table my_table(id int, val_int int, val_str varchar) with cache_name=\"" + CACHE_NAME + "\"");
-    }
-
-    /** */
-    @Test
-    public void createCache() {
-/*
-        IgniteAtomicLong l = grid(0).atomicLong("test", 0, true);
-        IgniteAtomicSequence s = grid(0).atomicSequence("test", 0, true);
-*/
-
-        CacheConfiguration<Object, Object> ccfg = new CacheConfiguration<>("cache1");
-        ccfg.setIndexedTypes(Integer.class, Person.class);
-        ccfg.setSqlSchema("cache1");
-
-        client.getOrCreateCache(ccfg);
-
-        ccfg = new CacheConfiguration<>("cache2");
-        ccfg.setIndexedTypes(Integer.class, String.class);
-        ccfg.setSqlSchema("cache1");
-
-        client.getOrCreateCache(ccfg);
-
-        ccfg = new CacheConfiguration<>("cache3");
-        ccfg.setIndexedTypes(Integer.class, String.class);
-        ccfg.setSqlSchema("PUBLIC");
-
-        client.getOrCreateCache(ccfg);
     }
 
     /**

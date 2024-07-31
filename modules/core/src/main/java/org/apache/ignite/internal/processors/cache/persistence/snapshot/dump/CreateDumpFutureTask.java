@@ -67,7 +67,6 @@ import org.apache.ignite.internal.processors.cache.persistence.tree.io.BPlusIO;
 import org.apache.ignite.internal.processors.cache.tree.CacheDataTree;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersionManager;
-import org.apache.ignite.internal.processors.query.QuerySchema;
 import org.apache.ignite.internal.util.BasicRateLimiter;
 import org.apache.ignite.internal.util.GridConcurrentHashSet;
 import org.apache.ignite.internal.util.IgniteUtils;
@@ -257,9 +256,7 @@ public class CreateDumpFutureTask extends AbstractCreateSnapshotFutureTask imple
 
                 StoredCacheData cacheData = new StoredCacheData(new CacheConfiguration(desc.cacheConfiguration()));
 
-                QuerySchema schema = desc.schema();
-                cacheData.queryEntities(schema.entities());
-                cacheData.sqlViews(schema.views());
+                cacheData.queryEntities(desc.schema().entities());
                 cacheData.sql(desc.sql());
 
                 cctx.cache().configManager().writeCacheData(cacheData, new File(grpDir, cacheDataFilename(cacheData.config())));

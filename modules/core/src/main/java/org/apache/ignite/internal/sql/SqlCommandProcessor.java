@@ -66,7 +66,6 @@ import org.apache.ignite.internal.sql.command.SqlKillTransactionCommand;
 import org.apache.ignite.internal.sql.command.SqlRefreshStatitsicsCommand;
 import org.apache.ignite.internal.sql.command.SqlStatisticsCommands;
 import org.apache.ignite.internal.util.future.GridFinishedFuture;
-import org.apache.ignite.internal.util.typedef.internal.CU;
 import org.apache.ignite.plugin.security.SecurityPermission;
 import org.jetbrains.annotations.Nullable;
 
@@ -422,10 +421,8 @@ public class SqlCommandProcessor {
 
                 ViewDescriptor viewDesc = schemaMgr.view(cmd0.schemaName(), cmd0.viewName());
 
-                if (viewDesc == null || cmd0.replace()) {
-                    fut = ctx.query().dynamicViewCreate(CU.UTILITY_CACHE_NAME, cmd0.schemaName(), cmd0.viewName(),
-                        cmd0.viewSql(), cmd0.replace());
-                }
+                if (viewDesc == null || cmd0.replace())
+                    fut = ctx.query().dynamicViewCreate(cmd0.schemaName(), cmd0.viewName(), cmd0.viewSql(), cmd0.replace());
                 else
                     throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_EXISTS, cmd0.viewName());
             }
@@ -434,10 +431,8 @@ public class SqlCommandProcessor {
 
                 ViewDescriptor viewDesc = schemaMgr.view(cmd0.schemaName(), cmd0.viewName());
 
-                if (viewDesc != null) {
-                    fut = ctx.query().dynamicViewDrop(CU.UTILITY_CACHE_NAME, cmd0.schemaName(), cmd0.viewName(),
-                        cmd0.ifExists());
-                }
+                if (viewDesc != null)
+                    fut = ctx.query().dynamicViewDrop(cmd0.schemaName(), cmd0.viewName(), cmd0.ifExists());
                 else {
                     if (cmd0.ifExists())
                         fut = new GridFinishedFuture<>();

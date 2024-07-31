@@ -431,9 +431,7 @@ public class DynamicCacheDescriptor {
 
         StoredCacheData res = new StoredCacheData(cacheConfiguration());
 
-        QuerySchema schema = schema();
-        res.queryEntities(schema.entities());
-        res.sqlViews(schema.views());
+        res.queryEntities(schema().entities());
         res.sql(sql());
 
         if (isConfigurationEnriched()) {
