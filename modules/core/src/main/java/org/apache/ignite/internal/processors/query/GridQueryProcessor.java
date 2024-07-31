@@ -170,6 +170,8 @@ import static org.apache.ignite.internal.cache.query.index.sorted.maintenance.Ma
 import static org.apache.ignite.internal.cache.query.index.sorted.maintenance.MaintenanceRebuildIndexUtils.parseMaintenanceTaskParameters;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SCHEMA_POOL;
 import static org.apache.ignite.internal.processors.query.schema.SchemaOperationException.CODE_COLUMN_EXISTS;
+import static org.apache.ignite.internal.processors.query.schema.SchemaOperationException.CODE_VIEW_EXISTS;
+import static org.apache.ignite.internal.processors.query.schema.SchemaOperationException.CODE_VIEW_NOT_FOUND;
 
 /**
  * Indexing processor.
@@ -1101,6 +1103,8 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                 Map<String, QueryTypeDescriptorImpl> tblTypMap = candRes.get2();
                 Map<String, QueryTypeDescriptorImpl> idxTypMap = candRes.get3();
 
+                Map<String, String> views = schema.views();
+
                 // Apply pending operation which could have been completed as no-op at this point.
                 // There could be only one in-flight operation for a cache.
                 for (SchemaOperation op : schemaOps.values()) {
@@ -1174,6 +1178,26 @@ public class GridQueryProcessor extends GridProcessorAdapter {
 
                                         schemaName = opEnableIdx.schemaName();
                                     }
+                                    else if (op0 instanceof SchemaViewCreateOperation) {
+                                        SchemaViewCreateOperation viewOp = (SchemaViewCreateOperation)op0;
+
+                                        if (viewOp.replace())
+                                            views.put(viewOp.viewName(), viewOp.viewSql());
+                                        else {
+                                            if (views.putIfAbsent(viewOp.viewName(), viewOp.viewSql()) != null)
+                                                throw new SchemaOperationException(CODE_VIEW_EXISTS, viewOp.viewName());
+                                        }
+                                    }
+                                    else if (op0 instanceof SchemaViewDropOperation) {
+                                        SchemaViewDropOperation viewOp = (SchemaViewDropOperation)op0;
+
+                                        if (viewOp.ifExists())
+                                            views.remove(viewOp.viewName());
+                                        else {
+                                            if (views.remove(viewOp.viewName()) != null)
+                                                throw new SchemaOperationException(CODE_VIEW_NOT_FOUND, viewOp.viewName());
+                                        }
+                                    }
                                     else
                                         assert false : "Unsupported operation: " + op0;
                                 }
@@ -1185,7 +1209,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                 }
 
                 // Ready to register at this point.
-                registerCache0(cacheName, schemaName, cacheInfo, cands, isSql);
+                registerCache0(cacheName, schemaName, cacheInfo, cands, isSql, views);
             }
         }
         finally {
@@ -1228,11 +1252,9 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @throws IgniteCheckedException If failed.
      */
     public void initQueryStructuresForNotStartedCache(DynamicCacheDescriptor cacheDesc) throws IgniteCheckedException {
-        QuerySchema schema = cacheDesc.schema() != null ? cacheDesc.schema() : new QuerySchema();
-
         GridCacheContextInfo cacheInfo = new GridCacheContextInfo(cacheDesc);
 
-        onCacheStart(cacheInfo, schema, cacheDesc.sql());
+        onCacheStart(cacheInfo, cacheDesc.schema(), cacheDesc.sql());
     }
 
     /**
@@ -2160,7 +2182,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                         candRes = createQueryCandidates(op0.cacheName(), op0.schemaName(), cacheInfo, op0.entities(),
                         op0.isSqlEscape());
 
-                    registerCache0(op0.cacheName(), op.schemaName(), cacheInfo, candRes.get1(), false);
+                    registerCache0(op0.cacheName(), op.schemaName(), cacheInfo, candRes.get1(), false, null);
                 }
 
                 if (idxRebuildFutStorage.prepareRebuildIndexes(singleton(cacheInfo.cacheId()), null).isEmpty())
@@ -2330,6 +2352,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @param cacheInfo Cache context info.
      * @param cands Candidates.
      * @param isSql {@code true} in case create cache initialized from SQL.
+     * @param sqlViews SQL views.
      * @throws IgniteCheckedException If failed.
      */
     private void registerCache0(
@@ -2337,13 +2360,19 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         String schemaName,
         GridCacheContextInfo<?, ?> cacheInfo,
         Collection<QueryTypeCandidate> cands,
-        boolean isSql
+        boolean isSql,
+        @Nullable Map<String, String> sqlViews
     ) throws IgniteCheckedException {
         synchronized (stateMux) {
             if (moduleEnabled()) {
                 ctx.indexProcessor().idxRowCacheRegistry().onCacheRegistered(cacheInfo);
 
                 schemaMgr.onCacheCreated(cacheName, schemaName, cacheInfo.config().getSqlFunctionClasses());
+
+                if (sqlViews != null) {
+                    for (Map.Entry<String, String> v : sqlViews.entrySet())
+                        schemaMgr.createView(schemaName, v.getKey(), v.getValue(), true);
+                }
 
                 if (idx != null)
                     idx.registerCache(cacheName, schemaName, cacheInfo);

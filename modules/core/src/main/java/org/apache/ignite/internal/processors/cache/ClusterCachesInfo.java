@@ -1630,7 +1630,7 @@ public class ClusterCachesInfo {
                 cacheData.staticallyConfigured(),
                 cacheData.sql(),
                 cacheData.deploymentId(),
-                new QuerySchema(cacheData.schema().entities()),
+                new QuerySchema(cacheData.schema().entities(), cacheData.schema().views()),
                 cacheData.cacheConfigurationEnrichment()
             );
 
@@ -1997,7 +1997,7 @@ public class ClusterCachesInfo {
                         req.deploymentId(deploymentId);
                         req.startCacheConfiguration(ccfg);
                         req.cacheType(ctx.cache().cacheType(ccfg.getName()));
-                        req.schema(new QuerySchema(storedCfg.queryEntities()));
+                        req.schema(new QuerySchema(storedCfg.queryEntities(), storedCfg.sqlViews()));
                         req.sql(storedCfg.sql());
 
                         reqs.add(req);
@@ -2318,7 +2318,7 @@ public class ClusterCachesInfo {
             cacheInfo.isStaticallyConfigured(),
             cacheInfo.sql(),
             joinData.cacheDeploymentId(),
-            new QuerySchema(cacheInfo.cacheData().queryEntities()),
+            new QuerySchema(cacheInfo.cacheData().queryEntities(), cacheInfo.cacheData().sqlViews()),
             cacheInfo.cacheData().cacheConfigurationEnrichment()
         );
 

@@ -41,6 +41,7 @@ import org.apache.ignite.internal.processors.query.schema.operation.SchemaIndexC
 import org.apache.ignite.internal.processors.query.schema.operation.SchemaIndexDropOperation;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Dynamic cache schema.
@@ -51,6 +52,9 @@ public class QuerySchema implements Serializable {
 
     /** Query entities. */
     private final Collection<QueryEntity> entities = new LinkedList<>();
+
+    /** Query entities. */
+    private final Map<String, String> views = new HashMap<>();
 
     /** Mutex for state synchronization. */
     private final Object mux = new Object();
@@ -68,10 +72,23 @@ public class QuerySchema implements Serializable {
      * @param entities Query entities.
      */
     public QuerySchema(Collection<QueryEntity> entities) {
+        this(entities, null);
+    }
+
+    /**
+     * Constructor.
+     *
+     * @param entities Query entities.
+     * @param views Views
+     */
+    public QuerySchema(Collection<QueryEntity> entities, @Nullable Map<String, String> views) {
         assert entities != null;
 
         for (QueryEntity qryEntity : entities)
             this.entities.add(QueryUtils.copy(qryEntity));
+
+        if (views != null)
+            this.views.putAll(views);
     }
 
     /**
@@ -85,6 +102,8 @@ public class QuerySchema implements Serializable {
 
             for (QueryEntity qryEntity : entities)
                 res.entities.add(QueryUtils.copy(qryEntity));
+
+            res.views.putAll(views);
 
             return res;
         }
@@ -349,6 +368,15 @@ public class QuerySchema implements Serializable {
     public Collection<QueryEntity> entities() {
         synchronized (mux) {
             return new ArrayList<>(entities);
+        }
+    }
+
+    /**
+     * @return SQL views.
+     */
+    public Map<String, String> views() {
+        synchronized (mux) {
+            return new HashMap<>(views);
         }
     }
 
