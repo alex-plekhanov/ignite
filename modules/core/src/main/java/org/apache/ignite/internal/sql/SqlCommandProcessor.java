@@ -40,7 +40,6 @@ import org.apache.ignite.internal.processors.query.schema.SchemaOperationExcepti
 import org.apache.ignite.internal.processors.query.schema.management.IndexDescriptor;
 import org.apache.ignite.internal.processors.query.schema.management.SchemaManager;
 import org.apache.ignite.internal.processors.query.schema.management.TableDescriptor;
-import org.apache.ignite.internal.processors.query.schema.management.ViewDescriptor;
 import org.apache.ignite.internal.processors.query.stat.StatisticsKey;
 import org.apache.ignite.internal.processors.query.stat.StatisticsTarget;
 import org.apache.ignite.internal.processors.query.stat.config.StatisticsObjectConfiguration;
@@ -419,26 +418,12 @@ public class SqlCommandProcessor {
             else if (cmd instanceof SqlCreateViewCommand) {
                 SqlCreateViewCommand cmd0 = (SqlCreateViewCommand)cmd;
 
-                ViewDescriptor viewDesc = schemaMgr.view(cmd0.schemaName(), cmd0.viewName());
-
-                if (viewDesc == null || cmd0.replace())
-                    fut = ctx.query().dynamicViewCreate(cmd0.schemaName(), cmd0.viewName(), cmd0.viewSql(), cmd0.replace());
-                else
-                    throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_EXISTS, cmd0.viewName());
+                ctx.query().sqlViewManager().createView(cmd0.schemaName(), cmd0.viewName(), cmd0.viewSql(), cmd0.replace());
             }
             else if (cmd instanceof SqlDropViewCommand) {
                 SqlDropViewCommand cmd0 = (SqlDropViewCommand)cmd;
 
-                ViewDescriptor viewDesc = schemaMgr.view(cmd0.schemaName(), cmd0.viewName());
-
-                if (viewDesc != null)
-                    fut = ctx.query().dynamicViewDrop(cmd0.schemaName(), cmd0.viewName(), cmd0.ifExists());
-                else {
-                    if (cmd0.ifExists())
-                        fut = new GridFinishedFuture<>();
-                    else
-                        throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_NOT_FOUND, cmd0.viewName());
-                }
+                ctx.query().sqlViewManager().dropView(cmd0.schemaName(), cmd0.viewName(), cmd0.ifExists());
             }
             else
                 throw new IgniteSQLException("Unsupported DDL operation: " + cmd,

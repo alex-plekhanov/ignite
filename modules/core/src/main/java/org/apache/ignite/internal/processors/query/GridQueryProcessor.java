@@ -110,6 +110,7 @@ import org.apache.ignite.internal.processors.query.schema.SchemaOperationClientF
 import org.apache.ignite.internal.processors.query.schema.SchemaOperationException;
 import org.apache.ignite.internal.processors.query.schema.SchemaOperationManager;
 import org.apache.ignite.internal.processors.query.schema.SchemaOperationWorker;
+import org.apache.ignite.internal.processors.query.schema.SchemaSqlViewManager;
 import org.apache.ignite.internal.processors.query.schema.management.SchemaManager;
 import org.apache.ignite.internal.processors.query.schema.message.SchemaAbstractDiscoveryMessage;
 import org.apache.ignite.internal.processors.query.schema.message.SchemaFinishDiscoveryMessage;
@@ -296,8 +297,11 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     /** Running query manager. */
     private RunningQueryManager runningQryMgr;
 
-    /** Schema manager. */
+    /** Local schema manager. */
     private final SchemaManager schemaMgr;
+
+    /** Global schema SQL views manager. */
+    private final SchemaSqlViewManager schemaSqlViewMgr;
 
     /**
      * Constructor.
@@ -316,6 +320,8 @@ public class GridQueryProcessor extends GridProcessorAdapter {
             idx = INDEXING.inClassPath() ? U.newInstance(INDEXING.className()) : null;
 
         schemaMgr = new SchemaManager(ctx);
+
+        schemaSqlViewMgr = new SchemaSqlViewManager(ctx);
 
         idxProc = ctx.indexProcessor();
 
@@ -356,6 +362,8 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         statsMgr = new IgniteStatisticsManagerImpl(ctx);
 
         schemaMgr.start(ctx.config().getSqlConfiguration().getSqlSchemas());
+
+        schemaSqlViewMgr.start();
 
         ctx.io().addMessageListener(TOPIC_SCHEMA, ioLsnr);
 
@@ -2428,7 +2436,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
             try {
                 ctx.indexProcessor().unregisterCache(cacheInfo);
 
-                schemaMgr.onCacheDestroyed(cacheName, destroy, clearIdx);
+                schemaMgr.onCacheStopped(cacheName, destroy, clearIdx);
 
                 // Notify indexing.
                 if (idx != null)
@@ -3397,37 +3405,6 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     }
 
     /**
-     * Entry point for view create procedure.
-     *
-     * @param schemaName Schema name.
-     * @param viewName View name.
-     * @param replace When set to {@code true} view will be replaced if the view is already exists.
-     * @return Future completed when view is created.
-     */
-    public IgniteInternalFuture<?> dynamicViewCreate(
-        String schemaName,
-        String viewName,
-        String viewSql,
-        boolean replace
-    ) {
-        // TODO
-        return null;
-    }
-
-    /**
-     * Entry point for view drop procedure
-     *
-     * @param schemaName Schema name.
-     * @param viewName View name.
-     * @param ifExists When set to {@code true} operation fill fail if view doesn't exists.
-     * @return Future completed when view is dropped.
-     */
-    public IgniteInternalFuture<?> dynamicViewDrop(String schemaName, String viewName, boolean ifExists) {
-        // TODO
-        return null
-    }
-
-    /**
      * Entry point for add column procedure.
      * @param schemaName Schema name.
      * @param tblName Target table name.
@@ -4375,6 +4352,13 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      */
     public SchemaManager schemaManager() {
         return schemaMgr;
+    }
+
+    /**
+     * @return Schema SQL view manager.
+     */
+    public SchemaSqlViewManager sqlViewManager() {
+        return schemaSqlViewMgr;
     }
 
     /** @return Statistics manager. */

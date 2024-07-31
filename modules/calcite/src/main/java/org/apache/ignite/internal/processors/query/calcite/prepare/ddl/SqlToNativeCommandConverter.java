@@ -30,6 +30,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.ddl.SqlCreateView;
 import org.apache.calcite.sql.ddl.SqlDropView;
+import org.apache.calcite.sql.dialect.CalciteSqlDialect;
 import org.apache.ignite.cache.QueryIndex;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.processors.query.IgniteSQLException;
@@ -216,7 +217,7 @@ public class SqlToNativeCommandConverter {
         String schemaName = deriveSchemaName(sqlCmd.name, ctx);
         String viewName = deriveObjectName(sqlCmd.name, ctx, "View name");
 
-        return new SqlCreateViewCommand(schemaName, viewName, sqlCmd.query.toString(), sqlCmd.getReplace());
+        return new SqlCreateViewCommand(schemaName, viewName, sqlCmd.query.toSqlString(CalciteSqlDialect.DEFAULT).toString(), sqlCmd.getReplace());
     }
 
     /**

@@ -39,6 +39,9 @@ public class ViewDdlIntegrationTest extends AbstractDdlIntegrationTest {
     /** {@inheritDoc} */
     @Override protected void beforeTest() throws Exception {
         sql("create table my_table(id int, val_int int, val_str varchar) with cache_name=\"" + CACHE_NAME + "\"");
+        sql("insert into my_table values (0, 0, '0')");
+        sql("insert into my_table values (1, 1, '1')");
+        sql("insert into my_table values (2, 2, '2')");
     }
 
     /**
@@ -48,7 +51,9 @@ public class ViewDdlIntegrationTest extends AbstractDdlIntegrationTest {
     public void createDropViewSimpleCase() {
         //assertNull(findIndex(CACHE_NAME, "my_index"));
 
-        sql("create view my_view as select * from my_table");
+        sql("create view my_view as select id, val_int, val_str from my_table");
+
+        assertQuery("select * from my_view").resultSize(3).check();
 
         //assertNotNull(findIndex(CACHE_NAME, "my_index"));
 
@@ -61,148 +66,5 @@ public class ViewDdlIntegrationTest extends AbstractDdlIntegrationTest {
         //sql("create index on my_table(val_int)");
 
         //assertEquals(cnt + 1, indexes(CACHE_NAME).size());
-    }
-
-    /**
-     * Creates and drops index on not default schema.
-     */
-    @Test
-    public void createDropIndexWithSchema() {
-        String cacheName = "cache2";
-
-        sql("create table my_schema.my_table2(id int) with cache_name=\"" + cacheName + "\"");
-
-        assertNull(findIndex(cacheName, "my_index2"));
-
-        sql("create index my_index2 on my_schema.my_table2(id)");
-
-        assertNotNull(findIndex(cacheName, "my_index2"));
-
-        GridTestUtils.assertThrowsAnyCause(log, () -> sql("drop index my_index2"), IgniteSQLException.class,
-            "Index doesn't exist");
-
-        assertNotNull(findIndex(cacheName, "my_index2"));
-
-        sql("drop index my_schema.my_index2");
-
-        assertNull(findIndex(cacheName, "my_index2"));
-    }
-
-    /**
-     * Creates index with "if not exists" clause.
-     */
-    @Test
-    public void createIndexWithIfNotExistsClause() {
-        assertNull(findIndex(CACHE_NAME, "my_index"));
-
-        sql("create index if not exists my_index on my_table(id)");
-
-        GridTestUtils.assertThrowsAnyCause(log, () -> sql("create index my_index on my_table(val_int)"),
-            IgniteSQLException.class, "Index already exists");
-
-        assertNotNull(findIndex(CACHE_NAME, "my_index"));
-
-        sql("create index if not exists my_index on my_table(val_str)");
-
-        Index idx = findIndex(CACHE_NAME, "my_index");
-
-        assertNotNull(idx);
-
-        List<String> keys = new ArrayList<>(indexKeyDefinitions(idx).keySet());
-
-        assertEquals("ID", keys.get(0));
-    }
-
-    /**
-     * Creates drops index with "if exists" clause.
-     */
-    @Test
-    public void dropIndexWithIfExistsClause() {
-        assertNull(findIndex(CACHE_NAME, "my_index"));
-
-        sql("create index my_index on my_table(id)");
-
-        assertNotNull(findIndex(CACHE_NAME, "my_index"));
-
-        sql("drop index if exists my_index");
-
-        assertNull(findIndex(CACHE_NAME, "my_index"));
-
-        sql("drop index if exists my_index");
-
-        GridTestUtils.assertThrowsAnyCause(log, () -> sql("drop index my_index"), IgniteSQLException.class,
-            "Index doesn't exist");
-    }
-
-    /**
-     * Creates index with different columns ordering.
-     */
-    @Test
-    public void createIndexWithColumnsOrdering() {
-        assertNull(findIndex(CACHE_NAME, "my_index"));
-
-        sql("create index my_index on my_table(id, val_int asc, val_str desc)");
-
-        Index idx = findIndex(CACHE_NAME, "my_index");
-
-        assertNotNull(idx);
-
-        LinkedHashMap<String, IndexKeyDefinition> keyDefs = indexKeyDefinitions(idx);
-        List<String> keys = new ArrayList<>(keyDefs.keySet());
-
-        assertEquals("ID", keys.get(0));
-        assertEquals(SortOrder.ASC, keyDefs.get(keys.get(0)).order().sortOrder());
-        assertEquals("VAL_INT", keys.get(1));
-        assertEquals(SortOrder.ASC, keyDefs.get(keys.get(1)).order().sortOrder());
-        assertEquals("VAL_STR", keys.get(2));
-        assertEquals(SortOrder.DESC, keyDefs.get(keys.get(2)).order().sortOrder());
-    }
-
-    /**
-     * Creates index with inline size.
-     */
-    @Test
-    public void createIndexWithInlineSize() {
-        assertNull(findIndex(CACHE_NAME, "my_index"));
-
-        sql("create index my_index on my_table(val_str) inline_size 10");
-
-        Index idx = findIndex(CACHE_NAME, "my_index");
-
-        assertNotNull(idx);
-
-        InlineIndex inlineIdx = idx.unwrap(InlineIndex.class);
-
-        assertNotNull(inlineIdx);
-        assertEquals(10, inlineIdx.inlineSize());
-    }
-
-    /**
-     * Creates index with inline size.
-     */
-    @Test
-    public void createIndexWithParallel() {
-        assertNull(findIndex(CACHE_NAME, "my_index"));
-
-        sql("create index my_index on my_table(val_str) parallel 10");
-
-        assertNotNull(findIndex(CACHE_NAME, "my_index"));
-    }
-
-    /** */
-    private Index findIndex(String cacheName, String idxName) {
-        return F.find(indexes(cacheName), null, (IgnitePredicate<Index>)i -> idxName.equalsIgnoreCase(i.name()));
-    }
-
-    /** */
-    private Collection<Index> indexes(String cacheName) {
-        IgniteEx node = grid(0);
-
-        return node.context().indexProcessor().indexes(cacheName);
-    }
-
-    /** */
-    private LinkedHashMap<String, IndexKeyDefinition> indexKeyDefinitions(Index idx) {
-        return grid(0).context().indexProcessor().indexDefinition(idx.id()).indexKeyDefinitions();
     }
 }

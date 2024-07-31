@@ -88,7 +88,7 @@ import static org.apache.ignite.internal.processors.query.QueryUtils.VAL_FIELD_N
 import static org.apache.ignite.internal.processors.query.QueryUtils.matches;
 
 /**
- * Schema manager. Responsible for all manipulations on schema objects.
+ * Local schema manager. Responsible for all manipulations on schema objects.
  */
 public class SchemaManager {
     /** */
@@ -413,13 +413,13 @@ public class SchemaManager {
     }
 
     /**
-     * Handle cache destroy.
+     * Handle cache stop.
      *
      * @param cacheName Cache name.
-     * @param rmvIdx Whether to remove indexes.
+     * @param destroy Destroy cache.
      * @param clearIdx Whether to clear the index.
      */
-    public void onCacheDestroyed(String cacheName, boolean rmvIdx, boolean clearIdx) {
+    public void onCacheStopped(String cacheName, boolean destroy, boolean clearIdx) {
         lock.writeLock().lock();
 
         try {
@@ -439,7 +439,7 @@ public class SchemaManager {
                             dropIndex(tbl, idx.name(), !clearIdx);
                     }
 
-                    lsnr.onSqlTypeDropped(schemaName, tbl.type(), rmvIdx);
+                    lsnr.onSqlTypeDropped(schemaName, tbl.type(), destroy);
 
                     schema.drop(tbl);
 
@@ -450,6 +450,9 @@ public class SchemaManager {
 
             if (schema.decrementUsageCount()) {
                 schemas.remove(schemaName);
+
+                if (destroy)
+                    ctx.query().sqlViewManager().clearSchemaViews(schemaName);
 
                 lsnr.onSchemaDropped(schemaName);
             }
@@ -888,23 +891,22 @@ public class SchemaManager {
      *
      * @param schemaName Schema name.
      * @param viewName View name.
-     * @param replace Replace view if exists.
+     * @param viewSql View SQL.
      */
-    public void createView(
-        String schemaName,
-        String viewName,
-        String viewSql,
-        boolean replace
-    ) throws IgniteCheckedException {
+    public void createView(String schemaName, String viewName, String viewSql) {
         lock.writeLock().lock();
 
         try {
-            ViewDescriptor viewDesc = view(schemaName, viewName);
+            SchemaDescriptor schema = schema(schemaName);
 
-            if (viewDesc == null || replace)
-                schema(schemaName).add(new ViewDescriptor(viewName, viewSql));
-            else
-                throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_EXISTS, viewName);
+            if (schema == null) {
+                log.warning("Schema for view not found in schema manager [schemaName=" + schemaName +
+                    ", viewName=" + viewName + ']');
+
+                return;
+            }
+
+            schema.add(new ViewDescriptor(viewName, viewSql));
 
             lsnr.onViewCreated(schemaName, viewName, viewSql);
         }
@@ -918,20 +920,15 @@ public class SchemaManager {
      *
      * @param schemaName Schema name.
      * @param viewName View name.
-     * @param ifExists If exists.
      */
-    public void dropView(String schemaName, String viewName, boolean ifExists) throws IgniteCheckedException {
+    public void dropView(String schemaName, String viewName) {
         lock.writeLock().lock();
 
         try {
             ViewDescriptor viewDesc = view(schemaName, viewName);
 
-            if (viewDesc == null) {
-                if (ifExists)
-                    return;
-                else
-                    throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_NOT_FOUND, viewName);
-            }
+            if (viewDesc == null)
+                return;
 
             schema(schemaName).drop(viewDesc);
 

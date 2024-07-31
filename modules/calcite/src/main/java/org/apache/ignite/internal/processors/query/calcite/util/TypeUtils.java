@@ -245,7 +245,12 @@ public class TypeUtils {
 
         assert table != null;
 
-        ColumnDescriptor fldDesc = table.unwrap(TableDescriptor.class).columnDescriptor(origin.get(2));
+        TableDescriptor tblDesc = table.unwrap(TableDescriptor.class);
+
+        if (tblDesc == null)
+            return typeFactory.getResultClass(type);
+
+        ColumnDescriptor fldDesc = tblDesc.columnDescriptor(origin.get(2));
 
         assert fldDesc != null;
 
