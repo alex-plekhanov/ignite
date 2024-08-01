@@ -52,6 +52,7 @@ import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteC
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
 import org.apache.ignite.logger.NullLogger;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.calcite.tools.Frameworks.createRootSchema;
 import static org.apache.calcite.tools.Frameworks.newConfigBuilder;
@@ -331,6 +332,26 @@ public final class BaseQueryContext extends AbstractQueryContext {
 
         /** */
         private int[] parts = null;
+
+        /**
+         * @param frameworkCfg Framework config.
+         * @return Builder for chaining.
+         */
+        public Builder frameworkConfig(@Nullable FrameworkConfig frameworkCfg) {
+            if (frameworkCfg == null)
+                return this;
+
+            if (this.frameworkCfg != EMPTY_CONFIG) {
+                // Schema was set explicitely earlier.
+                SchemaPlus schema = this.frameworkCfg.getDefaultSchema();
+
+                this.frameworkCfg = newConfigBuilder(frameworkCfg).defaultSchema(schema).build();
+            }
+            else
+                this.frameworkCfg = frameworkCfg;
+
+            return this;
+        }
 
         /**
          * @param schema Default schema.

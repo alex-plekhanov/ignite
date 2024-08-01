@@ -140,16 +140,9 @@ public class RootQuery<RowT> extends Query<RowT> implements TrackableQuery {
 
         FrameworkConfig frameworkCfg = qryCtx != null ? qryCtx.unwrap(FrameworkConfig.class) : null;
 
-        if (frameworkCfg == null)
-            frameworkCfg = FRAMEWORK_CONFIG;
-
         ctx = BaseQueryContext.builder()
             .parentContext(parent)
-            .frameworkConfig(
-                Frameworks.newConfigBuilder(frameworkCfg)
-                    .defaultSchema(schema)
-                    .build()
-            )
+            .frameworkConfig(frameworkCfg)
             .defaultSchema(schema)
             .local(isLocal)
             .forcedJoinOrder(forcedJoinOrder)
