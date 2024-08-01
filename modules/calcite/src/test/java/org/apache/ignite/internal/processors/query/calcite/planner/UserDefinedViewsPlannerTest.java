@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.query.calcite.planner;
 
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.util.ImmutableBitSet;
+import org.apache.ignite.internal.processors.query.IgniteSQLException;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteSchema;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
 import org.apache.ignite.testframework.GridTestUtils;
@@ -79,6 +80,7 @@ public class UserDefinedViewsPlannerTest extends AbstractPlannerTest {
 
         schema.addView("V1", "SELECT * FROM V1");
 
-        GridTestUtils.assertThrows(log, () -> physicalPlan("select * from v1", schema), Exception.class, "");
+        GridTestUtils.assertThrowsAnyCause(log, () -> physicalPlan("select * from v1", schema), IgniteSQLException.class,
+            "Recursive views are not supported");
     }
 }

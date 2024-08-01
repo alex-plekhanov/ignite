@@ -18,14 +18,15 @@
 package org.apache.ignite.internal.processors.query.calcite.schema;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.rel.type.RelDataTypeImpl;
 import org.apache.calcite.schema.FunctionParameter;
 import org.apache.calcite.schema.SchemaPlus;
 import org.apache.calcite.schema.TableMacro;
 import org.apache.calcite.schema.TranslatableTable;
-import org.apache.calcite.schema.impl.ViewTable;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.ignite.internal.processors.cache.query.IgniteQueryErrorCode;
 import org.apache.ignite.internal.processors.query.IgniteSQLException;
@@ -33,6 +34,7 @@ import org.apache.ignite.internal.processors.query.calcite.prepare.BaseQueryCont
 import org.apache.ignite.internal.processors.query.calcite.prepare.IgnitePlanner;
 import org.apache.ignite.internal.processors.query.calcite.prepare.PlanningContext;
 import org.apache.ignite.internal.processors.query.calcite.prepare.ValidationResult;
+import org.apache.ignite.internal.util.typedef.F;
 
 /**
  * Ignite SQL view table macro implementation.
@@ -62,9 +64,28 @@ public class ViewTableMacroImpl implements TableMacro {
             SqlNode sqlNode = planner.parse(viewSql);
             ValidationResult res = planner.validateAndGetTypeMetadata(sqlNode);
 
-            // TODO pass origins
-            return new ViewTable(planner.getTypeFactory().getJavaClass(res.dataType()),
-                RelDataTypeImpl.proto(res.dataType()), viewSql, CalciteSchema.from(schema).path(null), null);
+            Map<String, List<String>> origins = new HashMap<>();
+
+            if (!F.isEmpty(res.origins())) {
+                for (int i = 0; i < res.origins().size(); i++) {
+                    List<String> origin = res.origins().get(i);
+
+                    if (!F.isEmpty(origin))
+                        origins.put(res.dataType().getFieldList().get(i).getName(), origin);
+                }
+            }
+
+            return new ViewTableImpl(planner.getTypeFactory().getJavaClass(res.dataType()),
+                RelDataTypeImpl.proto(res.dataType()), viewSql, CalciteSchema.from(schema).path(null), origins);
+        }
+        catch (IgniteSQLException e) {
+            throw e;
+        }
+        catch (StackOverflowError e) {
+            // This error is possible when we are getting into infinite recursion.
+            // We don't have access to parent planners and validators and can't prevent this error by checking that
+            // this view is already analyzed before for this query.
+            throw new IgniteSQLException("Recursive views are not supported: " + viewSql);
         }
         catch (Exception e) {
             throw new IgniteSQLException("Failed to validate SQL view query. " + e.getMessage(),

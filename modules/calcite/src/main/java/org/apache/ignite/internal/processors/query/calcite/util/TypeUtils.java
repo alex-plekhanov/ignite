@@ -71,6 +71,7 @@ import org.apache.ignite.internal.processors.query.calcite.exec.ExecutionContext
 import org.apache.ignite.internal.processors.query.calcite.exec.RowHandler;
 import org.apache.ignite.internal.processors.query.calcite.schema.ColumnDescriptor;
 import org.apache.ignite.internal.processors.query.calcite.schema.TableDescriptor;
+import org.apache.ignite.internal.processors.query.calcite.schema.ViewTableImpl;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeFactory;
 import org.apache.ignite.internal.processors.query.calcite.type.IgniteTypeSystem;
 import org.apache.ignite.internal.util.typedef.F;
@@ -236,26 +237,36 @@ public class TypeUtils {
      * @param origin Column origin.
      * @return Result type.
      */
-    private static Type getResultClass(IgniteTypeFactory typeFactory, RelOptSchema schema, RelDataType type,
-        @Nullable List<String> origin) {
-        if (F.isEmpty(origin))
-            return typeFactory.getResultClass(type);
+    private static Type getResultClass(
+        IgniteTypeFactory typeFactory,
+        RelOptSchema schema,
+        RelDataType type,
+        @Nullable List<String> origin
+    ) {
+        int cnt = 0; // Counter to protect from infinite recursion.
 
-        RelOptTable table = schema.getTableForMember(origin.subList(0, 2));
+        while (true) {
+            if (F.isEmpty(origin) || cnt++ >= 100)
+                return typeFactory.getResultClass(type);
 
-        assert table != null;
+            RelOptTable table = schema.getTableForMember(origin.subList(0, 2));
 
-        TableDescriptor tblDesc = table.unwrap(TableDescriptor.class);
+            assert table != null;
 
-        // TODO get origin for view recursively.
-        if (tblDesc == null)
-            return typeFactory.getResultClass(type);
+            ViewTableImpl viewTable = table.unwrap(ViewTableImpl.class);
 
-        ColumnDescriptor fldDesc = tblDesc.columnDescriptor(origin.get(2));
+            if (viewTable != null) {
+                origin = viewTable.fieldOrigin(origin.get(2));
 
-        assert fldDesc != null;
+                continue;
+            }
 
-        return fldDesc.storageType();
+            ColumnDescriptor fldDesc = table.unwrap(TableDescriptor.class).columnDescriptor(origin.get(2));
+
+            assert fldDesc != null;
+
+            return fldDesc.storageType();
+        }
     }
 
     /**
