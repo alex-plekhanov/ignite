@@ -82,7 +82,7 @@ public class SqlDropViewCommand implements SqlCommand {
     @Override public SqlCommand parse(SqlLexer lex) {
         ifExists = parseIfExists(lex);
 
-        SqlQualifiedName viewQName = parseQualifiedIdentifier(lex, IF);
+        SqlQualifiedName viewQName = ifExists ? parseQualifiedIdentifier(lex) : parseQualifiedIdentifier(lex, IF);
 
         schemaName = viewQName.schemaName();
         viewName = viewQName.name();

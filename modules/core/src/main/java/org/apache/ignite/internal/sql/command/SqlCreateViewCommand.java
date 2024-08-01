@@ -111,16 +111,13 @@ public class SqlCreateViewCommand implements SqlCommand {
 
         skipIfMatchesKeyword(lex, AS);
 
-        // TODO check
-        int viewSqlPos = lex.tokenPosition();
-
         skipIfMatchesKeyword(lex, SELECT);
 
-        while (lex.shift() && lex.tokenType() != SqlLexerTokenType.SEMICOLON); // No-op loop.
+        int viewSqlPos = lex.tokenPosition();
 
-        viewSql = lex.tokenType() == SqlLexerTokenType.SEMICOLON ?
-            lex.sql().substring(viewSqlPos, lex.tokenPosition()) :
-            lex.sql().substring(viewSqlPos);
+        while (lex.shift() && lex.lookAhead().tokenType() != SqlLexerTokenType.SEMICOLON) /* No-op. */;
+
+        viewSql = lex.eod() ? lex.sql().substring(viewSqlPos) : lex.sql().substring(viewSqlPos, lex.position());
 
         return this;
     }

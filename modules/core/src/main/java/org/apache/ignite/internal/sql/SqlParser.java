@@ -393,6 +393,8 @@ public class SqlParser {
                     else
                         throw errorUnexpectedToken(lex, REPLACE);
 
+                    break;
+
                 case VIEW:
                     cmd = new SqlCreateViewCommand();
 
