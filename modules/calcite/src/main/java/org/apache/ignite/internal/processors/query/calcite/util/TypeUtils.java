@@ -247,6 +247,7 @@ public class TypeUtils {
 
         TableDescriptor tblDesc = table.unwrap(TableDescriptor.class);
 
+        // TODO get origin for view recursively.
         if (tblDesc == null)
             return typeFactory.getResultClass(type);
 

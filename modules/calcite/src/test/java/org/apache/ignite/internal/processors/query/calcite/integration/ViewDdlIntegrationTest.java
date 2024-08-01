@@ -16,19 +16,6 @@
  */
 package org.apache.ignite.internal.processors.query.calcite.integration;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import org.apache.ignite.internal.IgniteEx;
-import org.apache.ignite.internal.cache.query.index.Index;
-import org.apache.ignite.internal.cache.query.index.SortOrder;
-import org.apache.ignite.internal.cache.query.index.sorted.IndexKeyDefinition;
-import org.apache.ignite.internal.cache.query.index.sorted.inline.InlineIndex;
-import org.apache.ignite.internal.processors.query.IgniteSQLException;
-import org.apache.ignite.internal.util.typedef.F;
-import org.apache.ignite.lang.IgnitePredicate;
-import org.apache.ignite.testframework.GridTestUtils;
 import org.junit.Test;
 
 /** */
@@ -51,7 +38,8 @@ public class ViewDdlIntegrationTest extends AbstractDdlIntegrationTest {
     public void createDropViewSimpleCase() {
         //assertNull(findIndex(CACHE_NAME, "my_index"));
 
-        sql("create view my_view as select id, val_int, val_str from my_table");
+        //sql("create view my_view as select id, val_int, val_str from my_table");
+        sql("create or replace view my_view as select * from my_table");
 
         assertQuery("select * from my_view").resultSize(3).check();
 

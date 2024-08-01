@@ -102,8 +102,6 @@ import org.junit.Before;
 import org.mockito.Mockito;
 
 import static org.apache.calcite.tools.Frameworks.createRootSchema;
-import static org.apache.calcite.tools.Frameworks.newConfigBuilder;
-import static org.apache.ignite.internal.processors.query.calcite.CalciteQueryProcessor.FRAMEWORK_CONFIG;
 import static org.apache.ignite.internal.processors.query.calcite.externalize.RelJsonWriter.toJson;
 
 /**
@@ -691,11 +689,7 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
         }
 
         return BaseQueryContext.builder()
-            .frameworkConfig(
-                newConfigBuilder(FRAMEWORK_CONFIG)
-                    .defaultSchema(dfltSchema)
-                    .build()
-            )
+            .defaultSchema(dfltSchema)
             .logger(lsnrLog)
             .build();
     }

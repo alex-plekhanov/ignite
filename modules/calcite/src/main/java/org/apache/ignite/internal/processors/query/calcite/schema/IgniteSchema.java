@@ -20,7 +20,6 @@ package org.apache.ignite.internal.processors.query.calcite.schema;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -28,7 +27,6 @@ import org.apache.calcite.schema.Function;
 import org.apache.calcite.schema.SchemaPlus;
 import org.apache.calcite.schema.Table;
 import org.apache.calcite.schema.impl.AbstractSchema;
-import org.apache.calcite.schema.impl.ViewTable;
 
 /**
  * Ignite schema.
@@ -118,7 +116,7 @@ public class IgniteSchema extends AbstractSchema {
     public SchemaPlus register(SchemaPlus schema) {
         SchemaPlus schemaPlus = schema.add(schemaName, this);
 
-        viewMap.forEach((name, sql) -> schemaPlus.add(name, ViewTable.viewMacro(schemaPlus, sql, null, null, Boolean.FALSE)));
+        viewMap.forEach((name, sql) -> schemaPlus.add(name, new ViewTableMacroImpl(sql, schemaPlus)));
 
         return schemaPlus;
     }
