@@ -29,6 +29,8 @@ import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import org.apache.calcite.plan.Context;
 import org.apache.calcite.schema.SchemaPlus;
+import org.apache.calcite.tools.FrameworkConfig;
+import org.apache.calcite.tools.Frameworks;
 import org.apache.calcite.util.CancelFlag;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
@@ -136,8 +138,18 @@ public class RootQuery<RowT> extends Query<RowT> implements TrackableQuery {
 
         Context parent = Commons.convert(qryCtx);
 
+        FrameworkConfig frameworkCfg = qryCtx != null ? qryCtx.unwrap(FrameworkConfig.class) : null;
+
+        if (frameworkCfg == null)
+            frameworkCfg = FRAMEWORK_CONFIG;
+
         ctx = BaseQueryContext.builder()
             .parentContext(parent)
+            .frameworkConfig(
+                Frameworks.newConfigBuilder(frameworkCfg)
+                    .defaultSchema(schema)
+                    .build()
+            )
             .defaultSchema(schema)
             .local(isLocal)
             .forcedJoinOrder(forcedJoinOrder)
