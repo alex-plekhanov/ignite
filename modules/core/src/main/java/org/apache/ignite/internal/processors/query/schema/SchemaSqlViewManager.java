@@ -94,8 +94,12 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
         do {
             oldVal = metastorage.read(key);
 
-            if (oldVal == null && !ifExists)
-                throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_NOT_FOUND, viewName);
+            if (oldVal == null) {
+                if (!ifExists)
+                    throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_NOT_FOUND, viewName);
+                else
+                    return;
+            }
         }
         while (!metastorage.compareAndRemove(key, oldVal));
     }

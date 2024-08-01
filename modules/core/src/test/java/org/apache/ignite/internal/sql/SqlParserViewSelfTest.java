@@ -73,7 +73,6 @@ public class SqlParserViewSelfTest extends SqlParserAbstractSelfTest {
             "Unexpected token: \"DROP\" (expected: \"REPLACE\")");
     }
 
-
     /**
      * Tests for DROP VIEW command.
      */
