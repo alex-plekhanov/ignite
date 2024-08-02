@@ -83,8 +83,9 @@ import org.apache.ignite.spi.systemview.view.sql.SqlIndexView;
 import org.apache.ignite.spi.systemview.view.sql.SqlSchemaView;
 import org.apache.ignite.spi.systemview.view.sql.SqlTableColumnView;
 import org.apache.ignite.spi.systemview.view.sql.SqlTableView;
+import org.apache.ignite.spi.systemview.view.sql.SqlUserViewView;
 import org.apache.ignite.spi.systemview.view.sql.SqlViewColumnView;
-import org.apache.ignite.spi.systemview.view.sql.SqlViewView;
+import org.apache.ignite.spi.systemview.view.sql.SqlSystemViewView;
 
 import static org.apache.ignite.codegen.MessageCodeGenerator.DFLT_SRC_DIR;
 
@@ -153,7 +154,8 @@ public class SystemViewRowAttributeWalkerGenerator {
 
         gen.generateAndWrite(SqlSchemaView.class, DFLT_SRC_DIR);
         gen.generateAndWrite(SqlTableView.class, DFLT_SRC_DIR);
-        gen.generateAndWrite(SqlViewView.class, DFLT_SRC_DIR);
+        gen.generateAndWrite(SqlSystemViewView.class, DFLT_SRC_DIR);
+        gen.generateAndWrite(SqlUserViewView.class, DFLT_SRC_DIR);
         gen.generateAndWrite(SqlIndexView.class, DFLT_SRC_DIR);
         gen.generateAndWrite(SqlTableColumnView.class, DFLT_SRC_DIR);
         gen.generateAndWrite(SqlViewColumnView.class, DFLT_SRC_DIR);

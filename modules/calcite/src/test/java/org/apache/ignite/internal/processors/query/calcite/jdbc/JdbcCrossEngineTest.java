@@ -164,7 +164,6 @@ public class JdbcCrossEngineTest extends GridCommonAbstractTest {
                 }
             }
         );
-
     }
 
     /** */

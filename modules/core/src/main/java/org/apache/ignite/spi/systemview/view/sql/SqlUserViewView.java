@@ -18,37 +18,43 @@
 package org.apache.ignite.spi.systemview.view.sql;
 
 import org.apache.ignite.internal.managers.systemview.walker.Order;
-import org.apache.ignite.internal.processors.metric.impl.MetricUtils;
-import org.apache.ignite.internal.processors.query.QueryUtils;
-import org.apache.ignite.spi.systemview.view.SystemView;
+import org.apache.ignite.internal.processors.query.schema.management.SchemaDescriptor;
+import org.apache.ignite.internal.processors.query.schema.management.ViewDescriptor;
 
 /**
- * Sql view representation for a {@link SystemView}.
+ * Sql view representation for a {@link ViewDescriptor}.
  */
-public class SqlViewView {
-    /** System view. */
-    private final SystemView<?> view;
+public class SqlUserViewView {
+    /** View descriptor. */
+    private final ViewDescriptor view;
 
-    /** @param view System view. */
-    public SqlViewView(SystemView<?> view) {
+    /** Schema descriptor. */
+    private final SchemaDescriptor schema;
+
+    /**
+     * @param schema Schema descriptor.
+     * @param view View descriptor.
+     */
+    public SqlUserViewView(SchemaDescriptor schema, ViewDescriptor view) {
+        this.schema = schema;
         this.view = view;
     }
 
-    /** @return View name. */
-    @Order
-    public String name() {
-        return MetricUtils.toSqlName(view.name());
-    }
-
-    /** @return View description. */
-    @Order(2)
-    public String description() {
-        return view.description();
-    }
-
     /** @return View schema. */
-    @Order(1)
+    @Order
     public String schema() {
-        return QueryUtils.SCHEMA_SYS;
+        return schema.schemaName();
+    }
+
+    /** @return View name. */
+    @Order(1)
+    public String name() {
+        return view.name();
+    }
+
+    /** @return View SQL. */
+    @Order(2)
+    public String sql() {
+        return view.sql();
     }
 }
