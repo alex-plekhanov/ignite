@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.query;
 import java.util.List;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.internal.processors.cache.index.AbstractIndexingCommonTest;
+import org.apache.ignite.testframework.GridTestUtils;
 import org.junit.Test;
 
 /**
@@ -46,6 +47,20 @@ public class SqlViewTest extends AbstractIndexingCommonTest {
         res = sql("SELECT T.F1, F2, * FROM TEST_VIEW T");
 
         assertEquals(3, res.size());
+    }
+
+    /** */
+    @Test
+    public void testSysSchema() throws Exception {
+        String msg = "DDL statements are not supported on SYS schema";
+
+        startGrid(0);
+
+        GridTestUtils.assertThrowsAnyCause(log,
+            () -> sql("CREATE OR REPLACE VIEW sys.sql_views AS SELECT * FROM sys.sql_tables"), IgniteSQLException.class, msg);
+
+        GridTestUtils.assertThrowsAnyCause(log,
+            () -> sql("DROP VIEW sys.sql_views"), IgniteSQLException.class, msg);
     }
 
     /** */

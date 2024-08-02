@@ -16,6 +16,7 @@
  */
 package org.apache.ignite.internal.processors.query.calcite.integration;
 
+import org.apache.ignite.internal.processors.query.IgniteSQLException;
 import org.junit.Test;
 
 /** */
@@ -55,4 +56,17 @@ public class ViewDdlIntegrationTest extends AbstractDdlIntegrationTest {
 
         //assertEquals(cnt + 1, indexes(CACHE_NAME).size());
     }
+
+
+    /**
+     * Creates and drops view on SYS schema.
+     */
+    @Test
+    public void testSysSchema() {
+        String msg = "DDL statements are not supported on SYS schema";
+
+        assertThrows("CREATE OR REPLACE VIEW sys.sql_views AS SELECT * FROM sys.sql_tables", IgniteSQLException.class, msg);
+        assertThrows("DROP VIEW IF EXISTS sys.sql_views", IgniteSQLException.class, msg);
+    }
+
 }

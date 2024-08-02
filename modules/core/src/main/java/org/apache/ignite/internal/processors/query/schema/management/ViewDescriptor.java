@@ -21,16 +21,24 @@ package org.apache.ignite.internal.processors.query.schema.management;
  * Local database view object.
  */
 public class ViewDescriptor {
-    /** */
+    /** View name. */
     private final String name;
 
-    /** Table descriptor. */
+    /** View SQL. */
     private final String sql;
 
-    /** */
-    public ViewDescriptor(String name, String sql) {
+    /** View description. */
+    private final String desc;
+
+    /**
+     * @param name View name.
+     * @param sql View SQL.
+     * @param desc View description.
+     */
+    public ViewDescriptor(String name, String sql, String desc) {
         this.name = name;
         this.sql = sql;
+        this.desc = desc;
     }
 
     /** */
@@ -41,5 +49,10 @@ public class ViewDescriptor {
     /** */
     public String sql() {
         return sql;
+    }
+
+    /** */
+    public String description() {
+        return desc;
     }
 }

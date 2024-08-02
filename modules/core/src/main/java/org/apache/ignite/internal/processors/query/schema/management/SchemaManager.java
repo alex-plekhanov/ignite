@@ -48,11 +48,10 @@ import org.apache.ignite.internal.cache.query.index.sorted.IndexKeyDefinition;
 import org.apache.ignite.internal.jdbc2.JdbcUtils;
 import org.apache.ignite.internal.managers.systemview.walker.SqlIndexViewWalker;
 import org.apache.ignite.internal.managers.systemview.walker.SqlSchemaViewWalker;
-import org.apache.ignite.internal.managers.systemview.walker.SqlSystemViewViewWalker;
 import org.apache.ignite.internal.managers.systemview.walker.SqlTableColumnViewWalker;
 import org.apache.ignite.internal.managers.systemview.walker.SqlTableViewWalker;
-import org.apache.ignite.internal.managers.systemview.walker.SqlUserViewViewWalker;
 import org.apache.ignite.internal.managers.systemview.walker.SqlViewColumnViewWalker;
+import org.apache.ignite.internal.managers.systemview.walker.SqlViewViewWalker;
 import org.apache.ignite.internal.processors.cache.CacheGroupDescriptor;
 import org.apache.ignite.internal.processors.cache.GridCacheContext;
 import org.apache.ignite.internal.processors.cache.GridCacheContextInfo;
@@ -77,11 +76,10 @@ import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.spi.systemview.view.SystemView;
 import org.apache.ignite.spi.systemview.view.sql.SqlIndexView;
 import org.apache.ignite.spi.systemview.view.sql.SqlSchemaView;
-import org.apache.ignite.spi.systemview.view.sql.SqlSystemViewView;
 import org.apache.ignite.spi.systemview.view.sql.SqlTableColumnView;
 import org.apache.ignite.spi.systemview.view.sql.SqlTableView;
-import org.apache.ignite.spi.systemview.view.sql.SqlUserViewView;
 import org.apache.ignite.spi.systemview.view.sql.SqlViewColumnView;
+import org.apache.ignite.spi.systemview.view.sql.SqlViewView;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.internal.processors.metric.impl.MetricUtils.metricName;
@@ -110,12 +108,6 @@ public class SchemaManager {
 
     /** */
     public static final String SQL_VIEWS_VIEW_DESC = "SQL views";
-
-    /** */
-    public static final String SQL_USER_DEFINED_VIEWS_VIEW = metricName("user", "defined", "views");
-
-    /** */
-    public static final String SQL_USER_DEFINED_VIEWS_VIEW_DESC = "SQL user defined views";
 
     /** */
     public static final String SQL_IDXS_VIEW = "indexes";
@@ -211,16 +203,11 @@ public class SchemaManager {
             id2tbl.values(),
             SqlTableView::new);
 
-        ctx.systemView().registerView(SQL_VIEWS_VIEW, SQL_VIEWS_VIEW_DESC,
-            new SqlSystemViewViewWalker(),
-            sysViews,
-            SqlSystemViewView::new);
-
-        ctx.systemView().registerInnerCollectionView(SQL_USER_DEFINED_VIEWS_VIEW, SQL_USER_DEFINED_VIEWS_VIEW_DESC,
-            new SqlUserViewViewWalker(),
+        ctx.systemView().registerInnerCollectionView(SQL_VIEWS_VIEW, SQL_VIEWS_VIEW_DESC,
+            new SqlViewViewWalker(),
             schemas.values(),
             SchemaDescriptor::views,
-            SqlUserViewView::new);
+            SqlViewView::new);
 
         ctx.systemView().registerInnerCollectionView(SQL_IDXS_VIEW, SQL_IDXS_VIEW_DESC,
             new SqlIndexViewWalker(),
@@ -298,6 +285,8 @@ public class SchemaManager {
 
         try {
             createSchema(schema, true);
+
+            schema(schema).add(new ViewDescriptor(MetricUtils.toSqlName(view.name()), "SYSTEM", view.description()));
 
             sysViews.add(view);
 
@@ -920,7 +909,7 @@ public class SchemaManager {
                 return;
             }
 
-            schema.add(new ViewDescriptor(viewName, viewSql));
+            schema.add(new ViewDescriptor(viewName, viewSql, null));
 
             lsnr.onViewCreated(schemaName, viewName, viewSql);
         }
@@ -1242,13 +1231,6 @@ public class SchemaManager {
                     .filter(v -> matches(v.name(), tblNamePtrn))
                     .map(v -> new TableInformation(s.schemaName(), v.name(), JdbcUtils.TYPE_VIEW))
                     .forEach(infos::add));
-
-            if (matches(QueryUtils.SCHEMA_SYS, schemaNamePtrn)) {
-                sysViews.stream()
-                    .filter(t -> matches(MetricUtils.toSqlName(t.name()), tblNamePtrn))
-                    .map(v -> new TableInformation(QueryUtils.SCHEMA_SYS, MetricUtils.toSqlName(v.name()), JdbcUtils.TYPE_VIEW))
-                    .forEach(infos::add);
-            }
         }
 
         return infos;

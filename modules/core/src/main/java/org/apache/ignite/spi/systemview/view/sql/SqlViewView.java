@@ -24,18 +24,18 @@ import org.apache.ignite.internal.processors.query.schema.management.ViewDescrip
 /**
  * Sql view representation for a {@link ViewDescriptor}.
  */
-public class SqlUserViewView {
-    /** View descriptor. */
-    private final ViewDescriptor view;
-
+public class SqlViewView {
     /** Schema descriptor. */
     private final SchemaDescriptor schema;
+
+    /** View descriptor. */
+    private final ViewDescriptor view;
 
     /**
      * @param schema Schema descriptor.
      * @param view View descriptor.
      */
-    public SqlUserViewView(SchemaDescriptor schema, ViewDescriptor view) {
+    public SqlViewView(SchemaDescriptor schema, ViewDescriptor view) {
         this.schema = schema;
         this.view = view;
     }
@@ -56,5 +56,11 @@ public class SqlUserViewView {
     @Order(2)
     public String sql() {
         return view.sql();
+    }
+
+    /** @return View description. */
+    @Order(3)
+    public String description() {
+        return view.description();
     }
 }
