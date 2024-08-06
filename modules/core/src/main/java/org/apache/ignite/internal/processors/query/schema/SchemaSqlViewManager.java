@@ -25,6 +25,8 @@ import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupp
 import org.apache.ignite.internal.processors.metastorage.DistributedMetaStorage;
 import org.apache.ignite.internal.processors.metastorage.DistributedMetastorageLifecycleListener;
 import org.apache.ignite.internal.processors.metastorage.ReadableDistributedMetaStorage;
+import org.apache.ignite.internal.util.typedef.internal.U;
+import org.apache.ignite.plugin.security.SecurityPermission;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -72,6 +74,8 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
 
     /** */
     public void createView(String schemaName, String viewName, String viewSql, boolean replace) throws IgniteCheckedException {
+        ctx.security().authorize(SecurityPermission.SQL_VIEW_CREATE);
+
         String key = SQL_VIEW_KEY_PREFIX + schemaName + "." + viewName;
 
         Serializable oldVal;
@@ -87,6 +91,8 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
 
     /** */
     public void dropView(String schemaName, String viewName, boolean ifExists) throws IgniteCheckedException {
+        ctx.security().authorize(SecurityPermission.SQL_VIEW_DROP);
+
         String key = SQL_VIEW_KEY_PREFIX + schemaName + "." + viewName;
 
         Serializable oldVal;
@@ -106,7 +112,9 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
 
     /** */
     public void clearSchemaViews(String schemaName) {
-        // TODO coordinator.
+        if (!U.isLocalNodeCoordinator(ctx.discovery()))
+            return;
+
         try {
             metastorage.iterate(SQL_VIEW_KEY_PREFIX + schemaName + '.', (k, v) -> {
                 try {
