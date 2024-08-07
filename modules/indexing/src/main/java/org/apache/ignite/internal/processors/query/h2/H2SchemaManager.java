@@ -387,7 +387,7 @@ public class H2SchemaManager implements SchemaChangeListener {
     @Override public void onViewCreated(String schemaName, String viewName, String viewSql) {
         try (H2PooledConnection conn = connMgr.connection(schemaName)) {
             try (Statement s = conn.connection().createStatement()) {
-                s.execute("CREATE OR REPLACE VIEW " + viewName + " AS " + viewSql);
+                s.execute("CREATE OR REPLACE VIEW \"" + viewName + "\" AS " + viewSql);
             }
         }
         catch (SQLException e) {
@@ -399,7 +399,7 @@ public class H2SchemaManager implements SchemaChangeListener {
     @Override public void onViewDropped(String schemaName, String viewName) {
         try (H2PooledConnection conn = connMgr.connection(schemaName)) {
             try (Statement s = conn.connection().createStatement()) {
-                s.execute("DROP VIEW IF EXISTS " + viewName);
+                s.execute("DROP VIEW IF EXISTS \"" + viewName + "\"");
             }
         }
         catch (SQLException e) {

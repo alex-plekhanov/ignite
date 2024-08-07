@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.processors.query.schema;
 
 import java.io.Serializable;
+import java.util.Objects;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.GridKernalContext;
@@ -25,6 +26,7 @@ import org.apache.ignite.internal.processors.cluster.IgniteChangeGlobalStateSupp
 import org.apache.ignite.internal.processors.metastorage.DistributedMetaStorage;
 import org.apache.ignite.internal.processors.metastorage.DistributedMetastorageLifecycleListener;
 import org.apache.ignite.internal.processors.metastorage.ReadableDistributedMetaStorage;
+import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.plugin.security.SecurityPermission;
 import org.jetbrains.annotations.Nullable;
@@ -61,7 +63,7 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
         ctx.internalSubscriptionProcessor().registerDistributedMetastorageListener(new DistributedMetastorageLifecycleListener() {
             @Override public void onReadyForRead(ReadableDistributedMetaStorage metastorage) {
                 metastorage.listen(key -> key.startsWith(SQL_VIEW_KEY_PREFIX),
-                    (key, oldVal, newVal) -> processMetastorageUpdate(key, newVal));
+                    (key, oldVal, newVal) -> processMetastorageUpdate(key, oldVal, newVal));
             }
 
             @Override public void onReadyForWrite(DistributedMetaStorage metastorage) {
@@ -76,9 +78,13 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
     public void createView(String schemaName, String viewName, String viewSql, boolean replace) throws IgniteCheckedException {
         ctx.security().authorize(SecurityPermission.SQL_VIEW_CREATE);
 
-        String key = SQL_VIEW_KEY_PREFIX + schemaName + "." + viewName;
+        if (!ctx.query().schemaManager().schemaNames().contains(schemaName))
+            throw new SchemaOperationException(SchemaOperationException.CODE_SCHEMA_NOT_FOUND, schemaName);
+
+        String key = makeKey(schemaName, viewName);
 
         Serializable oldVal;
+        Serializable newVal = new SqlView(schemaName, viewName, viewSql);
 
         do {
             oldVal = metastorage.read(key);
@@ -86,14 +92,14 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
             if (oldVal != null && !replace)
                 throw new SchemaOperationException(SchemaOperationException.CODE_VIEW_EXISTS, viewName);
         }
-        while (!metastorage.compareAndSet(key, oldVal, viewSql));
+        while (!metastorage.compareAndSet(key, oldVal, newVal));
     }
 
     /** */
     public void dropView(String schemaName, String viewName, boolean ifExists) throws IgniteCheckedException {
         ctx.security().authorize(SecurityPermission.SQL_VIEW_DROP);
 
-        String key = SQL_VIEW_KEY_PREFIX + schemaName + "." + viewName;
+        String key = makeKey(schemaName, viewName);
 
         Serializable oldVal;
 
@@ -116,7 +122,7 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
             return;
 
         try {
-            metastorage.iterate(SQL_VIEW_KEY_PREFIX + schemaName + '.', (k, v) -> {
+            metastorage.iterate(makeKey(schemaName, null), (k, v) -> {
                 try {
                     metastorage.removeAsync(k);
                 }
@@ -132,7 +138,7 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
 
     /** {@inheritDoc} */
     @Override public void onActivate(GridKernalContext kctx) throws IgniteCheckedException {
-        metastorage.iterate(SQL_VIEW_KEY_PREFIX, this::processMetastorageUpdate);
+        metastorage.iterate(SQL_VIEW_KEY_PREFIX, (k, v) -> processMetastorageUpdate(k, null, v));
     }
 
     /** {@inheritDoc} */
@@ -141,23 +147,76 @@ public class SchemaSqlViewManager implements IgniteChangeGlobalStateSupport {
     }
 
     /** */
-    private void processMetastorageUpdate(String key, @Nullable Serializable val) {
+    private void processMetastorageUpdate(String key, @Nullable Serializable oldVal, @Nullable Serializable newVal) {
         assert key.startsWith(SQL_VIEW_KEY_PREFIX) : "Invalid key: " + key;
-        assert val == null || val instanceof String : "Invalid value: " + val;
+        assert oldVal == null || oldVal instanceof SqlView : "Invalid old value: " + oldVal;
+        assert newVal == null || newVal instanceof SqlView : "Invalid new value: " + newVal;
+        assert oldVal != null || newVal != null;
 
-        String viewFullName = key.substring(SQL_VIEW_KEY_PREFIX.length());
-
-        int pointPos = viewFullName.indexOf('.');
-
-        assert pointPos > 0 : "Invalid view name: " + viewFullName;
-
-        String schemaName = viewFullName.substring(0, pointPos);
-        String viewName = viewFullName.substring(pointPos + 1);
+        String schemaName = newVal == null ? ((SqlView)oldVal).schemaName : ((SqlView)newVal).schemaName;
+        String viewName = newVal == null ? ((SqlView)oldVal).viewName : ((SqlView)newVal).viewName;
 
         // Register in local manager.
-        if (val == null)
+        if (newVal == null)
             ctx.query().schemaManager().dropView(schemaName, viewName);
         else
-            ctx.query().schemaManager().createView(schemaName, viewName, (String)val);
+            ctx.query().schemaManager().createView(schemaName, viewName, ((SqlView)newVal).viewSql);
+    }
+
+    /** */
+    private static String makeKey(String schemaName, @Nullable String viewName) {
+        return SQL_VIEW_KEY_PREFIX + escape(schemaName) + '.' + (viewName == null ? "" : escape(viewName));
+    }
+
+    /** */
+    private static String escape(String name) {
+        return name.replace("\\", "\\\\").replace(".", "\\.");
+    }
+
+    /** */
+    private static class SqlView implements Serializable {
+        /** */
+        private static final long serialVersionUID = 0L;
+
+        /** */
+        private final String schemaName;
+
+        /** */
+        private final String viewName;
+
+        /** */
+        private final String viewSql;
+
+        /** */
+        public SqlView(String schemaName, String viewName, String viewSql) {
+            this.schemaName = schemaName;
+            this.viewName = viewName;
+            this.viewSql = viewSql;
+        }
+
+        /** {@inheritDoc} */
+        @Override public boolean equals(Object o) {
+            if (this == o)
+                return true;
+
+            if (!(o instanceof SqlView))
+                return false;
+
+            SqlView view = (SqlView)o;
+
+            return Objects.equals(schemaName, view.schemaName) &&
+                Objects.equals(viewName, view.viewName) &&
+                Objects.equals(viewSql, view.viewSql);
+        }
+
+        /** {@inheritDoc} */
+        @Override public int hashCode() {
+            return Objects.hash(schemaName, viewName, viewSql);
+        }
+
+        /** {@inheritDoc} */
+        @Override public String toString() {
+            return S.toString(SqlView.class, this);
+        }
     }
 }

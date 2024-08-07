@@ -19,8 +19,10 @@ package org.apache.ignite.internal.processors.query.calcite.schema;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.rel.type.RelDataTypeImpl;
 import org.apache.calcite.schema.FunctionParameter;
@@ -41,6 +43,9 @@ import org.apache.ignite.internal.util.typedef.F;
  */
 public class ViewTableMacroImpl implements TableMacro {
     /** */
+    private static final ThreadLocal<Set<ViewTableMacroImpl>> stack = ThreadLocal.withInitial(HashSet::new);
+
+    /** */
     private final String viewSql;
 
     /** */
@@ -55,12 +60,15 @@ public class ViewTableMacroImpl implements TableMacro {
     /** {@inheritDoc} */
     @SuppressWarnings("resource")
     @Override public TranslatableTable apply(List<?> arguments) {
-        IgnitePlanner planner = PlanningContext.builder()
-            .parentContext(BaseQueryContext.builder().defaultSchema(schema).build())
-            .build()
-            .planner();
+        if (!stack.get().add(this))
+            throw new IgniteSQLException("Recursive views are not supported: " + viewSql);
 
         try {
+            IgnitePlanner planner = PlanningContext.builder()
+                .parentContext(BaseQueryContext.builder().defaultSchema(schema).build())
+                .build()
+                .planner();
+
             SqlNode sqlNode = planner.parse(viewSql);
             ValidationResult res = planner.validateAndGetTypeMetadata(sqlNode);
 
@@ -81,15 +89,12 @@ public class ViewTableMacroImpl implements TableMacro {
         catch (IgniteSQLException e) {
             throw e;
         }
-        catch (StackOverflowError e) {
-            // This error is possible when we are getting into infinite recursion.
-            // We don't have access to parent planners and validators and can't prevent this error by checking that
-            // this view is already analyzed before for this query.
-            throw new IgniteSQLException("Recursive views are not supported: " + viewSql);
-        }
         catch (Exception e) {
             throw new IgniteSQLException("Failed to validate SQL view query. " + e.getMessage(),
                 IgniteQueryErrorCode.PARSING, e);
+        }
+        finally {
+            stack.get().remove(this);
         }
     }
 

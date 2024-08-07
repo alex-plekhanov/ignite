@@ -1698,6 +1698,11 @@ public class QueryUtils {
 
                 break;
 
+            case SchemaOperationException.CODE_SCHEMA_NOT_FOUND:
+                sqlCode = IgniteQueryErrorCode.SCHEMA_NOT_FOUND;
+
+                break;
+
             default:
                 sqlCode = IgniteQueryErrorCode.UNKNOWN;
         }

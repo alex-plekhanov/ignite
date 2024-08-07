@@ -26,11 +26,11 @@ import org.junit.Test;
 /**
  *
  */
-public class SqlViewTest extends AbstractIndexingCommonTest {
+public class SqlViewsTest extends AbstractIndexingCommonTest {
     /** */
     @Test
     public void testSqlView() throws Exception {
-        startGrid(0);
+        startGrids(3);
 
         sql("CREATE TABLE TEST_TBL(F1 VARCHAR PRIMARY KEY, F2 VARCHAR, F3 VARCHAR)");
 
@@ -49,6 +49,33 @@ public class SqlViewTest extends AbstractIndexingCommonTest {
         assertEquals(3, res.size());
     }
 
+    /**
+     * Tests views on not existing schema.
+     */
+    @Test
+    public void testNotExistingSchema() throws Exception {
+        startGrids(3);
+
+        sql("CREATE TABLE my_table(id INT PRIMARY KEY, val VARCHAR)");
+
+        GridTestUtils.assertThrowsAnyCause(log,
+            () -> sql("CREATE VIEW my_schema.my_view AS SELECT * FROM public.my_table"),
+            IgniteSQLException.class, "Schema doesn't exist: MY_SCHEMA");
+    }
+
+    /** */
+    @Test
+    public void testRecursiveView() throws Exception {
+        startGrid(0);
+
+        sql("CREATE TABLE TEST_VIEW0 (ID INT PRIMARY KEY, VAL VARCHAR)");
+        sql("CREATE VIEW TEST_VIEW1 AS SELECT * FROM TEST_VIEW0");
+        sql("DROP TABLE TEST_VIEW0");
+        sql("CREATE VIEW TEST_VIEW0 AS SELECT * FROM TEST_VIEW1");
+
+        sql("SELECT * FROM TEST_VIEW0");
+    }
+
     /** */
     @Test
     public void testSysSchema() throws Exception {
@@ -57,10 +84,10 @@ public class SqlViewTest extends AbstractIndexingCommonTest {
         startGrid(0);
 
         GridTestUtils.assertThrowsAnyCause(log,
-            () -> sql("CREATE OR REPLACE VIEW sys.sql_views AS SELECT * FROM sys.sql_tables"), IgniteSQLException.class, msg);
+            () -> sql("CREATE OR REPLACE VIEW sys.views AS SELECT * FROM sys.tables"), IgniteSQLException.class, msg);
 
         GridTestUtils.assertThrowsAnyCause(log,
-            () -> sql("DROP VIEW sys.sql_views"), IgniteSQLException.class, msg);
+            () -> sql("DROP VIEW sys.views"), IgniteSQLException.class, msg);
     }
 
     /** */

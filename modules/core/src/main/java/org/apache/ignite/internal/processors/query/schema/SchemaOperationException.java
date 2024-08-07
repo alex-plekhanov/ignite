@@ -60,6 +60,9 @@ public class SchemaOperationException extends IgniteCheckedException {
     /** Code: view already exists. */
     public static final int CODE_VIEW_EXISTS = 10;
 
+    /** Code: schema not found. */
+    public static final int CODE_SCHEMA_NOT_FOUND = 11;
+
     /** Error code. */
     private final int code;
 
@@ -146,6 +149,9 @@ public class SchemaOperationException extends IgniteCheckedException {
 
             case CODE_VIEW_EXISTS:
                 return "View already exists: " + objName;
+
+            case CODE_SCHEMA_NOT_FOUND:
+                return "Schema doesn't exist: " + objName;
 
             default:
                 assert false;

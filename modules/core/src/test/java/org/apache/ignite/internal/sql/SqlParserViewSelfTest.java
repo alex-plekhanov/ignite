@@ -45,6 +45,9 @@ public class SqlParserViewSelfTest extends SqlParserAbstractSelfTest {
         parseValidateCreate("CREATE VIEW \"test\".\"test\" AS SELECT * FROM test2",
             "test", "test", "SELECT * FROM test2", false);
 
+        parseValidateCreate("CREATE VIEW \"te.st\".\"te.st\" AS SELECT * FROM test2",
+            "te.st", "te.st", "SELECT * FROM test2", false);
+
         parseValidateCreate("CREATE VIEW test.\"test\" AS SELECT * FROM test2",
             "TEST", "test", "SELECT * FROM test2", false);
 
@@ -82,6 +85,7 @@ public class SqlParserViewSelfTest extends SqlParserAbstractSelfTest {
         parseValidateDrop("DROP VIEW test.test", "TEST", "TEST", false);
         parseValidateDrop("DROP VIEW test.\"test\"", "TEST", "test", false);
         parseValidateDrop("DROP VIEW \"test\".test", "test", "TEST", false);
+        parseValidateDrop("DROP VIEW \"te.st\".\"te.st\"", "te.st", "te.st", false);
         parseValidateDrop("DROP VIEW IF EXISTS test", null, "TEST", true);
 
         assertParseError(null, "DROP VIEW test.test.test",

@@ -82,5 +82,11 @@ public class UserDefinedViewsPlannerTest extends AbstractPlannerTest {
 
         GridTestUtils.assertThrowsAnyCause(log, () -> physicalPlan("select * from v1", schema), IgniteSQLException.class,
             "Recursive views are not supported");
+
+        schema.addView("V2", "SELECT * FROM V3");
+        schema.addView("V3", "SELECT * FROM V2");
+
+        GridTestUtils.assertThrowsAnyCause(log, () -> physicalPlan("select * from v2", schema), IgniteSQLException.class,
+            "Recursive views are not supported");
     }
 }

@@ -731,6 +731,10 @@ public class SqlCustomParserTest extends GridCommonAbstractTest {
         assertParserThrows("create view my_view as unexpected", SqlParseException.class);
         assertParserThrows("create view my_view(id, name) as select * from my_table", SqlParseException.class);
         assertParserThrows("create view as select * from my_table", SqlParseException.class);
+
+        createView = parse("create view \"my.schema\".\"my.view\" as select * from my_table");
+
+        assertThat(createView.name.names, is(ImmutableList.of("my.schema", "my.view")));
     }
 
     /**
@@ -752,6 +756,10 @@ public class SqlCustomParserTest extends GridCommonAbstractTest {
 
         assertThat(dropView.name.names, is(ImmutableList.of("MY_VIEW")));
         assertThat(dropView.ifExists, is(true));
+
+        dropView = parse("drop view \"my.schema\".\"my.view\"");
+
+        assertThat(dropView.name.names, is(ImmutableList.of("my.schema", "my.view")));
     }
 
     /**

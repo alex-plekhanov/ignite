@@ -136,6 +136,7 @@ import org.apache.ignite.internal.processors.query.SqlQueryHistoryFromClientSelf
 import org.apache.ignite.internal.processors.query.SqlQueryHistorySelfTest;
 import org.apache.ignite.internal.processors.query.SqlQueryIndexWithDifferentTypeTest;
 import org.apache.ignite.internal.processors.query.SqlSystemViewsSelfTest;
+import org.apache.ignite.internal.processors.query.SqlViewsTest;
 import org.apache.ignite.internal.processors.query.h2.GridIndexRebuildSelfTest;
 import org.apache.ignite.internal.processors.query.h2.GridIndexRebuildTest;
 import org.apache.ignite.internal.processors.query.h2.QueryParserMetricsHolderSelfTest;
@@ -260,6 +261,7 @@ import org.junit.runners.Suite;
     IgniteCheckClusterStateBeforeExecuteQueryTest.class,
     OptimizedMarshallerIndexNameTest.class,
     SqlSystemViewsSelfTest.class,
+    SqlViewsTest.class,
     ScanQueryConcurrentUpdatesTest.class,
     ScanQueryConcurrentSqlUpdatesTest.class,
     ReservationsOnDoneAfterTopologyUnlockFailTest.class,
