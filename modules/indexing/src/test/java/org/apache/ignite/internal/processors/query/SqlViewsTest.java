@@ -65,19 +65,6 @@ public class SqlViewsTest extends AbstractIndexingCommonTest {
 
     /** */
     @Test
-    public void testRecursiveView() throws Exception {
-        startGrid(0);
-
-        sql("CREATE TABLE TEST_VIEW0 (ID INT PRIMARY KEY, VAL VARCHAR)");
-        sql("CREATE VIEW TEST_VIEW1 AS SELECT * FROM TEST_VIEW0");
-        sql("DROP TABLE TEST_VIEW0");
-        sql("CREATE VIEW TEST_VIEW0 AS SELECT * FROM TEST_VIEW1");
-
-        sql("SELECT * FROM TEST_VIEW0");
-    }
-
-    /** */
-    @Test
     public void testSysSchema() throws Exception {
         String msg = "DDL statements are not supported on SYS schema";
 

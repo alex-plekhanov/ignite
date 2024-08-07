@@ -24,7 +24,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDdl;
-import org.apache.calcite.sql.SqlDrop;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
@@ -217,7 +216,8 @@ public class SqlToNativeCommandConverter {
         String schemaName = deriveSchemaName(sqlCmd.name, ctx);
         String viewName = deriveObjectName(sqlCmd.name, ctx, "View name");
 
-        return new SqlCreateViewCommand(schemaName, viewName, sqlCmd.query.toSqlString(CalciteSqlDialect.DEFAULT).toString(), sqlCmd.getReplace());
+        return new SqlCreateViewCommand(schemaName, viewName,
+            sqlCmd.query.toSqlString(CalciteSqlDialect.DEFAULT).toString(), sqlCmd.getReplace());
     }
 
     /**

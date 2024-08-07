@@ -30,7 +30,6 @@ import java.util.stream.Collectors;
 import org.apache.calcite.plan.Context;
 import org.apache.calcite.schema.SchemaPlus;
 import org.apache.calcite.tools.FrameworkConfig;
-import org.apache.calcite.tools.Frameworks;
 import org.apache.calcite.util.CancelFlag;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
