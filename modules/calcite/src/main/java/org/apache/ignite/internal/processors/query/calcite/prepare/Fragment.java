@@ -27,6 +27,8 @@ import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.ignite.IgniteBinary;
+import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.query.calcite.metadata.ColocationMappingException;
 import org.apache.ignite.internal.processors.query.calcite.metadata.FragmentMapping;
 import org.apache.ignite.internal.processors.query.calcite.metadata.FragmentMappingException;
@@ -43,7 +45,7 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import static org.apache.ignite.internal.processors.query.calcite.externalize.RelJsonWriter.toJson;
+import static org.apache.ignite.internal.processors.query.calcite.externalize.RelBinaryObjectWriter.toBinary;
 
 /**
  * Fragment of distributed query
@@ -57,7 +59,7 @@ public class Fragment {
 
     /** Serialized root representation. */
     @GridToStringExclude
-    private final String rootSer;
+    private volatile byte[] rootSer;
 
     /** */
     private final FragmentMapping mapping;
@@ -75,11 +77,11 @@ public class Fragment {
     }
 
     /** */
-    Fragment(long id, IgniteRel root, List<IgniteReceiver> remotes, @Nullable String rootSer, @Nullable FragmentMapping mapping) {
+    Fragment(long id, IgniteRel root, List<IgniteReceiver> remotes, @Nullable byte[] rootSer, @Nullable FragmentMapping mapping) {
         this.id = id;
         this.root = root;
         this.remotes = ImmutableList.copyOf(remotes);
-        this.rootSer = rootSer != null ? rootSer : toJson(root);
+        this.rootSer = rootSer;
         this.mapping = mapping;
     }
 
@@ -102,7 +104,19 @@ public class Fragment {
      *
      * @return Serialized form.
      */
-    public String serialized() {
+    public byte[] serialized() {
+        return rootSer;
+    }
+
+    /** */
+    public byte[] serialize(CacheObjectBinaryProcessorImpl binary) {
+        if (rootSer == null) {
+            synchronized (this) {
+                if (rootSer == null)
+                    rootSer = toBinary(binary, root);
+            }
+        }
+
         return rootSer;
     }
 

@@ -48,6 +48,7 @@ import org.apache.ignite.internal.processors.cache.CacheObjectUtils;
 import org.apache.ignite.internal.processors.cache.CacheObjectValueContext;
 import org.apache.ignite.internal.processors.cache.GridCachePartitionExchangeManager;
 import org.apache.ignite.internal.processors.cache.QueryCursorImpl;
+import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.cache.distributed.near.GridNearTxLocal;
 import org.apache.ignite.internal.processors.cache.query.CacheQueryType;
 import org.apache.ignite.internal.processors.cache.query.GridCacheQueryType;
@@ -84,6 +85,7 @@ import org.apache.ignite.internal.processors.query.calcite.metadata.FragmentMapp
 import org.apache.ignite.internal.processors.query.calcite.metadata.MappingService;
 import org.apache.ignite.internal.processors.query.calcite.metadata.RemoteException;
 import org.apache.ignite.internal.processors.query.calcite.prepare.BaseQueryContext;
+import org.apache.ignite.internal.processors.query.calcite.prepare.BinaryCacheKey;
 import org.apache.ignite.internal.processors.query.calcite.prepare.DdlPlan;
 import org.apache.ignite.internal.processors.query.calcite.prepare.ExecutionPlan;
 import org.apache.ignite.internal.processors.query.calcite.prepare.ExplainPlan;
@@ -120,7 +122,7 @@ import org.jetbrains.annotations.Nullable;
 
 import static java.util.Collections.singletonList;
 import static org.apache.ignite.events.EventType.EVT_CACHE_QUERY_OBJECT_READ;
-import static org.apache.ignite.internal.processors.query.calcite.externalize.RelJsonReader.fromJson;
+import static org.apache.ignite.internal.processors.query.calcite.externalize.RelBinaryObjectReader.fromBinary;
 
 /**
  *
@@ -203,7 +205,7 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
     private InjectResourcesService injectSvc;
 
     /** */
-    private final Map<String, FragmentPlan> fragmentPlanCache = new GridBoundedConcurrentLinkedHashMap<>(1024);
+    private final Map<BinaryCacheKey, FragmentPlan> fragmentPlanCache = new GridBoundedConcurrentLinkedHashMap<>(1024);
 
     /**
      * @param ctx Kernal.
@@ -502,8 +504,8 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
     }
 
     /** */
-    private FragmentPlan prepareFragment(BaseQueryContext ctx, String jsonFragment) {
-        return new FragmentPlan(jsonFragment, fromJson(ctx, jsonFragment));
+    private FragmentPlan prepareFragment(BaseQueryContext bctx, byte[] serializedFragment) {
+        return new FragmentPlan(null, fromBinary((CacheObjectBinaryProcessorImpl)ctx.cacheObjects(), bctx, serializedFragment));
     }
 
     /** {@inheritDoc} */
@@ -676,7 +678,7 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
                             qry.id(),
                             qry.localQueryId(),
                             qry.context().schemaName(),
-                            fragment.serialized(),
+                            fragment.serialize((CacheObjectBinaryProcessorImpl)ctx.cacheObjects()),
                             ectx.topologyVersion(),
                             fragmentDesc,
                             fragmentsPerNode.get(nodeId).intValue(),
@@ -885,7 +887,8 @@ public class ExecutionServiceImpl<Row> extends AbstractService implements Execut
                 msg.applicationAttributes() == null ? Contexts.empty() : Contexts.of(new SessionContextImpl(msg.applicationAttributes())),
                 msg.schema());
 
-            FragmentPlan fragmentPlan = fragmentPlanCache.computeIfAbsent(msg.root(), k -> prepareFragment(qctx, k));
+            FragmentPlan fragmentPlan = fragmentPlanCache.computeIfAbsent(new BinaryCacheKey(msg.root()),
+                k -> prepareFragment(qctx, msg.root()));
 
             ExecutionContext<Row> ectx = new ExecutionContext<>(
                 qctx,

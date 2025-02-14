@@ -45,14 +45,17 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Util;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.failure.FailureContext;
+import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
+import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.failure.FailureProcessor;
 import org.apache.ignite.internal.processors.query.calcite.CalciteQueryProcessor;
 import org.apache.ignite.internal.processors.query.calcite.exec.ExecutionContext;
 import org.apache.ignite.internal.processors.query.calcite.exec.task.StripedQueryTaskExecutor;
-import org.apache.ignite.internal.processors.query.calcite.externalize.RelJsonReader;
+import org.apache.ignite.internal.processors.query.calcite.externalize.RelBinaryObjectReader;
 import org.apache.ignite.internal.processors.query.calcite.message.CalciteMessage;
 import org.apache.ignite.internal.processors.query.calcite.message.MessageServiceImpl;
 import org.apache.ignite.internal.processors.query.calcite.message.TestIoManager;
@@ -83,7 +86,7 @@ import org.junit.After;
 import org.junit.Before;
 
 import static org.apache.calcite.tools.Frameworks.createRootSchema;
-import static org.apache.ignite.internal.processors.query.calcite.externalize.RelJsonWriter.toJson;
+import static org.apache.ignite.internal.processors.query.calcite.externalize.RelBinaryObjectWriter.toBinary;
 
 /**
  *
@@ -322,13 +325,33 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
     protected void checkSplitAndSerialization(IgniteRel rel, Collection<IgniteSchema> schemas) {
         assertNotNull(rel);
 
+        CacheObjectBinaryProcessorImpl binaryProc;
+
+        try {
+            IgniteEx igniteEx = startGrid(0); // TODO workaround to check serialization.
+            binaryProc = (CacheObjectBinaryProcessorImpl)igniteEx.context().cacheObjects();
+/*
+            GridKernalContext ctx = new StandaloneGridKernalContext(log, null, null);
+            binaryProc = (CacheObjectBinaryProcessorImpl)ctx.cacheObjects();
+*/
+/*
+            GridTestKernalContext ctx = newContext();
+            binaryProc = new CacheObjectBinaryProcessorImpl(ctx);
+            ctx.add(new GridSystemViewManager(ctx));
+            ctx.add(binaryProc);
+*/
+        }
+        catch (Exception e) {
+            throw new IgniteException(e);
+        }
+
         rel = Cloner.clone(rel);
 
         List<Fragment> fragments = new Splitter().go(rel);
-        List<String> serialized = new ArrayList<>(fragments.size());
+        List<byte[]> serialized = new ArrayList<>(fragments.size());
 
         for (Fragment fragment : fragments)
-            serialized.add(toJson(fragment.root()));
+            serialized.add(toBinary(binaryProc, fragment.root()));
 
         assertNotNull(serialized);
 
@@ -336,8 +359,8 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
 
         List<RelNode> deserializedNodes = new ArrayList<>();
 
-        for (String s : serialized) {
-            RelJsonReader reader = new RelJsonReader(ctx);
+        for (byte[] s : serialized) {
+            RelBinaryObjectReader reader = new RelBinaryObjectReader(binaryProc, ctx);
 
             deserializedNodes.add(reader.read(s));
         }
@@ -367,6 +390,8 @@ public abstract class AbstractPlannerTest extends GridCommonAbstractTest {
                 );
             }
         }
+
+        stopGrid(0);
     }
 
     /** */

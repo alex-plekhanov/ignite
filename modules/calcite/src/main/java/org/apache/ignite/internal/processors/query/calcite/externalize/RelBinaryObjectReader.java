@@ -16,7 +16,6 @@
  */
 package org.apache.ignite.internal.processors.query.calcite.externalize;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.AbstractList;
 import java.util.ArrayList;
@@ -25,9 +24,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptSchema;
@@ -46,73 +42,69 @@ import org.apache.calcite.sql.SqlAggFunction;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
-import org.apache.ignite.IgniteException;
+import org.apache.ignite.binary.BinaryObject;
+import org.apache.ignite.internal.binary.GridBinaryMarshaller;
+import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.query.calcite.prepare.BaseQueryContext;
 import org.apache.ignite.internal.processors.query.calcite.prepare.bounds.SearchBounds;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 
 /** */
 @SuppressWarnings({"rawtypes", "unchecked"})
-public class RelJsonReader {
-    /** */
-    private static final TypeReference<LinkedHashMap<String, Object>> TYPE_REF =
-        new TypeReference<LinkedHashMap<String, Object>>() {};
-
-    /** */
-    private final ObjectMapper mapper = new ObjectMapper().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
-
+public class RelBinaryObjectReader {
     /** */
     private final RelOptSchema relOptSchema;
 
     /** */
-    private final RelJson relJson;
+    private final RelBinaryObject relBinaryObj;
 
     /** */
-    private final Map<String, RelNode> relMap = new LinkedHashMap<>();
+    private final GridBinaryMarshaller marshaller;
+
+    /** */
+    private final Map<Integer, RelNode> relMap = new LinkedHashMap<>();
 
     /** */
     private RelNode lastRel;
 
     /** */
-    public static <T extends RelNode> T fromJson(BaseQueryContext ctx, String json) {
-        RelJsonReader reader = new RelJsonReader(ctx);
+    public static <T extends RelNode> T fromBinary(CacheObjectBinaryProcessorImpl binary, BaseQueryContext ctx, byte[] payload) {
+        RelBinaryObjectReader reader = new RelBinaryObjectReader(binary, ctx);
 
-        return (T)reader.read(json);
+        return (T)reader.read(payload);
     }
 
     /** */
-    public RelJsonReader(BaseQueryContext qctx) {
+    public RelBinaryObjectReader(CacheObjectBinaryProcessorImpl binary, BaseQueryContext qctx) {
         relOptSchema = qctx.catalogReader();
 
-        relJson = new RelJson(qctx);
+        marshaller = binary.marshaller();
+        relBinaryObj = new RelBinaryObject(null, qctx);
     }
 
     /** */
-    public RelNode read(String s) {
-        try {
-            lastRel = null;
-            Map<String, Object> o = mapper.readValue(s, TYPE_REF);
-            List<Map<String, Object>> rels = (List)o.get("rels");
-            readRels(rels);
-            return lastRel;
-        }
-        catch (IOException e) {
-            throw new IgniteException(e);
-        }
+    public RelNode read(byte[] payload) {
+        lastRel = null;
+
+        List<BinaryObject> rels = marshaller.unmarshal(payload, null);
+
+        readRels(rels);
+
+        return lastRel;
     }
 
     /** */
-    private void readRels(List<Map<String, Object>> jsonRels) {
-        for (Map<String, Object> jsonRel : jsonRels)
-            readRel(jsonRel);
+    private void readRels(List<BinaryObject> binaryRels) {
+        for (BinaryObject binaryRel : binaryRels)
+            readRel(binaryRel);
     }
 
     /** */
-    private void readRel(Map<String, Object> jsonRel) {
-        String id = (String)jsonRel.get("id");
-        String type = (String)jsonRel.get("relOp");
-        Function<RelInput, RelNode> factory = relJson.factory(type);
-        RelNode rel = factory.apply(new RelInputImpl(jsonRel));
+    private void readRel(BinaryObject bo) {
+        Integer id = bo.field("id");
+        String type = bo.type().typeName();
+        Function<RelInput, RelNode> factory = relBinaryObj.factory(type);
+        RelNode rel = factory.apply(new RelInputImpl(bo));
         relMap.put(id, rel);
         lastRel = rel;
     }
@@ -120,11 +112,11 @@ public class RelJsonReader {
     /** */
     private class RelInputImpl implements RelInputEx {
         /** */
-        private final Map<String, Object> jsonRel;
+        private final BinaryObject binaryObjRel;
 
         /** */
-        private RelInputImpl(Map<String, Object> jsonRel) {
-            this.jsonRel = jsonRel;
+        private RelInputImpl(BinaryObject binaryObjRel) {
+            this.binaryObjRel = binaryObjRel;
         }
 
         /** {@inheritDoc} */
@@ -152,18 +144,22 @@ public class RelJsonReader {
 
         /** {@inheritDoc} */
         @Override public List<RelNode> getInputs() {
-            List<String> jsonInputs = getStringList("inputs");
-            if (jsonInputs == null)
+            List<Integer> inputIds = getIntegerList("inputs");
+
+            if (inputIds == null)
                 return ImmutableList.of(lastRel);
+
             List<RelNode> inputs = new ArrayList<>();
-            for (String jsonInput : jsonInputs)
-                inputs.add(lookupInput(jsonInput));
+
+            for (Integer inputId : inputIds)
+                inputs.add(lookupInput(inputId));
+
             return inputs;
         }
 
         /** {@inheritDoc} */
         @Override public RexNode getExpression(String tag) {
-            return relJson.toRex(this, jsonRel.get(tag));
+            return relBinaryObj.toRex(this, binaryObjRel.field(tag));
         }
 
         /** {@inheritDoc} */
@@ -185,96 +181,101 @@ public class RelJsonReader {
 
         /** {@inheritDoc} */
         @Override public List<String> getStringList(String tag) {
-            return (List<String>)jsonRel.get(tag);
+            return binaryObjRel.field(tag);
         }
 
         /** {@inheritDoc} */
         @Override public List<Integer> getIntegerList(String tag) {
-            return (List<Integer>)jsonRel.get(tag);
+            return binaryObjRel.field(tag);
         }
 
         /** {@inheritDoc} */
         @Override public List<List<Integer>> getIntegerListList(String tag) {
-            return (List<List<Integer>>)jsonRel.get(tag);
+            return binaryObjRel.field(tag);
         }
 
         /** {@inheritDoc} */
         @Override public List<AggregateCall> getAggregateCalls(String tag) {
-            List<Map<String, Object>> jsonAggs = (List)jsonRel.get(tag);
+            List<BinaryObject> aggs = binaryObjRel.field(tag);
             List<AggregateCall> inputs = new ArrayList<>();
-            for (Map<String, Object> jsonAggCall : jsonAggs)
-                inputs.add(toAggCall(jsonAggCall));
+
+            for (BinaryObject agg : aggs)
+                inputs.add(toAggCall(agg));
+
             return inputs;
         }
 
         /** {@inheritDoc} */
         @Override public Object get(String tag) {
-            return jsonRel.get(tag);
+            return binaryObjRel.field(tag);
         }
 
         /** {@inheritDoc} */
         @Override public String getString(String tag) {
-            return (String)jsonRel.get(tag);
+            return binaryObjRel.field(tag);
         }
 
         /** {@inheritDoc} */
         @Override public float getFloat(String tag) {
-            return ((Number)jsonRel.get(tag)).floatValue();
+            return ((Number)binaryObjRel.field(tag)).floatValue();
         }
 
         /** {@inheritDoc} */
         @Override public BigDecimal getBigDecimal(String tag) {
-            return SqlFunctions.toBigDecimal(jsonRel.get(tag));
+            return SqlFunctions.toBigDecimal((Object)binaryObjRel.field(tag));
         }
 
         /** {@inheritDoc} */
-        @Override public boolean getBoolean(String tag, boolean default_) {
-            Boolean b = (Boolean)jsonRel.get(tag);
-            return b != null ? b : default_;
+        @Override public boolean getBoolean(String tag, boolean dflt) {
+            Boolean b = binaryObjRel.field(tag);
+            return b != null ? b : dflt;
         }
 
         /** {@inheritDoc} */
-        @Override public <E extends Enum<E>> E getEnum(String tag, Class<E> enumClass) {
+        @Override public <E extends Enum<E>> E getEnum(String tag, Class<E> enumCls) {
             Object name = get(tag);
+
             if (name instanceof String) {
                 // Some types of nodes (Join for joinType enum, for example) serialize names in lower case.
-                E res = Util.enumVal(enumClass, ((String)name).toUpperCase(Locale.ROOT));
+                E res = Util.enumVal(enumCls, ((String)name).toUpperCase(Locale.ROOT));
 
                 if (res != null)
                     return res;
             }
 
-            return relJson.toEnum(name);
+            return relBinaryObj.toEnum(name);
         }
 
         /** {@inheritDoc} */
         @Override public List<RexNode> getExpressionList(String tag) {
-            List<Object> jsonNodes = (List)jsonRel.get(tag);
-            if (jsonNodes == null)
+            List<BinaryObject> boNodes = binaryObjRel.field(tag);
+
+            if (boNodes == null)
                 return null;
 
-            List<RexNode> nodes = new ArrayList<>();
-            for (Object jsonNode : jsonNodes)
-                nodes.add(relJson.toRex(this, jsonNode));
+            List<RexNode> nodes = new ArrayList<>(boNodes.size());
+
+            for (BinaryObject boNode : boNodes)
+                nodes.add(relBinaryObj.toRex(this, boNode));
+
             return nodes;
         }
 
         /** {@inheritDoc} */
         @Override public RelDataType getRowType(String tag) {
-            Object o = jsonRel.get(tag);
-            return relJson.toType(Commons.typeFactory(Commons.emptyCluster()), o);
+            Object o = binaryObjRel.field(tag);
+            return relBinaryObj.toType(Commons.typeFactory(Commons.emptyCluster()), o);
         }
 
         /** {@inheritDoc} */
         @Override public RelDataType getRowType(String expressionsTag, String fieldsTag) {
             List<RexNode> expressionList = getExpressionList(expressionsTag);
-            List<String> names =
-                (List<String>)get(fieldsTag);
+            List<String> names = (List<String>)get(fieldsTag);
+
             return Commons.typeFactory(Commons.emptyCluster()).createStructType(
                 new AbstractList<Map.Entry<String, RelDataType>>() {
-                    @Override public Map.Entry<String, RelDataType> get(int index) {
-                        return Pair.of(names.get(index),
-                            expressionList.get(index).getType());
+                    @Override public Map.Entry<String, RelDataType> get(int idx) {
+                        return Pair.of(names.get(idx), expressionList.get(idx).getType());
                     }
 
                     @Override public int size() {
@@ -285,64 +286,67 @@ public class RelJsonReader {
 
         /** {@inheritDoc} */
         @Override public RelCollation getCollation() {
-            return relJson.toCollation((List)get("collation"));
+            return relBinaryObj.toCollation((List)get("collation"));
         }
 
         /** {@inheritDoc} */
         @Override public RelCollation getCollation(String tag) {
-            return relJson.toCollation((List)get(tag));
+            return relBinaryObj.toCollation((List)get(tag));
         }
 
         /** {@inheritDoc} */
         @Override public List<SearchBounds> getSearchBounds(String tag) {
-            return relJson.toSearchBoundList(this, (List<Map<String, Object>>)get(tag));
+            return relBinaryObj.toSearchBoundList(this, (List<BinaryObject>)get(tag));
         }
 
         /** {@inheritDoc} */
         @Override public RelDistribution getDistribution() {
-            return relJson.toDistribution(get("distribution"));
+            return relBinaryObj.toDistribution(binaryObjRel.field("distribution"));
         }
 
         /** {@inheritDoc} */
         @Override public ImmutableList<ImmutableList<RexLiteral>> getTuples(String tag) {
-            List<List> jsonTuples = (List)get(tag);
-            ImmutableList.Builder<ImmutableList<RexLiteral>> builder =
-                ImmutableList.builder();
-            for (List jsonTuple : jsonTuples)
-                builder.add(getTuple(jsonTuple));
+            List<List> tuples = (List)get(tag);
+
+            ImmutableList.Builder<ImmutableList<RexLiteral>> builder = ImmutableList.builder();
+
+            for (List tuple : tuples)
+                builder.add(getTuple(tuple));
+
             return builder.build();
         }
 
         /** */
-        private RelNode lookupInput(String jsonInput) {
-            RelNode node = relMap.get(jsonInput);
+        private RelNode lookupInput(Integer inputId) {
+            RelNode node = relMap.get(inputId);
+
             if (node == null)
-                throw new RuntimeException("unknown id " + jsonInput
-                    + " for relational expression");
+                throw new RuntimeException("Unknown id " + inputId + " for relational expression");
+
             return node;
         }
 
         /** */
-        private ImmutableList<RexLiteral> getTuple(List jsonTuple) {
-            ImmutableList.Builder<RexLiteral> builder =
-                ImmutableList.builder();
-            for (Object jsonVal : jsonTuple)
-                builder.add((RexLiteral)relJson.toRex(this, jsonVal));
+        private ImmutableList<RexLiteral> getTuple(List<BinaryObject> tuple) {
+            ImmutableList.Builder<RexLiteral> builder = ImmutableList.builder();
+
+            for (BinaryObject val : tuple)
+                builder.add((RexLiteral)relBinaryObj.toRex(this, val));
+
             return builder.build();
         }
 
         /** */
-        private AggregateCall toAggCall(Map<String, Object> jsonAggCall) {
-            Map<String, Object> aggMap = (Map)jsonAggCall.get("agg");
-            SqlAggFunction aggregation = (SqlAggFunction)relJson.toOp(aggMap);
-            Boolean distinct = (Boolean)jsonAggCall.get("distinct");
-            List<Integer> operands = (List<Integer>)jsonAggCall.get("operands");
-            Integer filterOperand = (Integer)jsonAggCall.get("filter");
-            RelDataType type = relJson.toType(Commons.typeFactory(), jsonAggCall.get("type"));
-            String name = (String)jsonAggCall.get("name");
-            RelCollation collation = relJson.toCollation((List<Map<String, Object>>)jsonAggCall.get("coll"));
-            List<RexNode> rexList = Commons.transform((List<Object>)jsonAggCall.get("rexList"),
-                node -> relJson.toRex(this, node));
+        private AggregateCall toAggCall(BinaryObject agg) {
+            SqlAggFunction aggregation = (SqlAggFunction)relBinaryObj.toOp(agg.field("agg"));
+            Boolean distinct = agg.field("distinct");
+            List<Integer> operands = agg.field("operands");
+            Integer filterOperand = agg.field("filter");
+            RelDataType type = relBinaryObj.toType(Commons.typeFactory(), agg.field("type"));
+            String name = agg.field("name");
+            RelCollation collation = relBinaryObj.toCollation(agg.field("coll"));
+            List<RexNode> rexList = Commons.transform((List<BinaryObject>)agg.field("rexList"),
+                node -> relBinaryObj.toRex(this, node));
 
             return AggregateCall.create(aggregation, distinct, false, false, rexList, operands,
                 filterOperand == null ? -1 : filterOperand, null, collation, type, name);

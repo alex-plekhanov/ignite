@@ -54,7 +54,7 @@ public class QueryStartRequest implements MarshalableMessage, ExecutionContextAw
 
     /** */
     @Order(value = 5)
-    private String root;
+    private byte[] root;
 
     /** Total count of fragments in query for this node. */
     @Order(value = 6, method = "totalFragmentsCount")
@@ -85,7 +85,7 @@ public class QueryStartRequest implements MarshalableMessage, ExecutionContextAw
         UUID qryId,
         long originatingQryId,
         String schema,
-        String root,
+        byte[] root,
         AffinityTopologyVersion ver,
         FragmentDescription fragmentDesc,
         int totalFragmentsCnt,
@@ -188,12 +188,12 @@ public class QueryStartRequest implements MarshalableMessage, ExecutionContextAw
     /**
      * @return Fragment plan.
      */
-    public String root() {
+    public byte[] root() {
         return root;
     }
 
     /** */
-    public void root(String root) {
+    public void root(byte[] root) {
         this.root = root;
     }
 
