@@ -157,16 +157,24 @@ public class UnnestIntegrationTest extends AbstractBasicIntegrationTest {
     /** */
     @Test
     public void testTableJoin() {
-        sql("CREATE TABLE t(id INT, val VARCHAR)");
+        sql("CREATE TABLE t(id INT, val VARCHAR, PRIMARY KEY(id))");
 
         for (int i = 0; i < 1000; i++)
             sql("INSERT INTO t VALUES (?, ?)", i, "val" + i);
 
         assertQuery("SELECT * FROM t WHERE id IN (SELECT * FROM UNNEST(ARRAY[10, 20, 30]))")
+            //.planEquals("TODO") // TODO CNLJ
             .returns(10, "val10").returns(20, "val20").returns(30, "val30").check();
 
+/*
         assertQuery("SELECT * FROM t WHERE id IN (SELECT * FROM UNNEST(?))").withParams(F.asList(10, 20, 30))
-            .planEquals("TODO") // TODO CNLJ
+            //.planEquals("TODO") // TODO CNLJ
             .returns(10, "val10").returns(20, "val20").returns(30, "val30").check();
+*/
+
+        assertQuery("SELECT t.* FROM UNNEST(?) u(a) JOIN t ON t.id = u.a").withParams(F.asList(10, 20, 30))
+            //.planEquals("TODO") // TODO CNLJ
+            .returns(10, "val10").returns(20, "val20").returns(30, "val30").check();
+
     }
 }
