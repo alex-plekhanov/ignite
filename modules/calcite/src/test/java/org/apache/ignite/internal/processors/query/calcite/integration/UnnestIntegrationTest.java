@@ -175,6 +175,5 @@ public class UnnestIntegrationTest extends AbstractBasicIntegrationTest {
         assertQuery("SELECT t.* FROM UNNEST(?) u(a) JOIN t ON t.id = u.a").withParams(F.asList(10, 20, 30))
             //.planEquals("TODO") // TODO CNLJ
             .returns(10, "val10").returns(20, "val20").returns(30, "val30").check();
-
     }
 }
