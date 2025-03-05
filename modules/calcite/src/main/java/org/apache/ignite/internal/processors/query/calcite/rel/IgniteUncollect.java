@@ -37,28 +37,17 @@ import static org.apache.ignite.internal.processors.query.calcite.trait.TraitUti
 /**
  * Implementation of {@link org.apache.calcite.rel.core.Uncollect} in {@link IgniteConvention Ignite calling convention}.
  */
-public class IgniteUncollect extends Uncollect implements SourceAwareIgniteRel {
-    /** */
-    private final long sourceId;
-
+public class IgniteUncollect extends Uncollect implements IgniteRel {
     /**
      * Creates an Uncollect relational operator.
      */
     public IgniteUncollect(RelOptCluster cluster, RelTraitSet traitSet, RelNode child, boolean withOrdinality) {
         super(cluster, traitSet, child, withOrdinality, Collections.emptyList());
-
-        sourceId = -1L;
     }
 
     /** */
     public IgniteUncollect(RelInput input) {
         super(changeTraits(input, IgniteConvention.INSTANCE));
-
-        Object srcIdObj = input.get("sourceId");
-        if (srcIdObj != null)
-            sourceId = ((Number)srcIdObj).longValue();
-        else
-            sourceId = -1L;
     }
 
     /**
@@ -89,16 +78,6 @@ public class IgniteUncollect extends Uncollect implements SourceAwareIgniteRel {
     /** {@inheritDoc} */
     @Override public IgniteRel clone(RelOptCluster cluster, List<IgniteRel> inputs) {
         return new IgniteUncollect(cluster, getTraitSet(), sole(inputs), withOrdinality);
-    }
-
-    /** {@inheritDoc} */
-    @Override public IgniteRel clone(long sourceId) {
-        return new IgniteUncollect(getCluster(), getTraitSet(), getInput(), withOrdinality);
-    }
-
-    /** {@inheritDoc} */
-    @Override public long sourceId() {
-        return sourceId;
     }
 
     /** {@inheritDoc} */
