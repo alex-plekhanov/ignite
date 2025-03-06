@@ -30,7 +30,6 @@ import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteProject;
 import org.apache.ignite.internal.processors.query.calcite.trait.CorrelationTrait;
-import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
 import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.util.RexUtils;
 
@@ -50,9 +49,7 @@ public class ProjectConverterRule extends AbstractIgniteConverterRule<LogicalPro
     @Override protected PhysicalNode convert(RelOptPlanner planner, RelMetadataQuery mq, LogicalProject rel) {
         RelOptCluster cluster = rel.getCluster();
 
-        RelTraitSet traits = cluster
-            .traitSetOf(IgniteConvention.INSTANCE)
-            .replace(IgniteDistributions.single());
+        RelTraitSet traits = cluster.traitSetOf(IgniteConvention.INSTANCE);
 
         Set<CorrelationId> corrIds = RexUtils.extractCorrelationIds(rel.getProjects());
 

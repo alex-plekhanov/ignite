@@ -73,7 +73,7 @@ public class UncollectPlannerTest extends AbstractPlannerTest {
             .and(nodeOrAnyChild(isInstanceOf(Join.class)
                 .and(nodeOrAnyChild(isTableScan("broadcast_tbl")))
                 .and(nodeOrAnyChild(isInstanceOf(IgniteUncollect.class)
-                    .and(hasDistribution(IgniteDistributions.single())))) // Pass through by root node.
+                    .and(hasDistribution(IgniteDistributions.broadcast()))))
             )));
     }
 
@@ -89,7 +89,7 @@ public class UncollectPlannerTest extends AbstractPlannerTest {
                 .and(nodeOrAnyChild(isTableScan("random_tbl")))))
             .and(nodeOrAnyChild(isInstanceOf(IgniteExchange.class).negate())
                 .and(nodeOrAnyChild(isInstanceOf(IgniteUncollect.class)
-                    .and(hasDistribution(IgniteDistributions.single())))))
+                    .and(hasDistribution(IgniteDistributions.broadcast())))))
         ));
     }
 
@@ -120,7 +120,7 @@ public class UncollectPlannerTest extends AbstractPlannerTest {
             .and(input(0, nodeOrAnyChild(isTableScan("random_tbl"))))
             .and(input(1, nodeOrAnyChild(isInstanceOf(IgniteExchange.class).negate())
                 .and(nodeOrAnyChild(isInstanceOf(IgniteUncollect.class)
-                    .and(hasDistribution(IgniteDistributions.single()))))))
+                    .and(hasDistribution(IgniteDistributions.broadcast()))))))
         ));
     }
 }
