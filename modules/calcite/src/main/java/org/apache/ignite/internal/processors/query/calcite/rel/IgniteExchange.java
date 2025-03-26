@@ -83,6 +83,9 @@ public class IgniteExchange extends Exchange implements IgniteRel {
         if (RelDistributions.BROADCAST_DISTRIBUTED.equals(distribution))
             totalBytes *= IgniteCost.BROADCAST_DISTRIBUTION_PENALTY;
 
+        if (RelDistributions.SINGLETON.equals(distribution))
+            totalBytes *= 1.01;
+
         return costFactory.makeCost(rowCnt, rowCnt * IgniteCost.ROW_PASS_THROUGH_COST, 0, 0, totalBytes);
     }
 

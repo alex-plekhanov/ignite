@@ -179,6 +179,12 @@ public abstract class AbstractIgniteJoin extends Join implements TraitsAwareIgni
             rightTraits = right.replace(rightDistr);
 
             res.add(Pair.of(outTraits, ImmutableList.of(leftTraits, rightTraits)));
+
+            outTraits = nodeTraits.replace(rightDistr.apply(
+                Mappings.offsetTarget(Mappings.createIdentity(this.right.getRowType().getFieldCount()),
+                    this.left.getRowType().getFieldCount())));
+
+            res.add(Pair.of(outTraits, ImmutableList.of(leftTraits, rightTraits)));
         }
 
         leftTraits = left.replace(hash(joinInfo.leftKeys, DistributionFunction.hash()));

@@ -34,7 +34,7 @@ public class TpchTest extends AbstractBasicIntegrationTest {
     /** */
     @Parameterized.Parameters(name = "queryId={0}")
     public static Collection<Object> params() {
-        return F.asList(16, 20);
+        return F.asList(17);
     }
 
     /** {@inheritDoc} */
@@ -43,7 +43,7 @@ public class TpchTest extends AbstractBasicIntegrationTest {
 
         TpchHelper.createTables(client);
 
-        TpchHelper.fillTables(client, 0.1);
+        TpchHelper.fillTables(client, 1);
 
         TpchHelper.collectSqlStatistics(client);
     }
@@ -58,6 +58,12 @@ public class TpchTest extends AbstractBasicIntegrationTest {
      */
     @Test
     public void test() throws Exception {
-        sql(TpchHelper.getQuery(qryId));
+        Object res = sql(TpchHelper.getQuery(qryId));
+
+        //String sql = "select * from part where p_brand = 'Brand#23' and p_container = 'MED BOX'";
+
+        //Object res = sql("select count(*) from lineitem");
+
+        System.out.println(res);
     }
 }

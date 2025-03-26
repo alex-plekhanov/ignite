@@ -109,7 +109,7 @@ public class TpchBenchmark {
     private String scale;
 
     /** Query engine. */
-    @Param({"CALCITE", "H2"})
+    @Param({"CALCITE"})
     private String engine;
 
     /**
@@ -119,28 +119,7 @@ public class TpchBenchmark {
      * The 11, 13, 15 can not be parsed with H2.
      */
     @Param({
-        "1",
-//        "2", // TODO: https://issues.apache.org/jira/browse/IGNITE-24731
-        "3",
-        "4",
-//        "5", // TODO: https://issues.apache.org/jira/browse/IGNITE-24741
-        "6",
-        "7",
-//        "8", // TODO: https://issues.apache.org/jira/browse/IGNITE-24746
-//        "9", // TODO: https://issues.apache.org/jira/browse/IGNITE-24752
-        "10",
-        "11",
-        "12",
-        "13",
-        "14",
-        "15",
-//        "16", // TODO: https://issues.apache.org/jira/browse/IGNITE-24753
-//        "17", // TODO: https://issues.apache.org/jira/browse/IGNITE-24754
-        "18",
-//        "19", // TODO: https://issues.apache.org/jira/browse/IGNITE-24756
-//        "20", // TODO: https://issues.apache.org/jira/browse/IGNITE-24730
-//        "21", // TODO: https://issues.apache.org/jira/browse/IGNITE-24757
-        "22"
+        "17"
     })
     private String queryId;
 

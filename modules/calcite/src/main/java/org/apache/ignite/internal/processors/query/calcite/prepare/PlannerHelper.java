@@ -92,6 +92,8 @@ public class PlannerHelper {
 
             rel = planner.replaceCorrelatesCollisions(rel);
 
+            rel = planner.decorrelate(rel);
+
             rel = planner.trimUnusedFields(root.withRel(rel)).rel;
 
             rel = planner.transform(PlannerPhase.HEP_FILTER_PUSH_DOWN, rel.getTraitSet(), rel);
