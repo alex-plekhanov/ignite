@@ -101,6 +101,9 @@ import static org.apache.ignite.internal.processors.cache.distributed.dht.topolo
  *
  */
 public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager {
+    /** */
+    private static int cl = 0;
+
     /** The maximum number of entries that can be preloaded under checkpoint read lock. */
     public static final int PRELOAD_SIZE_UNDER_CHECKPOINT_LOCK = 100;
 
@@ -417,6 +420,7 @@ public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager 
         int partId,
         GridDhtLocalPartition part
     ) throws IgniteCheckedException {
+        cl++;
         dataStore(part).remove(cctx, key, partId);
     }
 
@@ -1103,6 +1107,8 @@ public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager 
 
         int cleared = expireInternal(cctx, c, amount);
 
+        System.out.println("removed = " + cl + ", expired=" + cleared);
+
         return amount != -1 && cleared >= amount;
     }
 
@@ -1135,6 +1141,8 @@ public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager 
                     List<PendingRow> rows = pendingEntries.remove(new PendingRow(cacheId, Long.MIN_VALUE, 0),
                         new PendingRow(cacheId, U.currentTimeMillis(), 0), amount - cleared);
 
+                    log.info(">>>> To expire " + rows.size());
+
                     if (rows.isEmpty())
                         break;
 
@@ -1150,8 +1158,21 @@ public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager 
                         GridCacheEntryEx entry = cctx.cache().entryEx(row.key instanceof KeyCacheObjectImpl
                             ? new ExpiredKeyCacheObject((KeyCacheObjectImpl)row.key, row.expireTime, row.link) : row.key);
 
+                        log.info(">>>> Before expire, before sleep " + row.key);
+
+                        try {
+                            Thread.sleep(2000);
+                        }
+                        catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
+
+                        log.info(">>>> Before expire, after sleep " + row.key);
+
                         if (entry != null)
                             c.apply(entry, obsoleteVer);
+
+                        log.info(">>>> After expire " + row.key);
                     }
 
                     cleared += rows.size();
@@ -1697,7 +1718,7 @@ public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager 
          * @param oldRow Old row.
          * @throws IgniteCheckedException If failed.
          */
-        private void updatePendingEntries(
+        private void  updatePendingEntries(
             GridCacheContext cctx,
             CacheDataRow newRow,
             @Nullable CacheDataRow oldRow
@@ -1708,6 +1729,17 @@ public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager 
 
             if (oldRow != null) {
                 assert oldRow.link() != 0 : oldRow;
+
+                if (oldRow != null) {
+                    try {
+                        log.info(">>>> Update pending before sleep");
+                        Thread.sleep(2000);
+                        log.info(">>>> Update pending after sleep");
+                    }
+                    catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
 
                 if (pendingTree() != null && oldRow.expireTime() != 0)
                     pendingTree().removex(new PendingRow(cacheId, oldRow.expireTime(), oldRow.link()));

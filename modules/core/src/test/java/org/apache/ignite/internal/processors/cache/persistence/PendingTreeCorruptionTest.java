@@ -157,4 +157,92 @@ public class PendingTreeCorruptionTest extends GridCommonAbstractTest {
             ig.context().cache().context().database().checkpointReadUnlock();
         }
     }
+
+
+    /** */
+    @Test
+    public void testCorruption() throws Exception {
+        IgniteEx ig = startGrid(0);
+
+        ig.cluster().state(ClusterState.ACTIVE);
+
+        String expireCacheName = "cacheWithExpire";
+        String regularCacheName = "cacheWithoutExpire";
+        String grpName = "cacheGroup";
+
+        IgniteCache<Object, Object> expireCache = ig.getOrCreateCache(
+            new CacheConfiguration<>(expireCacheName)
+                .setExpiryPolicyFactory(AccessedExpiryPolicy.factoryOf(new Duration(MINUTES, 10)))
+                .setGroupName(grpName)
+        );
+
+        IgniteCache<Object, Object> regularCache = ig.getOrCreateCache(
+            new CacheConfiguration<>(regularCacheName)
+                .setGroupName(grpName)
+        );
+
+        // This will initialize partition and cache structures.
+        expireCache.put(0, 0);
+        expireCache.remove(0);
+
+        int expireCacheId = CU.cacheGroupId(expireCacheName, grpName);
+
+        CacheGroupContext grp = ig.context().cache().cacheGroup(CU.cacheId(grpName));
+        IgniteCacheOffheapManager.CacheDataStore store = grp.topology().localPartition(0).dataStore();
+
+        assertNotNull(store);
+
+        // Get pending tree of expire cache.
+        PendingEntriesTree pendingTree = store.pendingTree();
+
+        long year = TimeUnit.DAYS.toMillis(365);
+        long expiration = System.currentTimeMillis() + year;
+
+        ig.context().cache().context().database().checkpointReadLock();
+
+        try {
+            // Carefully calculated number. Just enough for the first split to happen, but not more.
+            for (int i = 0; i < 202; i++)
+                pendingTree.putx(new PendingRow(expireCacheId, expiration, expiration + i)); // link != 0
+
+            // Open cursor, it'll cache first leaf of the tree.
+            GridCursor<PendingRow> cur = pendingTree.find(
+                null,
+                new PendingRow(expireCacheId, expiration + year, 0),
+                PendingEntriesTree.WITHOUT_KEY
+            );
+
+            // Required for "do" loop to work.
+            assertTrue(cur.next());
+
+            int cnt = 0;
+
+            // Emulate real expiry loop but with a more precise control.
+            do {
+                PendingRow row = cur.get();
+
+                // Another carefully calculated moment. Here the page cache is exhausted AND the real page is merged
+                // with its sibling, meaning that cached "nextPageId" points to empty page from reuse list.
+                if (row.link - row.expireTime == 100) {
+                    PendingRow p = new PendingRow(expireCacheId);
+                    pendingTree.removex(p, p, 100);
+
+                    // Put into another cache will take a page from reuse list first. This means that cached
+                    // "nextPageId" points to a data page.
+                    regularCache.put(0, 0);
+                }
+
+                cnt++;
+            }
+            while (cur.next());
+
+            PendingRow p = new PendingRow(expireCacheId);
+            pendingTree.removex(p, p, 102);
+
+            assertEquals(202, cnt);
+        }
+        finally {
+            ig.context().cache().context().database().checkpointReadUnlock();
+        }
+    }
 }
