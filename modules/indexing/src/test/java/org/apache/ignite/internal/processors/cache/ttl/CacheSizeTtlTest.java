@@ -315,8 +315,10 @@ public class CacheSizeTtlTest extends GridCommonAbstractTest {
     public void testEntriesLeak6() throws Exception {
         IgniteEx srv = startGrid(getConfiguration().setIncludeEventTypes(EVT_CACHE_OBJECT_READ));
 
-        IgniteCache<Object, Object> cache = srv.getOrCreateCache(DEFAULT_CACHE_NAME)
-            .withExpiryPolicy(new CreatedExpiryPolicy(new Duration(SECONDS, 2)));
+        IgniteCache<Object, Object> cache = srv.getOrCreateCache(DEFAULT_CACHE_NAME);
+
+        cache.put(0, 0);
+        cache.remove(0);
 
         IgniteInternalCache<Object, Object> cachex = srv.cachex(DEFAULT_CACHE_NAME);
 

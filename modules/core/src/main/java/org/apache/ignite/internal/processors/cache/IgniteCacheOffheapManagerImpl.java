@@ -1718,7 +1718,7 @@ public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager 
          * @param oldRow Old row.
          * @throws IgniteCheckedException If failed.
          */
-        private void  updatePendingEntries(
+        private void updatePendingEntries(
             GridCacheContext cctx,
             CacheDataRow newRow,
             @Nullable CacheDataRow oldRow
@@ -1729,17 +1729,6 @@ public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager 
 
             if (oldRow != null) {
                 assert oldRow.link() != 0 : oldRow;
-
-                if (oldRow != null) {
-                    try {
-                        log.info(">>>> Update pending before sleep");
-                        Thread.sleep(2000);
-                        log.info(">>>> Update pending after sleep");
-                    }
-                    catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
 
                 if (pendingTree() != null && oldRow.expireTime() != 0)
                     pendingTree().removex(new PendingRow(cacheId, oldRow.expireTime(), oldRow.link()));

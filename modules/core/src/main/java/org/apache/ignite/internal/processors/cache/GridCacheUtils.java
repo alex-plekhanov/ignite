@@ -833,13 +833,6 @@ public class GridCacheUtils {
     public static void unwindEvicts(GridCacheContext ctx) {
         assert ctx != null;
 
-        try {
-            Thread.sleep(100);
-        }
-        catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
         ctx.ttl().expire(TTL_BATCH_SIZE);
     }
 

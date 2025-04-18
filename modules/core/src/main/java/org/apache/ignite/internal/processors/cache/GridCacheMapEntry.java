@@ -5059,6 +5059,8 @@ public abstract class GridCacheMapEntry extends GridMetadataAwareAdapter impleme
                     newExpireTime,
                     oldRow);
 
+                log.info(">>>> Put, link=" + U.hexLong(newRow.link()));
+
                 treeOp = oldRow != null && oldRow.link() == newRow.link() ?
                     IgniteTree.OperationType.NOOP : IgniteTree.OperationType.PUT;
             }
