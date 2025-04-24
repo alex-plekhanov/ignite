@@ -162,8 +162,14 @@ public class UnnestIntegrationTest extends AbstractBasicIntegrationTest {
         for (int i = 0; i < 1000; i++)
             sql("INSERT INTO t VALUES (?, ?)", i, "val" + i);
 
+        assertQuery("SELECT * FROM t WHERE id IN (SELECT * FROM (VALUES (?), (?), (?)))")
+            .withParams(10, 20, 30)
+            //.planEquals("TODO")
+            .returns(10, "val10").returns(20, "val20").returns(30, "val30")
+            .check();
+
         assertQuery("SELECT * FROM t WHERE id IN (SELECT * FROM UNNEST(ARRAY[10, 20, 30]))")
-            //.planEquals("TODO") // TODO CNLJ
+//            .planEquals("TODO") // TODO CNLJ
             .returns(10, "val10").returns(20, "val20").returns(30, "val30").check();
 
 /*
