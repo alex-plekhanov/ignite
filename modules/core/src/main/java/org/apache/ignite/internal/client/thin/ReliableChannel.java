@@ -41,6 +41,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.ignite.IgniteBinary;
 import org.apache.ignite.IgniteLogger;
+import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.client.ClientAuthenticationException;
 import org.apache.ignite.client.ClientAuthorizationException;
 import org.apache.ignite.client.ClientConnectionException;
@@ -142,10 +143,13 @@ final class ReliableChannel implements AutoCloseable {
 
         partitionAwarenessEnabled = clientCfg.isPartitionAwarenessEnabled();
 
+        String dcId = IgniteSystemProperties.getString(IgniteSystemProperties.IGNITE_DATA_CENTER_ID);
+
         affinityCtx = new ClientCacheAffinityContext(
             binary,
             clientCfg.getPartitionAwarenessMapperFactory(),
-            this::isConnectionEstablished
+            this::isConnectionEstablished,
+            dcId
         );
 
         discoveryCtx = new ClientDiscoveryContext(clientCfg);

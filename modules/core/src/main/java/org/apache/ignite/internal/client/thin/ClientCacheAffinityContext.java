@@ -74,18 +74,24 @@ public class ClientCacheAffinityContext {
     /** Predicate to check whether a connection to the node with the specified ID is open. */
     private final Predicate<UUID> connectionEstablishedPredicate;
 
+    /** Data center ID. */
+    private final String dataCenterId;
+
     /**
      * @param binary Binary data processor.
      * @param factory Factory for caches with custom affinity.
+     * @param dataCenterId Data center ID.
      */
     public ClientCacheAffinityContext(
         IgniteBinary binary,
         @Nullable ClientPartitionAwarenessMapperFactory factory,
-        Predicate<UUID> connectionEstablishedPredicate
+        Predicate<UUID> connectionEstablishedPredicate,
+        String dataCenterId
     ) {
         this.paMapFactory = factory;
         this.binary = binary;
         this.connectionEstablishedPredicate = connectionEstablishedPredicate;
+        this.dataCenterId = dataCenterId;
     }
 
     /**
@@ -150,7 +156,7 @@ public class ClientCacheAffinityContext {
 
         // In case of IO error rq can hold previous mapping request. Just overwrite it, we don't need it anymore.
         rq = new CacheMappingRequest(cacheIds, lastAccessed);
-        ClientCacheAffinityMapping.writeRequest(ch, rq.caches, rq.ts > 0);
+        ClientCacheAffinityMapping.writeRequest(ch, rq.caches, rq.ts > 0, dataCenterId);
     }
 
     /**
@@ -312,6 +318,11 @@ public class ClientCacheAffinityContext {
             // Schedule cache factory remove.
             hld.ts = REMOVED_TS;
         }
+    }
+
+    /** */
+    public String dataCenterId() {
+        return dataCenterId;
     }
 
     /** */
