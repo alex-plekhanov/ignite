@@ -17,35 +17,25 @@
 
 package org.apache.ignite.internal.processors.platform.client.cache;
 
-import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.apache.ignite.binary.BinaryRawWriter;
-import org.apache.ignite.cluster.ClusterNode;
-import org.apache.ignite.internal.processors.affinity.AffinityAssignment;
 
 /**
  * Cache partition mapping.
  */
 public class ClientCachePartitionMapping {
     /** Partitions map for caches. */
-    private final HashMap<UUID, Set<Integer>> partitionMap;
+    private final Map<UUID, Set<Integer>> partitionMap;
 
     /**
-     * @param assignment Affinity assignment.
+     * @param partitionMap Partition mapping.
      */
-    public ClientCachePartitionMapping(AffinityAssignment assignment) {
-        Set<ClusterNode> nodes = assignment.primaryPartitionNodes();
-
-        partitionMap = new HashMap<>(nodes.size());
-
-        for (ClusterNode node : nodes) {
-            UUID nodeId = node.id();
-            Set<Integer> parts = assignment.primaryPartitions(nodeId);
-
-            partitionMap.put(nodeId, parts);
-        }
+    @SuppressWarnings("AssignmentOrReturnOfFieldWithMutableType")
+    public ClientCachePartitionMapping(Map<UUID, Set<Integer>> partitionMap) {
+        this.partitionMap = partitionMap;
     }
 
     /**
@@ -55,7 +45,7 @@ public class ClientCachePartitionMapping {
     public void write(BinaryRawWriter writer) {
         writer.writeInt(partitionMap.size());
 
-        for (HashMap.Entry<UUID, Set<Integer>> nodeParts: partitionMap.entrySet()) {
+        for (Map.Entry<UUID, Set<Integer>> nodeParts: partitionMap.entrySet()) {
             UUID nodeUuid = nodeParts.getKey();
             Set<Integer> parts = nodeParts.getValue();
 

@@ -27,6 +27,7 @@ import org.apache.ignite.internal.cluster.IgniteClusterEx;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProcessor;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
+import org.apache.ignite.internal.util.typedef.internal.U;
 
 /**
  * Cluster group get nodes endpoints response.
@@ -48,9 +49,7 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
      * @param startTopVer Start topology version.
      * @param endTopVer End topology version.
      */
-    public ClientClusterGroupGetNodesEndpointsResponse(long reqId,
-                                                       long startTopVer,
-                                                       long endTopVer) {
+    public ClientClusterGroupGetNodesEndpointsResponse(long reqId, long startTopVer, long endTopVer) {
         super(reqId);
 
         this.startTopVer = startTopVer;
@@ -65,7 +64,7 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
 
         long endTopVer0 = endTopVer == UNKNOWN_TOP_VER ? cluster.topologyVersion() : endTopVer;
 
-        Collection<ClusterNode> top = cluster.topology(endTopVer0);
+        Collection<ClusterNode> top = filterDcNodes(ctx, cluster.topology(endTopVer0));
 
         writer.writeLong(endTopVer0);
 
@@ -84,7 +83,7 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
             return;
         }
 
-        Map<UUID, ClusterNode> startNodes = toMap(cluster.topology(startTopVer));
+        Map<UUID, ClusterNode> startNodes = toMap(filterDcNodes(ctx, cluster.topology(startTopVer)));
         Map<UUID, ClusterNode> endNodes = toMap(top);
 
         int pos = writer.reserveInt();
@@ -110,6 +109,18 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
         }
 
         writer.writeInt(pos, cnt);
+    }
+
+    /** */
+    private static Collection<ClusterNode> filterDcNodes(ClientConnectionContext ctx, Collection<ClusterNode> top) {
+        String dcId = ctx.dataCenterId();
+
+        if (dcId == null)
+            return top;
+
+        Collection<ClusterNode> res = U.arrayList(top, n -> dcId.equals(n.dataCenterId()));
+
+        return res.isEmpty() ? top : res;
     }
 
     /**

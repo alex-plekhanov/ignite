@@ -20,14 +20,18 @@ package org.apache.ignite.internal.processors.platform.client.cache;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.ignite.binary.BinaryRawReader;
 import org.apache.ignite.cache.CacheMode;
+import org.apache.ignite.cache.CacheWriteSynchronizationMode;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
+import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.internal.processors.affinity.AffinityAssignment;
 import org.apache.ignite.internal.processors.cache.CacheType;
@@ -131,7 +135,7 @@ public class ClientCachePartitionsRequest extends ClientRequest {
     /**
      * Process cache and create new partition mapping, if it does not belong to any existent.
      * @param ctx Connection context.
-     * @param affinityVer Affinity topology version.
+     * @param affVer Affinity topology version.
      * @param cacheDesc Cache descriptor.
      * @param withCustomMappings {@code true} to verify a non-default affinity function also.
      * @return Null if cache was processed and new client cache partition awareness group if it does not belong to any
@@ -139,20 +143,13 @@ public class ClientCachePartitionsRequest extends ClientRequest {
      */
     private static ClientCachePartitionAwarenessGroup processCache(
         ClientConnectionContext ctx,
-        ClientAffinityTopologyVersion affinityVer,
+        ClientAffinityTopologyVersion affVer,
         DynamicCacheDescriptor cacheDesc,
         boolean withCustomMappings
     ) {
-        AffinityAssignment assignment = getCacheAssignment(ctx, affinityVer, cacheDesc.cacheId());
-
-        // If assignment is not available for the cache for required affinity version, ignore the cache.
-        if (assignment == null)
-            return null;
-
-        ClientCachePartitionMapping mapping = null;
-
-        if (isApplicable(cacheDesc.cacheConfiguration(), withCustomMappings))
-            mapping = new ClientCachePartitionMapping(assignment);
+        ClientCachePartitionMapping mapping = isApplicable(cacheDesc.cacheConfiguration(), withCustomMappings)
+            ? getCachePartitionMapping(ctx, affVer, cacheDesc.cacheId())
+            : null;
 
         return new ClientCachePartitionAwarenessGroup(mapping,
             !withCustomMappings || isDefaultMapping(cacheDesc.cacheConfiguration()));
@@ -161,15 +158,60 @@ public class ClientCachePartitionsRequest extends ClientRequest {
     /**
      * Get assignment for a cache in a safe way.
      * @param ctx Client connection context.
-     * @param affinityVer Affinity version.
+     * @param affVer Affinity version.
      * @param cacheId Cache ID.
-     * @return Affinity assignment for a cache, or null if is not possible to get.
+     * @return Partition mapping for a cache, or null if is not possible to get.
      */
-    @Nullable private static AffinityAssignment getCacheAssignment(ClientConnectionContext ctx,
-        ClientAffinityTopologyVersion affinityVer, int cacheId) {
+    @Nullable private static ClientCachePartitionMapping getCachePartitionMapping(
+        ClientConnectionContext ctx,
+        ClientAffinityTopologyVersion affVer,
+        int cacheId
+    ) {
         try {
-            GridCacheContext cacheCtx = ctx.kernalContext().cache().context().cacheContext(cacheId);
-            return cacheCtx.affinity().assignment(affinityVer.getVersion());
+            GridCacheContext<?, ?> cacheCtx = ctx.kernalContext().cache().context().cacheContext(cacheId);
+
+            AffinityAssignment assignment = cacheCtx.affinity().assignment(affVer.getVersion());
+
+            String dcId = ctx.dataCenterId();
+
+            if (dcId != null && cacheCtx.config().isReadFromBackup()
+                && cacheCtx.config().getWriteSynchronizationMode() != CacheWriteSynchronizationMode.PRIMARY_SYNC) {
+                Map<UUID, Set<Integer>> partitionMap = new HashMap<>();
+
+                List<List<ClusterNode>> partAssignments = assignment.assignment();
+
+                for (int p = 0; p < partAssignments.size(); p++) {
+                    List<ClusterNode> partAssignment = partAssignments.get(p);
+
+                    ClusterNode node = F.find(partAssignment, null, n -> dcId.equals(n.dataCenterId()));
+
+                    if (node != null)
+                        partitionMap.computeIfAbsent(node.id(), id -> new HashSet<>()).add(p);
+                    else {
+                        partitionMap = null;
+
+                        break;
+                    }
+                }
+
+                if (partitionMap != null)
+                    return new ClientCachePartitionMapping(partitionMap);
+
+                // Fallback to non-DC-aware implementation.
+            }
+
+            Set<ClusterNode> nodes = assignment.primaryPartitionNodes();
+
+            Map<UUID, Set<Integer>> partitionMap = new HashMap<>(nodes.size());
+
+            for (ClusterNode node : nodes) {
+                UUID nodeId = node.id();
+                Set<Integer> parts = assignment.primaryPartitions(nodeId);
+
+                partitionMap.put(nodeId, parts);
+            }
+
+            return new ClientCachePartitionMapping(partitionMap);
         }
         catch (Exception e) {
             return null;
