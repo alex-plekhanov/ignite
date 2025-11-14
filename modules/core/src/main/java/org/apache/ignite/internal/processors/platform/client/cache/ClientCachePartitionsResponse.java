@@ -18,11 +18,15 @@
 package org.apache.ignite.internal.processors.platform.client.cache;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.UUID;
 import org.apache.ignite.internal.binary.BinaryWriterEx;
 import org.apache.ignite.internal.processors.cache.binary.CacheObjectBinaryProcessorImpl;
 import org.apache.ignite.internal.processors.platform.client.ClientAffinityTopologyVersion;
+import org.apache.ignite.internal.processors.platform.client.ClientBitmaskFeature;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Client cache nodes partitions response.
@@ -34,19 +38,29 @@ class ClientCachePartitionsResponse extends ClientResponse {
     /** Affinity version. */
     private final ClientAffinityTopologyVersion affinityVer;
 
+    /** Nodes in requested data center. */
+    private final Collection<UUID> dcNodes;
+
     /**
      * @param requestId Request id.
      * @param mappings Mappings for caches.
      * @param affinityVer Affinity version.
+     * @param dcNodes Nodes in requested data center.
      */
-    ClientCachePartitionsResponse(long requestId, ArrayList<ClientCachePartitionAwarenessGroup> mappings,
-        ClientAffinityTopologyVersion affinityVer) {
+    @SuppressWarnings("AssignmentOrReturnOfFieldWithMutableType")
+    ClientCachePartitionsResponse(
+        long requestId,
+        ArrayList<ClientCachePartitionAwarenessGroup> mappings,
+        ClientAffinityTopologyVersion affinityVer,
+        @Nullable Collection<UUID> dcNodes
+    ) {
         super(requestId);
 
         assert mappings != null;
 
         this.mappings = mappings;
         this.affinityVer = affinityVer;
+        this.dcNodes = dcNodes;
     }
 
     /** {@inheritDoc} */
@@ -61,5 +75,19 @@ class ClientCachePartitionsResponse extends ClientResponse {
 
         for (ClientCachePartitionAwarenessGroup mapping : mappings)
             mapping.write(proc, writer, ctx.currentProtocolContext());
+
+        if (ctx.currentProtocolContext().isFeatureSupported(ClientBitmaskFeature.DC_AWARE)) {
+            int pos = writer.reserveInt();
+            int cnt = 0;
+
+            if (dcNodes != null) {
+                for (UUID nodeId : dcNodes) {
+                    writer.writeUuid(nodeId);
+                    cnt++;
+                }
+            }
+
+            writer.writeInt(pos, cnt);
+        }
     }
 }

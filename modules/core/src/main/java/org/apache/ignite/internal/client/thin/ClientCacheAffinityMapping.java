@@ -18,10 +18,12 @@
 package org.apache.ignite.internal.client.thin;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
@@ -31,12 +33,15 @@ import org.apache.ignite.client.ClientFeatureNotSupportedByServerException;
 import org.apache.ignite.client.ClientPartitionAwarenessMapper;
 import org.apache.ignite.internal.binary.BinaryReaderEx;
 import org.apache.ignite.internal.binary.BinaryUtils;
+import org.apache.ignite.internal.binary.BinaryWriterEx;
 import org.apache.ignite.internal.binary.streams.BinaryOutputStream;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.internal.client.thin.ProtocolBitmaskFeature.ALL_AFFINITY_MAPPINGS;
+import static org.apache.ignite.internal.client.thin.ProtocolBitmaskFeature.DC_AWARE;
 
 /**
  * Affinity mapping (partition to nodes) for each cache.
@@ -44,22 +49,35 @@ import static org.apache.ignite.internal.client.thin.ProtocolBitmaskFeature.ALL_
 public class ClientCacheAffinityMapping {
     /** CacheAffinityInfo for caches with not applicable partition awareness. */
     private static final CacheAffinityInfo NOT_APPLICABLE_CACHE_AFFINITY_INFO =
-        new CacheAffinityInfo(null, null, null);
+        new CacheAffinityInfo(null, null, null, null);
+
+    /** Empty part to node mapping. */
+    private static final UUID[] EMPTY_PART_MAPPING = new UUID[0];
 
     /** Topology version. */
     private final AffinityTopologyVersion topVer;
 
     /** Affinity information for each cache. */
-    private final Map<Integer, CacheAffinityInfo> cacheAffinity = new HashMap<>();
+    private final Map<Integer, CacheAffinityInfo> cacheAff;
 
-    /** Unmodifiable collection of cache IDs. To preserve instance immutability. */
-    private final Collection<Integer> cacheIds = Collections.unmodifiableCollection(cacheAffinity.keySet());
+    /** Cache IDs. */
+    private final Collection<Integer> cacheIds;
+
+    /** Nodes in requested data center. */
+    @Nullable private final List<UUID> dcNodes;
 
     /**
      * @param topVer Topology version.
      */
-    private ClientCacheAffinityMapping(AffinityTopologyVersion topVer) {
+    private ClientCacheAffinityMapping(
+        AffinityTopologyVersion topVer,
+        Map<Integer, CacheAffinityInfo> cacheAff,
+        @Nullable List<UUID> dcNodes
+    ) {
         this.topVer = topVer;
+        this.cacheAff = cacheAff;
+        this.dcNodes = Collections.unmodifiableList(dcNodes);
+        cacheIds = Collections.unmodifiableCollection(cacheAff.keySet());
     }
 
     /**
@@ -77,15 +95,23 @@ public class ClientCacheAffinityMapping {
     }
 
     /**
+     * Gets collection of data center nodes.
+     */
+    @Nullable public List<UUID> dcNodes() {
+        return dcNodes;
+    }
+
+    /**
      * Calculates affinity node for given cache and key.
      *
      * @param binary Binary data processor (needed to extract affinity field from the key).
      * @param cacheId Cache ID.
      * @param key Key.
+     * @param primary Force primary node.
      * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and key.
      */
-    public UUID affinityNode(IgniteBinary binary, int cacheId, Object key) {
-        CacheAffinityInfo affInfo = cacheAffinity.get(cacheId);
+    public UUID affinityNode(IgniteBinary binary, int cacheId, Object key, boolean primary) {
+        CacheAffinityInfo affInfo = cacheAff.get(cacheId);
 
         if (affInfo == null || affInfo == NOT_APPLICABLE_CACHE_AFFINITY_INFO)
             return null;
@@ -105,7 +131,7 @@ public class ClientCacheAffinityMapping {
             }
         }
 
-        return affInfo.nodeForKey(binaryKey);
+        return affInfo.nodeForKey(binaryKey, primary);
     }
 
     /**
@@ -113,15 +139,16 @@ public class ClientCacheAffinityMapping {
      *
      * @param cacheId Cache ID.
      * @param part Partition.
+     * @param primary Force primary node.
      * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and partition.
      */
-    public UUID affinityNode(int cacheId, int part) {
-        CacheAffinityInfo affInfo = cacheAffinity.get(cacheId);
+    public UUID affinityNode(int cacheId, int part, boolean primary) {
+        CacheAffinityInfo affInfo = cacheAff.get(cacheId);
 
         if (affInfo == null || affInfo == NOT_APPLICABLE_CACHE_AFFINITY_INFO)
             return null;
 
-        return affInfo.nodeForPartition(part);
+        return affInfo.nodeForPartition(part, primary);
     }
 
     /**
@@ -130,13 +157,14 @@ public class ClientCacheAffinityMapping {
     public static ClientCacheAffinityMapping merge(ClientCacheAffinityMapping... mappings) {
         assert !F.isEmpty(mappings);
 
-        ClientCacheAffinityMapping res = new ClientCacheAffinityMapping(mappings[0].topVer);
+        ClientCacheAffinityMapping res = new ClientCacheAffinityMapping(mappings[0].topVer, new HashMap<>(),
+            mappings[0].dcNodes);
 
         for (ClientCacheAffinityMapping mapping : mappings) {
             assert res.topVer.equals(mapping.topVer) : "Mappings must have identical topology versions [res.topVer=" +
                 res.topVer + ", mapping.topVer=" + mapping.topVer + ']';
 
-            res.cacheAffinity.putAll(mapping.cacheAffinity);
+            res.cacheAff.putAll(mapping.cacheAff);
         }
 
         return res;
@@ -148,8 +176,14 @@ public class ClientCacheAffinityMapping {
      * @param ch Output channel.
      * @param cacheIds Set of cache ids to request.
      * @param customMappingsRequired {@code true} if non-default affinity mappings required.
+     * @param dcId Data center ID.
      */
-    public static void writeRequest(PayloadOutputChannel ch, Collection<Integer> cacheIds, boolean customMappingsRequired) {
+    public static void writeRequest(
+        PayloadOutputChannel ch,
+        Collection<Integer> cacheIds,
+        boolean customMappingsRequired,
+        String dcId
+    ) {
         ProtocolContext ctx = ch.clientChannel().protocolCtx();
 
         if (customMappingsRequired && !ctx.isFeatureSupported(ALL_AFFINITY_MAPPINGS))
@@ -159,6 +193,12 @@ public class ClientCacheAffinityMapping {
 
         if (ctx.isFeatureSupported(ALL_AFFINITY_MAPPINGS))
             out.writeBoolean(customMappingsRequired);
+
+        if (ctx.isFeatureSupported(DC_AWARE)) {
+            try (BinaryWriterEx w = BinaryUtils.writer(null, out, null)) {
+                w.writeString(dcId);
+            }
+        }
 
         out.writeInt(cacheIds.size());
 
@@ -181,8 +221,7 @@ public class ClientCacheAffinityMapping {
             long topVer = in.readLong();
             int minorTopVer = in.readInt();
 
-            ClientCacheAffinityMapping aff = new ClientCacheAffinityMapping(
-                new AffinityTopologyVersion(topVer, minorTopVer));
+            Map<Integer, CacheAffinityInfo> cacheAff = new HashMap<>();
 
             int mappingsCnt = in.readInt();
 
@@ -197,7 +236,15 @@ public class ClientCacheAffinityMapping {
                     for (int j = 0; j < cachesCnt; j++)
                         cacheKeyCfg.put(in.readInt(), readCacheKeyConfiguration(in));
 
-                    UUID[] partToNode = readNodePartitions(in);
+                    UUID[] primaryPartToNode = readNodePartitions(in);
+                    UUID[] dcBackupPartToNode = primaryPartToNode;
+
+                    if (ch.clientChannel().protocolCtx().isFeatureSupported(DC_AWARE)) {
+                        dcBackupPartToNode = readNodePartitions(in);
+
+                        if (dcBackupPartToNode.length == 0)
+                            dcBackupPartToNode = primaryPartToNode;
+                    }
 
                     boolean dfltMapping = true;
 
@@ -212,17 +259,30 @@ public class ClientCacheAffinityMapping {
                         if (factory == null)
                             continue;
 
-                        aff.cacheAffinity.put(keyCfg.getKey(),
-                            new CacheAffinityInfo(keyCfg.getValue(), partToNode, factory.apply(partToNode.length)));
+                        cacheAff.put(keyCfg.getKey(),
+                            new CacheAffinityInfo(keyCfg.getValue(), primaryPartToNode, dcBackupPartToNode,
+                                factory.apply(primaryPartToNode.length))
+                        );
                     }
                 }
                 else { // Partition awareness is not applicable for these caches.
                     for (int j = 0; j < cachesCnt; j++)
-                        aff.cacheAffinity.put(in.readInt(), NOT_APPLICABLE_CACHE_AFFINITY_INFO);
+                        cacheAff.put(in.readInt(), NOT_APPLICABLE_CACHE_AFFINITY_INFO);
                 }
             }
 
-            return aff;
+            List<UUID> dcNodes = null;
+
+            if (ch.clientChannel().protocolCtx().isFeatureSupported(DC_AWARE)) {
+                int cnt = in.readInt();
+
+                dcNodes = new ArrayList<>(cnt);
+
+                for (int i = 0; i < cnt; i++)
+                    dcNodes.add(in.readUuid());
+            }
+
+            return new ClientCacheAffinityMapping(new AffinityTopologyVersion(topVer, minorTopVer), cacheAff, dcNodes);
         }
         catch (IOException e) {
             throw new ClientError(e);
@@ -248,6 +308,9 @@ public class ClientCacheAffinityMapping {
      */
     private static UUID[] readNodePartitions(BinaryReaderEx in) {
         int nodesCnt = in.readInt();
+
+        if (nodesCnt == 0)
+            return EMPTY_PART_MAPPING;
 
         int maxPart = -1;
 
@@ -283,20 +346,30 @@ public class ClientCacheAffinityMapping {
         /** Key configuration. */
         private final Map<Integer, Integer> keyCfg;
 
-        /** Partition mapping. */
-        private final UUID[] partMapping;
+        /** Primary partition mapping. */
+        private final UUID[] primaryPartMapping;
+
+        /** Backup partition mapping, located in current DC. */
+        private final UUID[] dcBackupPartMapping;
 
         /** Mapper a cache key to a partition. */
         private final ClientPartitionAwarenessMapper keyMapper;
 
         /**
          * @param keyCfg Cache key configuration or {@code null} if partition awareness is not applicable for this cache.
-         * @param partMapping Partition to node mapping or {@code null} if partition awareness is not applicable for
-         * this cache.
+         * @param primaryPartMapping Primary partition to node mapping or {@code null} if partition awareness
+         * is not applicable for this cache.
+         * @param dcBackupPartMapping Backup partition to node mapping, located in current DC.
          */
-        private CacheAffinityInfo(Map<Integer, Integer> keyCfg, UUID[] partMapping, ClientPartitionAwarenessMapper keyMapper) {
+        private CacheAffinityInfo(
+            Map<Integer, Integer> keyCfg,
+            UUID[] primaryPartMapping,
+            UUID[] dcBackupPartMapping,
+            ClientPartitionAwarenessMapper keyMapper
+        ) {
             this.keyCfg = keyCfg;
-            this.partMapping = partMapping;
+            this.primaryPartMapping = primaryPartMapping;
+            this.dcBackupPartMapping = dcBackupPartMapping;
             this.keyMapper = keyMapper;
         }
 
@@ -304,20 +377,24 @@ public class ClientCacheAffinityMapping {
          * Calculates node for given key.
          *
          * @param key Key.
+         * @param primary Force primary node.
          */
-        private UUID nodeForKey(Object key) {
+        private UUID nodeForKey(Object key, boolean primary) {
             if (keyMapper == null)
                 return null;
 
-            return nodeForPartition(keyMapper.partition(key));
+            return nodeForPartition(keyMapper.partition(key), primary);
         }
 
         /**
          * Calculates node for given partition.
          *
          * @param part Partition.
+         * @param primary Force primary node.
          */
-        private UUID nodeForPartition(int part) {
+        private UUID nodeForPartition(int part, boolean primary) {
+            UUID[] partMapping = primary ? primaryPartMapping : dcBackupPartMapping;
+
             if (part < 0 || partMapping == null || part >= partMapping.length)
                 return null;
 
