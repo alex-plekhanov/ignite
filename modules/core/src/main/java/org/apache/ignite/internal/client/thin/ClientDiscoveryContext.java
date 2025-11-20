@@ -123,6 +123,9 @@ public class ClientDiscoveryContext {
                     req -> {
                         req.out().writeLong(topInfo.topVer);
                         req.out().writeLong(UNKNOWN_TOP_VER);
+
+                        if (!ch.protocolCtx().isFeatureSupported(ProtocolBitmaskFeature.DC_AWARE_REQUESTS))
+                            req.out().writeLong(topInfo.topVer);
                     },
                     res -> {
                         try (BinaryReaderEx reader = ClientUtils.createBinaryReader(null, res.in())) {

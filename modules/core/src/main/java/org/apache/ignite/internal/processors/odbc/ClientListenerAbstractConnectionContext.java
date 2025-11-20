@@ -22,7 +22,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.processors.authentication.IgniteAccessControlException;
 import org.apache.ignite.internal.processors.platform.client.tx.ClientTxContext;
@@ -196,10 +195,5 @@ public abstract class ClientListenerAbstractConnectionContext implements ClientL
     /** {@inheritDoc} */
     @Override public Map<String, String> attributes() {
         return F.isEmpty(userAttrs) ? Collections.emptyMap() : Collections.unmodifiableMap(userAttrs);
-    }
-
-    /** */
-    public String dataCenterId() {
-        return userAttrs == null ? null : userAttrs.get(IgniteSystemProperties.IGNITE_DATA_CENTER_ID);
     }
 }

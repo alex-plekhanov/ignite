@@ -639,7 +639,7 @@ public class ClientMessageParser implements ClientListenerMessageParser {
                 return new ClientClusterGroupGetNodesDetailsRequest(reader);
 
             case OP_CLUSTER_GROUP_GET_NODE_ENDPOINTS:
-                return new ClientClusterGroupGetNodesEndpointsRequest(reader);
+                return new ClientClusterGroupGetNodesEndpointsRequest(reader, protocolCtx);
 
             case OP_COMPUTE_TASK_EXECUTE:
                 return new ClientExecuteTaskRequest(reader);

@@ -18,7 +18,9 @@
 package org.apache.ignite.internal.processors.platform.client.cluster;
 
 import org.apache.ignite.binary.BinaryRawReader;
+import org.apache.ignite.internal.processors.platform.client.ClientBitmaskFeature;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
+import org.apache.ignite.internal.processors.platform.client.ClientProtocolContext;
 import org.apache.ignite.internal.processors.platform.client.ClientRequest;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
 
@@ -32,19 +34,27 @@ public class ClientClusterGroupGetNodesEndpointsRequest extends ClientRequest {
     /** End topology version. -1 for latest. */
     private final long endTopVer;
 
+    /** Data center ID. */
+    private final String dcId;
+
     /**
      * Constructor.
      *
      * @param reader Reader.
      */
-    public ClientClusterGroupGetNodesEndpointsRequest(BinaryRawReader reader) {
+    public ClientClusterGroupGetNodesEndpointsRequest(BinaryRawReader reader, ClientProtocolContext protocolCtx) {
         super(reader);
         startTopVer = reader.readLong();
         endTopVer = reader.readLong();
+
+        if (protocolCtx.isFeatureSupported(ClientBitmaskFeature.DC_AWARE_REQUESTS))
+            dcId = reader.readString();
+        else
+            dcId = null;
     }
 
     /** {@inheritDoc} */
     @Override public ClientResponse process(ClientConnectionContext ctx) {
-        return new ClientClusterGroupGetNodesEndpointsResponse(requestId(), startTopVer, endTopVer);
+        return new ClientClusterGroupGetNodesEndpointsResponse(requestId(), startTopVer, endTopVer, dcId);
     }
 }

@@ -63,6 +63,9 @@ public class ClientCachePartitionsRequest extends ClientRequest {
      */
     private final boolean withCustomMappings;
 
+    /** Data center ID. */
+    private final String dcId;
+
     /**
      * Initializes a new instance of ClientRawRequest class.
      * @param reader Reader.
@@ -74,6 +77,11 @@ public class ClientCachePartitionsRequest extends ClientRequest {
             withCustomMappings = reader.readBoolean();
         else
             withCustomMappings = false;
+
+        if (protocolCtx.isFeatureSupported(ClientBitmaskFeature.DC_AWARE_REQUESTS))
+            dcId = reader.readString();
+        else
+            dcId = null;
 
         int len = reader.readInt();
 
@@ -141,14 +149,14 @@ public class ClientCachePartitionsRequest extends ClientRequest {
      * @return Null if cache was processed and new client cache partition awareness group if it does not belong to any
      * existent.
      */
-    private static ClientCachePartitionAwarenessGroup processCache(
+    private ClientCachePartitionAwarenessGroup processCache(
         ClientConnectionContext ctx,
         ClientAffinityTopologyVersion affVer,
         DynamicCacheDescriptor cacheDesc,
         boolean withCustomMappings
     ) {
         ClientCachePartitionMapping mapping = isApplicable(cacheDesc.cacheConfiguration(), withCustomMappings)
-            ? getCachePartitionMapping(ctx, affVer, cacheDesc.cacheId())
+            ? getCachePartitionMapping(ctx, affVer, cacheDesc.cacheId(), dcId)
             : null;
 
         return new ClientCachePartitionAwarenessGroup(mapping,
@@ -160,23 +168,37 @@ public class ClientCachePartitionsRequest extends ClientRequest {
      * @param ctx Client connection context.
      * @param affVer Affinity version.
      * @param cacheId Cache ID.
+     * @param dcId Data center ID.
      * @return Partition mapping for a cache, or null if is not possible to get.
      */
     @Nullable private static ClientCachePartitionMapping getCachePartitionMapping(
         ClientConnectionContext ctx,
         ClientAffinityTopologyVersion affVer,
-        int cacheId
+        int cacheId,
+        String dcId
     ) {
         try {
             GridCacheContext<?, ?> cacheCtx = ctx.kernalContext().cache().context().cacheContext(cacheId);
 
             AffinityAssignment assignment = cacheCtx.affinity().assignment(affVer.getVersion());
 
-            String dcId = ctx.dataCenterId();
+            Set<ClusterNode> nodes = assignment.primaryPartitionNodes();
+
+            Map<UUID, Set<Integer>> primaryPartitionMap = new HashMap<>(nodes.size());
+
+            for (ClusterNode node : nodes) {
+                UUID nodeId = node.id();
+                Set<Integer> parts = assignment.primaryPartitions(nodeId);
+
+                primaryPartitionMap.put(nodeId, parts);
+            }
+
+            Map<UUID, Set<Integer>> dcBackupPartitionMap = null;
 
             if (dcId != null && cacheCtx.config().isReadFromBackup()
                 && cacheCtx.config().getWriteSynchronizationMode() != CacheWriteSynchronizationMode.PRIMARY_SYNC) {
-                Map<UUID, Set<Integer>> partitionMap = new HashMap<>();
+                // Filter backup partitions, located in current DC.
+                dcBackupPartitionMap = new HashMap<>();
 
                 List<List<ClusterNode>> partAssignments = assignment.assignment();
 
@@ -186,32 +208,16 @@ public class ClientCachePartitionsRequest extends ClientRequest {
                     ClusterNode node = F.find(partAssignment, null, n -> dcId.equals(n.dataCenterId()));
 
                     if (node != null)
-                        partitionMap.computeIfAbsent(node.id(), id -> new HashSet<>()).add(p);
+                        dcBackupPartitionMap.computeIfAbsent(node.id(), id -> new HashSet<>()).add(p);
                     else {
-                        partitionMap = null;
+                        dcBackupPartitionMap = null;
 
                         break;
                     }
                 }
-
-                if (partitionMap != null)
-                    return new ClientCachePartitionMapping(partitionMap);
-
-                // Fallback to non-DC-aware implementation.
             }
 
-            Set<ClusterNode> nodes = assignment.primaryPartitionNodes();
-
-            Map<UUID, Set<Integer>> partitionMap = new HashMap<>(nodes.size());
-
-            for (ClusterNode node : nodes) {
-                UUID nodeId = node.id();
-                Set<Integer> parts = assignment.primaryPartitions(nodeId);
-
-                partitionMap.put(nodeId, parts);
-            }
-
-            return new ClientCachePartitionMapping(partitionMap);
+            return new ClientCachePartitionMapping(primaryPartitionMap, dcBackupPartitionMap);
         }
         catch (Exception e) {
             return null;

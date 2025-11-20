@@ -20,14 +20,16 @@ package org.apache.ignite.internal.processors.platform.client.cluster;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.binary.BinaryWriterEx;
 import org.apache.ignite.internal.cluster.IgniteClusterEx;
 import org.apache.ignite.internal.processors.odbc.ClientListenerProcessor;
+import org.apache.ignite.internal.processors.platform.client.ClientBitmaskFeature;
 import org.apache.ignite.internal.processors.platform.client.ClientConnectionContext;
+import org.apache.ignite.internal.processors.platform.client.ClientProtocolContext;
 import org.apache.ignite.internal.processors.platform.client.ClientResponse;
-import org.apache.ignite.internal.util.typedef.internal.U;
 
 /**
  * Cluster group get nodes endpoints response.
@@ -42,18 +44,23 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
     /** End topology version. -1 for latest. */
     private final long endTopVer;
 
+    /** Data center ID. */
+    private final String dcId;
+
     /**
      * Constructor.
      *
      * @param reqId Request identifier.
      * @param startTopVer Start topology version.
      * @param endTopVer End topology version.
+     * @param dcId Data center ID.
      */
-    public ClientClusterGroupGetNodesEndpointsResponse(long reqId, long startTopVer, long endTopVer) {
+    public ClientClusterGroupGetNodesEndpointsResponse(long reqId, long startTopVer, long endTopVer, String dcId) {
         super(reqId);
 
         this.startTopVer = startTopVer;
         this.endTopVer = endTopVer;
+        this.dcId = dcId;
     }
 
     /** {@inheritDoc} */
@@ -64,7 +71,7 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
 
         long endTopVer0 = endTopVer == UNKNOWN_TOP_VER ? cluster.topologyVersion() : endTopVer;
 
-        Collection<ClusterNode> top = filterDcNodes(ctx, cluster.topology(endTopVer0));
+        Collection<ClusterNode> top = cluster.topology(endTopVer0);
 
         writer.writeLong(endTopVer0);
 
@@ -73,7 +80,7 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
             int size = 0;
 
             for (ClusterNode node : top) {
-                if (writeNode(writer, node))
+                if (writeNode(ctx.currentProtocolContext(), writer, node))
                     size++;
             }
 
@@ -83,7 +90,7 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
             return;
         }
 
-        Map<UUID, ClusterNode> startNodes = toMap(filterDcNodes(ctx, cluster.topology(startTopVer)));
+        Map<UUID, ClusterNode> startNodes = toMap(cluster.topology(startTopVer));
         Map<UUID, ClusterNode> endNodes = toMap(top);
 
         int pos = writer.reserveInt();
@@ -91,7 +98,7 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
 
         for (Map.Entry<UUID, ClusterNode> endNode : endNodes.entrySet()) {
             if (!startNodes.containsKey(endNode.getKey())) {
-                if (writeNode(writer, endNode.getValue()))
+                if (writeNode(ctx.currentProtocolContext(), writer, endNode.getValue()))
                     cnt++;
             }
         }
@@ -111,25 +118,13 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
         writer.writeInt(pos, cnt);
     }
 
-    /** */
-    private static Collection<ClusterNode> filterDcNodes(ClientConnectionContext ctx, Collection<ClusterNode> top) {
-        String dcId = ctx.dataCenterId();
-
-        if (dcId == null)
-            return top;
-
-        Collection<ClusterNode> res = U.arrayList(top, n -> dcId.equals(n.dataCenterId()));
-
-        return res.isEmpty() ? top : res;
-    }
-
     /**
      * Writes node info.
      *
      * @param writer Writer.
      * @param node Node.
      */
-    private static boolean writeNode(BinaryWriterEx writer, ClusterNode node) {
+    private boolean writeNode(ClientProtocolContext ctx, BinaryWriterEx writer, ClusterNode node) {
         if (node.isClient())
             return false;
 
@@ -151,6 +146,10 @@ public class ClientClusterGroupGetNodesEndpointsResponse extends ClientResponse 
 
         for (String host : hosts)
             writer.writeString(host);
+
+        // Node belongs to the same DC as requested.
+        if (ctx.isFeatureSupported(ClientBitmaskFeature.DC_AWARE_REQUESTS))
+            writer.writeBoolean(Objects.equals(node.dataCenterId(), dcId));
 
         return true;
     }

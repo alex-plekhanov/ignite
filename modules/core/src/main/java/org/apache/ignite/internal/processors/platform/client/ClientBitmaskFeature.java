@@ -106,7 +106,12 @@ public enum ClientBitmaskFeature implements ThinProtocolFeature {
      * Set this flag required when creating caches during dump restoration and similar processes.
      * @see GridCacheProcessor#dynamicStartCache(CacheConfiguration, String, NearCacheConfiguration, boolean, boolean, boolean)
      */
-    SQL_CACHE_CREATION(21);
+    SQL_CACHE_CREATION(21),
+
+    /**
+     * Partitions and endpoints messages contain information about data center of nodes (in multi DC enviroment).
+     */
+    DC_AWARE_REQUESTS(22);
 
     /** */
     private static final EnumSet<ClientBitmaskFeature> ALL_FEATURES_AS_ENUM_SET =
