@@ -89,14 +89,14 @@ class ClientIgniteSetImpl<T> implements ClientIgniteSet<T> {
     @Override public boolean add(T o) {
         A.notNull(o, "o");
 
-        return singleKeyOp(ClientOperation.OP_SET_VALUE_ADD, o);
+        return singleKeyOp(ClientOperation.OP_SET_VALUE_ADD, o, true);
     }
 
     /** {@inheritDoc} */
     @Override public boolean addAll(Collection<? extends T> c) {
         A.notNull(c, "c");
 
-        return multiKeyOp(ClientOperation.OP_SET_VALUE_ADD_ALL, c);
+        return multiKeyOp(ClientOperation.OP_SET_VALUE_ADD_ALL, c, true);
     }
 
     /** {@inheritDoc} */
@@ -108,14 +108,14 @@ class ClientIgniteSetImpl<T> implements ClientIgniteSet<T> {
     @Override public boolean contains(Object o) {
         A.notNull(o, "o");
 
-        return singleKeyOp(ClientOperation.OP_SET_VALUE_CONTAINS, o);
+        return singleKeyOp(ClientOperation.OP_SET_VALUE_CONTAINS, o, false);
     }
 
     /** {@inheritDoc} */
     @Override public boolean containsAll(Collection<?> c) {
         A.notNull(c, "c");
 
-        return multiKeyOp(ClientOperation.OP_SET_VALUE_CONTAINS_ALL, c);
+        return multiKeyOp(ClientOperation.OP_SET_VALUE_CONTAINS_ALL, c, false);
     }
 
     /** {@inheritDoc} */
@@ -142,7 +142,8 @@ class ClientIgniteSetImpl<T> implements ClientIgniteSet<T> {
         if (colocated) {
             Object affKey = name.hashCode();
 
-            return ch.affinityService(cacheId, affKey, ClientOperation.OP_SET_ITERATOR_START, payloadWriter, payloadReader);
+            return ch.affinityService(cacheId, affKey, ClientOperation.OP_SET_ITERATOR_START, payloadWriter,
+                payloadReader, false);
         }
 
         return ch.service(ClientOperation.OP_SET_ITERATOR_START, payloadWriter, payloadReader);
@@ -152,14 +153,14 @@ class ClientIgniteSetImpl<T> implements ClientIgniteSet<T> {
     @Override public boolean remove(Object o) {
         A.notNull(o, "o");
 
-        return singleKeyOp(ClientOperation.OP_SET_VALUE_REMOVE, o);
+        return singleKeyOp(ClientOperation.OP_SET_VALUE_REMOVE, o, true);
     }
 
     /** {@inheritDoc} */
     @Override public boolean removeAll(Collection<?> c) {
         A.notNull(c, "c");
 
-        return multiKeyOp(ClientOperation.OP_SET_VALUE_REMOVE_ALL, c);
+        return multiKeyOp(ClientOperation.OP_SET_VALUE_REMOVE_ALL, c, true);
     }
 
     /** {@inheritDoc} */
@@ -178,7 +179,7 @@ class ClientIgniteSetImpl<T> implements ClientIgniteSet<T> {
             }, r -> r.in().readBoolean());
         }
 
-        return multiKeyOp(ClientOperation.OP_SET_VALUE_RETAIN_ALL, c);
+        return multiKeyOp(ClientOperation.OP_SET_VALUE_RETAIN_ALL, c, true);
     }
 
     /** {@inheritDoc} */
@@ -258,9 +259,10 @@ class ClientIgniteSetImpl<T> implements ClientIgniteSet<T> {
      *
      * @param op Op code.
      * @param key Key.
+     * @param primary Force primary node.
      * @return Result.
      */
-    private Boolean singleKeyOp(ClientOperation op, Object key) {
+    private Boolean singleKeyOp(ClientOperation op, Object key, boolean primary) {
         Object affKey = affinityKey(key);
 
         return ch.affinityService(cacheId, affKey, op, out -> {
@@ -270,7 +272,7 @@ class ClientIgniteSetImpl<T> implements ClientIgniteSet<T> {
                 w.writeBoolean(serverKeepBinary);
                 w.writeObject(key);
             }
-        }, r -> r.in().readBoolean());
+        }, r -> r.in().readBoolean(), primary);
     }
 
     /**
@@ -278,10 +280,11 @@ class ClientIgniteSetImpl<T> implements ClientIgniteSet<T> {
      *
      * @param op Op code.
      * @param keys Keys.
+     * @param primary Force primary node.
      * @return Result.
      */
     @SuppressWarnings("rawtypes")
-    private Boolean multiKeyOp(ClientOperation op, Collection keys) {
+    private Boolean multiKeyOp(ClientOperation op, Collection keys, boolean primary) {
         if (keys.isEmpty())
             return false;
 
@@ -301,11 +304,10 @@ class ClientIgniteSetImpl<T> implements ClientIgniteSet<T> {
 
                 w.writeObject(firstKey);
 
-                while (iter.hasNext()) {
+                while (iter.hasNext())
                     w.writeObject(iter.next());
-                }
             }
-        }, r -> r.in().readBoolean());
+        }, r -> r.in().readBoolean(), primary);
     }
 
     /**

@@ -394,6 +394,17 @@ final class ReliableChannel implements AutoCloseable {
         return serviceAsync(op, payloadWriter, null);
     }
 
+    /** */
+    public <T> IgniteClientFuture<T> affinityServiceAsync(
+        int cacheId,
+        Object key,
+        ClientOperation op,
+        Consumer<PayloadOutputChannel> payloadWriter,
+        Function<PayloadInputChannel, T> payloadReader
+    ) {
+        return null;
+    }
+
     /**
      * Send request to affinity node and handle response.
      */
@@ -402,10 +413,11 @@ final class ReliableChannel implements AutoCloseable {
         Object key,
         ClientOperation op,
         Consumer<PayloadOutputChannel> payloadWriter,
-        Function<PayloadInputChannel, T> payloadReader
+        Function<PayloadInputChannel, T> payloadReader,
+        boolean primary
     ) throws ClientException, ClientError {
         if (partitionAwarenessEnabled && affinityInfoIsUpToDate(cacheId)) {
-            UUID affNodeId = affinityCtx.affinityNode(cacheId, key);
+            UUID affNodeId = affinityCtx.affinityNode(cacheId, key, primary);
 
             if (affNodeId != null) {
                 return applyOnNodeChannelWithFallback(affNodeId, channel ->
@@ -424,10 +436,11 @@ final class ReliableChannel implements AutoCloseable {
         int part,
         ClientOperation op,
         Consumer<PayloadOutputChannel> payloadWriter,
-        Function<PayloadInputChannel, T> payloadReader
+        Function<PayloadInputChannel, T> payloadReader,
+        boolean primary
     ) throws ClientException, ClientError {
         if (partitionAwarenessEnabled && affinityInfoIsUpToDate(cacheId)) {
-            UUID affNodeId = affinityCtx.affinityNode(cacheId, part);
+            UUID affNodeId = affinityCtx.affinityNode(cacheId, part, primary);
 
             if (affNodeId != null) {
                 return applyOnNodeChannelWithFallback(affNodeId, channel ->
@@ -446,10 +459,11 @@ final class ReliableChannel implements AutoCloseable {
         Object key,
         ClientOperation op,
         Consumer<PayloadOutputChannel> payloadWriter,
-        Function<PayloadInputChannel, T> payloadReader
+        Function<PayloadInputChannel, T> payloadReader,
+        boolean primary
     ) throws ClientException, ClientError {
         if (partitionAwarenessEnabled && affinityInfoIsUpToDate(cacheId)) {
-            UUID affNodeId = affinityCtx.affinityNode(cacheId, key);
+            UUID affNodeId = affinityCtx.affinityNode(cacheId, key, primary);
 
             if (affNodeId != null) {
                 CompletableFuture<T> fut = new CompletableFuture<>();

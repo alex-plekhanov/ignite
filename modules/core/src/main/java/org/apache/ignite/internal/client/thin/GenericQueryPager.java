@@ -105,7 +105,7 @@ abstract class GenericQueryPager<T> implements QueryPager<T> {
 
         return part == -1
                 ? ch.service(qryOp, qryWriter, this::readResult)
-                : ch.affinityService(cacheId, part, qryOp, qryWriter, this::readResult);
+                : ch.affinityService(cacheId, part, qryOp, qryWriter, this::readResult, false);
     }
 
     /** {@inheritDoc} */

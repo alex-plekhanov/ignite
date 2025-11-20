@@ -87,9 +87,10 @@ public class ClientCacheAffinityMapping {
      * @param binary Binary data processor (needed to extract affinity field from the key).
      * @param cacheId Cache ID.
      * @param key Key.
+     * @param primary Force primary node.
      * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and key.
      */
-    public UUID affinityNode(IgniteBinary binary, int cacheId, Object key) {
+    public UUID affinityNode(IgniteBinary binary, int cacheId, Object key, boolean primary) {
         CacheAffinityInfo affInfo = cacheAffinity.get(cacheId);
 
         if (affInfo == null || affInfo == NOT_APPLICABLE_CACHE_AFFINITY_INFO)
@@ -110,7 +111,7 @@ public class ClientCacheAffinityMapping {
             }
         }
 
-        return affInfo.nodeForKey(binaryKey);
+        return affInfo.nodeForKey(binaryKey, primary);
     }
 
     /**
@@ -118,15 +119,16 @@ public class ClientCacheAffinityMapping {
      *
      * @param cacheId Cache ID.
      * @param part Partition.
+     * @param primary Force primary node.
      * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and partition.
      */
-    public UUID affinityNode(int cacheId, int part) {
+    public UUID affinityNode(int cacheId, int part, boolean primary) {
         CacheAffinityInfo affInfo = cacheAffinity.get(cacheId);
 
         if (affInfo == null || affInfo == NOT_APPLICABLE_CACHE_AFFINITY_INFO)
             return null;
 
-        return affInfo.nodeForPartition(part);
+        return affInfo.nodeForPartition(part, primary);
     }
 
     /**
@@ -172,7 +174,7 @@ public class ClientCacheAffinityMapping {
             out.writeBoolean(customMappingsRequired);
 
         if (ctx.isFeatureSupported(DC_AWARE)) {
-            try (BinaryWriterEx w = BinaryUtils.writer(null, out.out(), null)) {
+            try (BinaryWriterEx w = BinaryUtils.writer(null, out, null)) {
                 w.writeString(dcId);
             }
         }
@@ -324,8 +326,9 @@ public class ClientCacheAffinityMapping {
 
         /**
          * @param keyCfg Cache key configuration or {@code null} if partition awareness is not applicable for this cache.
-         * @param primaryPartMapping Partition to node mapping or {@code null} if partition awareness is not applicable for
-         * this cache.
+         * @param primaryPartMapping Primary partition to node mapping or {@code null} if partition awareness
+         * is not applicable for this cache.
+         * @param dcBackupPartMapping Backup partition to node mapping, located in current DC.
          */
         private CacheAffinityInfo(
             Map<Integer, Integer> keyCfg,
@@ -343,24 +346,28 @@ public class ClientCacheAffinityMapping {
          * Calculates node for given key.
          *
          * @param key Key.
+         * @param primary Force primary node.
          */
-        private UUID nodeForKey(Object key) {
+        private UUID nodeForKey(Object key, boolean primary) {
             if (keyMapper == null)
                 return null;
 
-            return nodeForPartition(keyMapper.partition(key));
+            return nodeForPartition(keyMapper.partition(key), primary);
         }
 
         /**
          * Calculates node for given partition.
          *
          * @param part Partition.
+         * @param primary Force primary node.
          */
-        private UUID nodeForPartition(int part) {
-            if (part < 0 || primaryPartMapping == null || part >= primaryPartMapping.length)
+        private UUID nodeForPartition(int part, boolean primary) {
+            UUID[] partMapping = primary ? primaryPartMapping : dcBackupPartMapping;
+
+            if (part < 0 || partMapping == null || part >= partMapping.length)
                 return null;
 
-            return primaryPartMapping[part];
+            return partMapping[part];
         }
     }
 

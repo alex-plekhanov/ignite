@@ -178,7 +178,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_GET,
             null,
-            this::readObject
+            this::readObject,
+            false
         );
     }
 
@@ -188,10 +189,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("key");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_GET,
-                null,
-                this::readObject
+            key,
+            ClientOperation.CACHE_GET,
+            null,
+            this::readObject,
+            false
         );
     }
 
@@ -207,7 +209,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_PUT,
             req -> writeObject(req, val),
-            null
+            null,
+            true
         );
     }
 
@@ -220,10 +223,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("val");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_PUT,
-                req -> writeObject(req, val),
-                null
+            key,
+            ClientOperation.CACHE_PUT,
+            req -> writeObject(req, val),
+            null,
+            true
         );
     }
 
@@ -236,7 +240,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_CONTAINS_KEY,
             null,
-            res -> res.in().readBoolean()
+            res -> res.in().readBoolean(),
+            false
         );
     }
 
@@ -246,10 +251,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("key");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_CONTAINS_KEY,
-                null,
-                res -> res.in().readBoolean()
+            key,
+            ClientOperation.CACHE_CONTAINS_KEY,
+            null,
+            res -> res.in().readBoolean(),
+            false
         );
     }
 
@@ -263,7 +269,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        return txAwareService(null, tx,
+        return txAwareService(tx,
             ClientOperation.CACHE_CONTAINS_KEYS,
             req -> writeKeys(keys, req, tx),
             res -> res.in().readBoolean());
@@ -279,7 +285,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        return txAwareServiceAsync(null, tx,
+        return txAwareServiceAsync(tx,
             ClientOperation.CACHE_CONTAINS_KEYS,
             req -> writeKeys(keys, req, tx),
             res -> res.in().readBoolean());
@@ -344,7 +350,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        return txAwareService(null, tx,
+        return txAwareService(tx,
             ClientOperation.CACHE_GET_ALL,
             req -> writeKeys(keys, req, tx),
             this::readEntries);
@@ -362,7 +368,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        return txAwareServiceAsync(null, tx,
+        return txAwareServiceAsync(tx,
             ClientOperation.CACHE_GET_ALL,
             req -> writeKeys(keys, req, tx),
             this::readEntries);
@@ -381,7 +387,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        txAwareService(null, tx,
+        txAwareService(tx,
             ClientOperation.CACHE_PUT_ALL,
             req -> writeEntries(map, req, tx),
             null);
@@ -399,7 +405,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        return txAwareServiceAsync(null, tx,
+        return txAwareServiceAsync(tx,
             ClientOperation.CACHE_PUT_ALL,
             req -> writeEntries(map, req, tx),
             null);
@@ -423,7 +429,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
                 writeObject(req, oldVal);
                 writeObject(req, newVal);
             },
-            res -> res.in().readBoolean()
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -439,13 +446,14 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("newVal");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_REPLACE_IF_EQUALS,
-                req -> {
-                    writeObject(req, oldVal);
-                    writeObject(req, newVal);
-                },
-                res -> res.in().readBoolean()
+            key,
+            ClientOperation.CACHE_REPLACE_IF_EQUALS,
+            req -> {
+                writeObject(req, oldVal);
+                writeObject(req, newVal);
+            },
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -461,7 +469,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_REPLACE,
             req -> writeObject(req, val),
-            res -> res.in().readBoolean()
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -474,10 +483,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("val");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_REPLACE,
-                req -> writeObject(req, val),
-                res -> res.in().readBoolean()
+            key,
+            ClientOperation.CACHE_REPLACE,
+            req -> writeObject(req, val),
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -490,7 +500,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_REMOVE_KEY,
             null,
-            res -> res.in().readBoolean()
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -500,10 +511,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("key");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_REMOVE_KEY,
-                null,
-                res -> res.in().readBoolean()
+            key,
+            ClientOperation.CACHE_REMOVE_KEY,
+            null,
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -519,7 +531,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_REMOVE_IF_EQUALS,
             req -> writeObject(req, oldVal),
-            res -> res.in().readBoolean()
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -532,10 +545,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("oldVal");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_REMOVE_IF_EQUALS,
-                req -> writeObject(req, oldVal),
-                res -> res.in().readBoolean()
+            key,
+            ClientOperation.CACHE_REMOVE_IF_EQUALS,
+            req -> writeObject(req, oldVal),
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -551,7 +565,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        txAwareService(null, tx,
+        txAwareService(tx,
             ClientOperation.CACHE_REMOVE_KEYS,
             req -> {
                 writeKeys(keys, req, tx);
@@ -572,7 +586,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        return txAwareServiceAsync(null, tx,
+        return txAwareServiceAsync(tx,
             ClientOperation.CACHE_REMOVE_KEYS,
             req -> {
                 writeKeys(keys, req, tx);
@@ -609,7 +623,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_GET_AND_PUT,
             req -> writeObject(req, val),
-            this::readObject
+            this::readObject,
+            true
         );
     }
 
@@ -622,10 +637,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("val");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_GET_AND_PUT,
-                req -> writeObject(req, val),
-                this::readObject
+            key,
+            ClientOperation.CACHE_GET_AND_PUT,
+            req -> writeObject(req, val),
+            this::readObject,
+            true
         );
     }
 
@@ -638,7 +654,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_GET_AND_REMOVE,
             null,
-            this::readObject
+            this::readObject,
+            true
         );
     }
 
@@ -648,10 +665,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("key");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_GET_AND_REMOVE,
-                null,
-                this::readObject
+            key,
+            ClientOperation.CACHE_GET_AND_REMOVE,
+            null,
+            this::readObject,
+            true
         );
     }
 
@@ -667,7 +685,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_GET_AND_REPLACE,
             req -> writeObject(req, val),
-            this::readObject
+            this::readObject,
+            true
         );
     }
 
@@ -680,10 +699,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("val");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_GET_AND_REPLACE,
-                req -> writeObject(req, val),
-                this::readObject
+            key,
+            ClientOperation.CACHE_GET_AND_REPLACE,
+            req -> writeObject(req, val),
+            this::readObject,
+            true
         );
     }
 
@@ -699,7 +719,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_PUT_IF_ABSENT,
             req -> writeObject(req, val),
-            res -> res.in().readBoolean()
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -712,10 +733,11 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             throw new NullPointerException("val");
 
         return cacheSingleKeyOperationAsync(
-                key,
-                ClientOperation.CACHE_PUT_IF_ABSENT,
-                req -> writeObject(req, val),
-                res -> res.in().readBoolean()
+            key,
+            ClientOperation.CACHE_PUT_IF_ABSENT,
+            req -> writeObject(req, val),
+            res -> res.in().readBoolean(),
+            true
         );
     }
 
@@ -731,7 +753,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_GET_AND_PUT_IF_ABSENT,
             req -> writeObject(req, val),
-            this::readObject
+            this::readObject,
+            true
         );
     }
 
@@ -747,7 +770,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_GET_AND_PUT_IF_ABSENT,
             req -> writeObject(req, val),
-            this::readObject
+            this::readObject,
+            true
         );
     }
 
@@ -802,7 +826,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_CLEAR_KEY,
             null,
-            null
+            null,
+            true
         );
     }
 
@@ -825,7 +850,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_CLEAR_KEY,
             null,
-            null
+            null,
+            true
         );
     }
 
@@ -848,7 +874,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        txAwareService(null, tx,
+        txAwareService(tx,
             ClientOperation.CACHE_CLEAR_KEYS,
             req -> writeKeys(keys, req, tx),
             null
@@ -875,7 +901,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        return txAwareServiceAsync(null, tx,
+        return txAwareServiceAsync(tx,
             ClientOperation.CACHE_CLEAR_KEYS,
             req -> writeKeys(keys, req, tx),
             null
@@ -899,7 +925,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
                 key,
                 ClientOperation.CACHE_INVOKE,
                 req -> writeEntryProcessor(req, entryProc, arguments),
-                this::readObject
+                this::readObject,
+                true
             );
         }
         catch (Exception e) {
@@ -930,7 +957,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             key,
             ClientOperation.CACHE_INVOKE,
             req -> writeEntryProcessor(req, entryProc, arguments),
-            this::readObject
+            this::readObject,
+            true
         );
 
         opFut.whenComplete((res, err) -> {
@@ -963,7 +991,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        return txAwareService(null, tx,
+        return txAwareService(tx,
             ClientOperation.CACHE_INVOKE_ALL,
             req -> {
                 writeKeys(keys, req, tx);
@@ -988,7 +1016,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
 
         TcpClientTransaction tx = transactions.tx();
 
-        return txAwareServiceAsync(null, tx,
+        return txAwareServiceAsync(tx,
             ClientOperation.CACHE_INVOKE_ALL,
             req -> {
                 writeKeys(keys, req, tx);
@@ -1395,11 +1423,24 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
      * Execute operation on channel most suitable for transactional context.
      */
     private <T> T txAwareService(
-        @Nullable K affKey,
         TcpClientTransaction tx,
         ClientOperation op,
         Consumer<PayloadOutputChannel> payloadWriter,
         Function<PayloadInputChannel, T> payloadReader
+    ) {
+        return txAwareService(null, tx, op, payloadWriter, payloadReader, false);
+    }
+
+    /**
+     * Execute operation on channel most suitable for transactional context.
+     */
+    private <T> T txAwareService(
+        @Nullable K affKey,
+        TcpClientTransaction tx,
+        ClientOperation op,
+        Consumer<PayloadOutputChannel> payloadWriter,
+        Function<PayloadInputChannel, T> payloadReader,
+        boolean primary
     ) {
         // Transactional operation cannot be executed on affinity node, it should be executed on node started
         // the transaction.
@@ -1415,9 +1456,21 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             }
         }
         else if (affKey != null)
-            return ch.affinityService(cacheId, affKey, op, payloadWriter, payloadReader);
+            return ch.affinityService(cacheId, affKey, op, payloadWriter, payloadReader, primary);
         else
             return ch.service(op, payloadWriter, payloadReader);
+    }
+
+    /**
+     * Execute operation on channel most suitable for transactional context.
+     */
+    private <T> IgniteClientFuture<T> txAwareServiceAsync(
+        TcpClientTransaction tx,
+        ClientOperation op,
+        Consumer<PayloadOutputChannel> payloadWriter,
+        Function<PayloadInputChannel, T> payloadReader
+    ) {
+        return txAwareServiceAsync(null, tx, op, payloadWriter, payloadReader, false);
     }
 
     /**
@@ -1428,7 +1481,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
         TcpClientTransaction tx,
         ClientOperation op,
         Consumer<PayloadOutputChannel> payloadWriter,
-        Function<PayloadInputChannel, T> payloadReader
+        Function<PayloadInputChannel, T> payloadReader,
+        boolean primary
     ) {
         // Transactional operation cannot be executed on affinity node, it should be executed on node started
         // the transaction.
@@ -1452,7 +1506,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
             return new IgniteClientFutureImpl<>(fut);
         }
         else if (affKey != null)
-            return ch.affinityServiceAsync(cacheId, affKey, op, payloadWriter, payloadReader);
+            return ch.affinityServiceAsync(cacheId, affKey, op, payloadWriter, payloadReader, primary);
         else
             return ch.serviceAsync(op, payloadWriter, payloadReader);
     }
@@ -1471,7 +1525,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
         K key,
         ClientOperation op,
         Consumer<PayloadOutputChannel> additionalPayloadWriter,
-        Function<PayloadInputChannel, T> payloadReader
+        Function<PayloadInputChannel, T> payloadReader,
+        boolean primary
     ) throws ClientException {
         TcpClientTransaction tx = transactions.tx();
 
@@ -1483,7 +1538,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
                 additionalPayloadWriter.accept(req);
         };
 
-        return txAwareService(key, tx, op, payloadWriter, payloadReader);
+        return txAwareService(key, tx, op, payloadWriter, payloadReader, primary);
     }
 
     /**
@@ -1493,7 +1548,8 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
         K key,
         ClientOperation op,
         Consumer<PayloadOutputChannel> additionalPayloadWriter,
-        Function<PayloadInputChannel, T> payloadReader
+        Function<PayloadInputChannel, T> payloadReader,
+        boolean primary
     ) throws ClientException {
         TcpClientTransaction tx = transactions.tx();
 
@@ -1505,7 +1561,7 @@ public class TcpClientCache<K, V> implements ClientCache<K, V> {
                 additionalPayloadWriter.accept(req);
         };
 
-        return txAwareServiceAsync(key, tx, op, payloadWriter, payloadReader);
+        return txAwareServiceAsync(key, tx, op, payloadWriter, payloadReader, primary);
     }
 
     /** Write cache ID and flags for non-transactional operations. */

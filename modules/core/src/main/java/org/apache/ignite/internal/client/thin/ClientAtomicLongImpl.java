@@ -64,7 +64,8 @@ public class ClientAtomicLongImpl implements ClientAtomicLong {
 
     /** {@inheritDoc} */
     @Override public long get() throws IgniteException {
-        return ch.affinityService(cacheId, affinityKey(), ClientOperation.ATOMIC_LONG_VALUE_GET, this::writeName, in -> in.in().readLong());
+        return ch.affinityService(cacheId, affinityKey(), ClientOperation.ATOMIC_LONG_VALUE_GET, this::writeName,
+            in -> in.in().readLong(), false);
     }
 
     /** {@inheritDoc} */
@@ -82,7 +83,7 @@ public class ClientAtomicLongImpl implements ClientAtomicLong {
         return ch.affinityService(cacheId, affinityKey(), ClientOperation.ATOMIC_LONG_VALUE_ADD_AND_GET, out -> {
             writeName(out);
             out.out().writeLong(l);
-        }, in -> in.in().readLong());
+        }, in -> in.in().readLong(), true);
     }
 
     /** {@inheritDoc} */
@@ -105,7 +106,7 @@ public class ClientAtomicLongImpl implements ClientAtomicLong {
         return ch.affinityService(cacheId, affinityKey(), ClientOperation.ATOMIC_LONG_VALUE_GET_AND_SET, out -> {
             writeName(out);
             out.out().writeLong(l);
-        }, in -> in.in().readLong());
+        }, in -> in.in().readLong(), true);
     }
 
     /** {@inheritDoc} */
@@ -114,18 +115,19 @@ public class ClientAtomicLongImpl implements ClientAtomicLong {
             writeName(out);
             out.out().writeLong(expVal);
             out.out().writeLong(newVal);
-        }, in -> in.in().readBoolean());
+        }, in -> in.in().readBoolean(), true);
     }
 
     /** {@inheritDoc} */
     @Override public boolean removed() {
         return ch.affinityService(cacheId, affinityKey(), ClientOperation.ATOMIC_LONG_EXISTS, this::writeName,
-                in -> !in.in().readBoolean());
+            in -> !in.in().readBoolean(), true);
     }
 
     /** {@inheritDoc} */
     @Override public void close() {
-        ch.affinityService(cacheId, affinityKey(), ClientOperation.ATOMIC_LONG_REMOVE, this::writeName, null);
+        ch.affinityService(cacheId, affinityKey(), ClientOperation.ATOMIC_LONG_REMOVE, this::writeName,
+            null, true);
     }
 
     /**

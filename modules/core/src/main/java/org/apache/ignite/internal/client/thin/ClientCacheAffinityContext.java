@@ -252,12 +252,13 @@ public class ClientCacheAffinityContext {
      *
      * @param cacheId Cache ID.
      * @param key Key.
+     * @param primary Force primary node.
      * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and key.
      */
-    public UUID affinityNode(int cacheId, Object key) {
+    public UUID affinityNode(int cacheId, Object key, boolean primary) {
         ClientCacheAffinityMapping mapping = currentMapping();
 
-        return mapping == null ? null : mapping.affinityNode(binary, cacheId, key);
+        return mapping == null ? null : mapping.affinityNode(binary, cacheId, key, primary);
     }
 
     /**
@@ -265,12 +266,13 @@ public class ClientCacheAffinityContext {
      *
      * @param cacheId Cache ID.
      * @param part Partition.
+     * @param primary Force primary node.
      * @return Affinity node id or {@code null} if affinity node can't be determined for given cache and partition.
      */
-    public UUID affinityNode(int cacheId, int part) {
+    public UUID affinityNode(int cacheId, int part, boolean primary) {
         ClientCacheAffinityMapping mapping = currentMapping();
 
-        return mapping == null ? null : mapping.affinityNode(cacheId, part);
+        return mapping == null ? null : mapping.affinityNode(cacheId, part, primary);
     }
 
     /**
