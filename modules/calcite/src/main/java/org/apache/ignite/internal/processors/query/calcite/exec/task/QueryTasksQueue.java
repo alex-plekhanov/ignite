@@ -22,11 +22,13 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -63,11 +65,11 @@ class QueryTasksQueue {
     /** */
     private final ReentrantLock lock = new ReentrantLock();
 
-    /** Wait condition for waiting takes. */
-    private final Condition notEmpty = lock.newCondition();
-
     /** Set of blocked (currently running) queries. */
     private final Set<QueryKey> blockedQrys = new HashSet<>();
+
+    /** Parked threads. */
+    private final Queue<Thread> parked = new ConcurrentLinkedQueue<>();
 
     /**
      * Creates a {@code LinkedBlockingQueue}.
@@ -93,38 +95,53 @@ class QueryTasksQueue {
             last = last.next = node;
 
             cnt.getAndIncrement();
-
-            notEmpty.signal();
         }
         finally {
             lock.unlock();
         }
+
+        LockSupport.unpark(parked.poll());
     }
 
     /** Poll task and block query. */
     public QueryAwareTask pollTaskAndBlockQuery(long timeout, TimeUnit unit) throws InterruptedException {
-        long nanos = unit.toNanos(timeout);
+        while (true) {
+            if (cnt.get() > 0) {
+                lock.lockInterruptibly();
 
-        lock.lockInterruptibly();
+                try {
+                    QueryAwareTask res = dequeue();
 
-        try {
-            QueryAwareTask res;
+                    if (res == null)
+                        continue;
 
-            while (cnt.get() == 0 || (res = dequeue()) == null) {
-                if (nanos <= 0L)
-                    return null;
+                    boolean added = blockedQrys.add(res.queryKey());
 
-                nanos = notEmpty.awaitNanos(nanos);
+                    assert added;
+
+                    return res;
+                }
+                finally {
+                    lock.unlock();
+                }
             }
 
-            boolean added = blockedQrys.add(res.queryKey());
+            if (timeout <= 0L)
+                return null;
 
-            assert added;
+            parked.add(Thread.currentThread());
 
-            return res;
-        }
-        finally {
-            lock.unlock();
+            if (cnt.get() > 0)
+                parked.remove(Thread.currentThread());
+            else {
+                try {
+                    LockSupport.park();
+                }
+                finally {
+                    if (Thread.currentThread().isInterrupted())
+                        parked.remove(Thread.currentThread());
+                }
+            }
         }
     }
 
