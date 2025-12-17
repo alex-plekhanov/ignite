@@ -22,14 +22,12 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Objects;
-import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -116,8 +114,11 @@ class QueryTasksQueue {
     /** */
     private final Stripe[] stripes;
 
-    /** Parked threads. */
-    private final Queue<Thread> parked = new ConcurrentLinkedQueue<>();
+    /** */
+    private final ReentrantLock waitLock = new ReentrantLock();
+
+    /** Wait condition for waiting takes. */
+    private final Condition notEmpty = waitLock.newCondition();
 
     /** */
     private final AtomicInteger lastStripe = new AtomicInteger();
@@ -158,17 +159,23 @@ class QueryTasksQueue {
             stripe.lock.unlock();
         }
 
-        Thread threadToWakeUp = parked.poll();
+        waitLock.lock();
 
-        if (threadToWakeUp != null)
-            LockSupport.unpark(threadToWakeUp);
+        try {
+            notEmpty.signal();
+        }
+        finally {
+            waitLock.unlock();
+        }
     }
 
     /** Poll task and block query. */
     public QueryAwareTask pollTaskAndBlockQuery(long timeout, TimeUnit unit) throws InterruptedException {
+        long nanos = unit.toNanos(timeout);
+
         while (true) {
             if (cnt.get() > 0) {
-                int startStripeIdx = lastStripe.getAndAdd(ThreadLocalRandom.current().nextInt(STRIPES_CNT));
+                int startStripeIdx = lastStripe.getAndSet(ThreadLocalRandom.current().nextInt(STRIPES_CNT));
 
                 for (int i = 0; i < STRIPES_CNT; i++) {
                     Stripe stripe = stripes[(startStripeIdx + i) % STRIPES_CNT];
@@ -196,18 +203,14 @@ class QueryTasksQueue {
             if (timeout <= 0L)
                 return null;
 
-            parked.add(Thread.currentThread());
+            waitLock.lock();
 
-            if (cnt.get() > 0)
-                parked.remove(Thread.currentThread());
-            else {
-                try {
-                    LockSupport.park();
-                }
-                finally {
-                    if (Thread.currentThread().isInterrupted())
-                        parked.remove(Thread.currentThread());
-                }
+            try {
+                if (cnt.get() == 0)
+                    nanos = notEmpty.awaitNanos(nanos);
+            }
+            finally {
+                waitLock.unlock();
             }
         }
     }
