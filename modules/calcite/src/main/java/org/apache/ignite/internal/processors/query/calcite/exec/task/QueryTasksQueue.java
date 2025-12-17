@@ -22,11 +22,14 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -35,6 +38,9 @@ import org.jetbrains.annotations.Nullable;
  * A tasks queue with filtering (based on linked nodes).
  */
 class QueryTasksQueue {
+    /** */
+    private static final int STRIPES_CNT = Runtime.getRuntime().availableProcessors();
+
     /**
      * Linked list node class.
      */
@@ -51,29 +57,79 @@ class QueryTasksQueue {
         }
     }
 
+    /** */
+    private static class Stripe {
+        /** Head of linked list. */
+        Node head;
+
+        /** Tail of linked list. */
+        private Node last;
+
+        /** */
+        private final ReentrantLock lock = new ReentrantLock();
+
+        /** Set of blocked (currently running) queries. */
+        private final Set<QueryKey> blockedQrys = new HashSet<>();
+
+        /** */
+        public Stripe() {
+            last = head = new Node(null);
+        }
+
+        /**
+         * Removes a first non-blocked task from the head of the queue.
+         *
+         * @return The task.
+         */
+        private QueryAwareTask dequeue() {
+            assert lock.isHeldByCurrentThread();
+            assert head.item == null : "Unexpected head.item: " + head.item;
+
+            for (Node pred = head, cur = pred.next; cur != null; pred = cur, cur = cur.next) {
+                if (!blockedQrys.contains(cur.item.queryKey())) { // Skip tasks for blocked queries.
+                    QueryAwareTask res = cur.item;
+
+                    unlink(pred, cur);
+
+                    return res;
+                }
+            }
+
+            return null;
+        }
+
+        /**
+         * Unlinks interior Node cur with predecessor pred.
+         */
+        private void unlink(Node pred, Node cur) {
+            cur.item = null;
+            pred.next = cur.next;
+
+            if (last == cur)
+                last = pred;
+        }
+    }
+
     /** Current number of elements */
     private final AtomicInteger cnt = new AtomicInteger();
 
-    /** Head of linked list. */
-    Node head;
+    /** */
+    private final Stripe[] stripes;
 
-    /** Tail of linked list. */
-    private Node last;
+    /** Parked threads. */
+    private final Queue<Thread> parked = new ConcurrentLinkedQueue<>();
 
     /** */
-    private final ReentrantLock lock = new ReentrantLock();
-
-    /** Wait condition for waiting takes. */
-    private final Condition notEmpty = lock.newCondition();
-
-    /** Set of blocked (currently running) queries. */
-    private final Set<QueryKey> blockedQrys = new HashSet<>();
+    private final AtomicInteger lastStripe = new AtomicInteger();
 
     /**
      * Creates a {@code LinkedBlockingQueue}.
      */
     QueryTasksQueue() {
-        last = head = new Node(null);
+        stripes = new Stripe[STRIPES_CNT];
+
+        for (int i = 0; i < STRIPES_CNT; i++)
+            stripes[i] = new Stripe();
     }
 
     /** Queue size. */
@@ -83,88 +139,92 @@ class QueryTasksQueue {
 
     /** Add a task to the queue. */
     public void addTask(QueryAwareTask task) {
-        lock.lock();
+        int stripeIdx = task.queryKey().hashCode() % STRIPES_CNT;
+
+        Stripe stripe = stripes[stripeIdx];
+
+        stripe.lock.lock();
 
         try {
-            assert last.next == null : "Unexpected last.next: " + last.next;
+            assert stripe.last.next == null : "Unexpected last.next: " + stripe.last.next;
 
-            last = last.next = new Node(task);
+            stripe.last = stripe.last.next = new Node(task);
 
             cnt.getAndIncrement();
 
-            notEmpty.signal();
+            lastStripe.set(stripeIdx);
         }
         finally {
-            lock.unlock();
+            stripe.lock.unlock();
         }
+
+        Thread threadToWakeUp = parked.poll();
+
+        if (threadToWakeUp != null)
+            LockSupport.unpark(threadToWakeUp);
     }
 
     /** Poll task and block query. */
     public QueryAwareTask pollTaskAndBlockQuery(long timeout, TimeUnit unit) throws InterruptedException {
-        lock.lockInterruptibly();
+        while (true) {
+            if (cnt.get() > 0) {
+                int startStripeIdx = lastStripe.getAndAdd(ThreadLocalRandom.current().nextInt(STRIPES_CNT));
 
-        try {
-            QueryAwareTask res;
+                for (int i = 0; i < STRIPES_CNT; i++) {
+                    Stripe stripe = stripes[(startStripeIdx + i) % STRIPES_CNT];
 
-            long nanos = unit.toNanos(timeout);
+                    stripe.lock.lockInterruptibly();
 
-            while (cnt.get() == 0 || (res = dequeue()) == null) {
-                if (nanos <= 0L)
-                    return null;
+                    try {
+                        QueryAwareTask res = stripe.dequeue();
 
-                nanos = notEmpty.awaitNanos(nanos);
+                        if (res == null)
+                            continue;
+
+                        boolean added = stripe.blockedQrys.add(res.queryKey());
+
+                        assert added;
+
+                        return res;
+                    }
+                    finally {
+                        stripe.lock.unlock();
+                    }
+                }
             }
 
-            boolean added = blockedQrys.add(res.queryKey());
+            if (timeout <= 0L)
+                return null;
 
-            assert added;
+            parked.add(Thread.currentThread());
 
-            return res;
-        }
-        finally {
-            lock.unlock();
-        }
-    }
-
-    /**
-     * Removes a first non-blocked task from the head of the queue.
-     *
-     * @return The task.
-     */
-    private QueryAwareTask dequeue() {
-        assert lock.isHeldByCurrentThread();
-        assert head.item == null : "Unexpected head.item: " + head.item;
-
-        for (Node pred = head, cur = pred.next; cur != null; pred = cur, cur = cur.next) {
-            if (!blockedQrys.contains(cur.item.queryKey())) { // Skip tasks for blocked queries.
-                QueryAwareTask res = cur.item;
-
-                unlink(pred, cur);
-
-                if (cnt.decrementAndGet() > 0)
-                    notEmpty.signal();
-
-                return res;
+            if (cnt.get() > 0)
+                parked.remove(Thread.currentThread());
+            else {
+                try {
+                    LockSupport.park();
+                }
+                finally {
+                    if (Thread.currentThread().isInterrupted())
+                        parked.remove(Thread.currentThread());
+                }
             }
         }
-
-        return null;
     }
 
     /** Unblock query. */
     public void unblockQuery(QueryKey qryKey) {
-        lock.lock();
+        Stripe stripe = stripes[qryKey.hashCode() % STRIPES_CNT];
+
+        stripe.lock.lock();
 
         try {
-            boolean removed = blockedQrys.remove(qryKey);
+            boolean removed = stripe.blockedQrys.remove(qryKey);
 
             assert removed;
-
-            if (cnt.get() > 0)
-                notEmpty.signal();
         }
         finally {
-            lock.unlock();
+            stripe.lock.unlock();
         }
     }
 
@@ -173,12 +233,14 @@ class QueryTasksQueue {
         if (task == null)
             return false;
 
-        lock.lock();
+        Stripe stripe = stripes[task.queryKey().hashCode() % STRIPES_CNT];
+
+        stripe.lock.lock();
 
         try {
-            for (Node pred = head, cur = pred.next; cur != null; pred = cur, cur = cur.next) {
+            for (Node pred = stripe.head, cur = pred.next; cur != null; pred = cur, cur = cur.next) {
                 if (task.equals(cur.item)) {
-                    unlink(pred, cur);
+                    stripe.unlink(pred, cur);
 
                     cnt.getAndDecrement();
 
@@ -189,44 +251,35 @@ class QueryTasksQueue {
             return false;
         }
         finally {
-            lock.unlock();
+            stripe.lock.unlock();
         }
-    }
-
-    /**
-     * Unlinks interior Node cur with predecessor pred.
-     */
-    private void unlink(Node pred, Node cur) {
-        cur.item = null;
-        pred.next = cur.next;
-
-        if (last == cur)
-            last = pred;
     }
 
     /** */
     public <T> T[] toArray(T[] a) {
-        lock.lock();
+        int size = cnt.get();
 
-        try {
-            int size = cnt.get();
+        if (a.length < size)
+            a = (T[])Array.newInstance(a.getClass().getComponentType(), size);
 
-            if (a.length < size)
-                a = (T[])Array.newInstance(a.getClass().getComponentType(), size);
+        for (Stripe stripe : stripes) {
+            stripe.lock.lock();
 
-            int k = 0;
+            try {
+                int k = 0;
 
-            for (Node cur = head.next; cur != null; cur = cur.next)
-                a[k++] = (T)cur.item;
+                for (Node cur = stripe.head.next; cur != null && k < a.length; cur = cur.next)
+                    a[k++] = (T)cur.item;
 
-            while (a.length > k)
-                a[k++] = null;
-
-            return a;
+                while (a.length > k)
+                    a[k++] = null;
+            }
+            finally {
+                stripe.lock.unlock();
+            }
         }
-        finally {
-            lock.unlock();
-        }
+
+        return a;
     }
 
     /** */
@@ -236,25 +289,27 @@ class QueryTasksQueue {
         if (maxElements <= 0)
             return 0;
 
-        lock.lock();
+        int n = Math.min(maxElements, cnt.get());
+        int i = 0;
 
-        try {
-            int n = Math.min(maxElements, cnt.get());
-            int i = 0;
+        for (Stripe stripe : stripes) {
+            stripe.lock.lock();
 
-            for (Node cur = head.next; i < n && cur != null; cur = cur.next, i++) {
-                c.add(cur.item);
+            try {
+                for (Node cur = stripe.head.next; i < n && cur != null; cur = cur.next, i++) {
+                    c.add(cur.item);
 
-                unlink(head, cur);
+                    stripe.unlink(stripe.head, cur);
 
-                cnt.getAndDecrement();
+                    cnt.getAndDecrement();
+                }
             }
+            finally {
+                stripe.lock.unlock();
+            }
+        }
 
-            return i;
-        }
-        finally {
-            lock.unlock();
-        }
+        return i;
     }
 
     /**

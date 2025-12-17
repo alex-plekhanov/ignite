@@ -46,6 +46,7 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
@@ -77,7 +78,7 @@ public class JmhSqlBenchmark {
     private static final TcpDiscoveryVmIpFinder IP_FINDER = new TcpDiscoveryVmIpFinder(true);
 
     /** Query engine. */
-    @Param({"H2", "CALCITE"})
+    @Param({"CALCITE"})
     private String engine;
 
     /** Ignite client. */
@@ -104,6 +105,7 @@ public class JmhSqlBenchmark {
         cfg.setSqlConfiguration(new SqlConfiguration().setQueryEnginesConfiguration(
             "CALCITE".equals(engine) ? new CalciteQueryEngineConfiguration() : new IndexingQueryEngineConfiguration()
         ));
+        cfg.setQueryThreadPoolSize(50);
 
         return cfg;
     }
@@ -157,6 +159,7 @@ public class JmhSqlBenchmark {
      * Query unique value (indexed).
      */
     @Benchmark
+    @Threads(20)
     public void querySimpleUniqueIndexed() {
         int key = ThreadLocalRandom.current().nextInt(KEYS_CNT);
 
@@ -316,6 +319,7 @@ public class JmhSqlBenchmark {
     public static void main(String[] args) throws Exception {
         final Options options = new OptionsBuilder()
             .include(JmhSqlBenchmark.class.getSimpleName())
+            .jvmArgs("-DIGNITE_CALCITE_USE_QUERY_BLOCKING_TASK_EXECUTOR=true")
             .build();
 
         new Runner(options).run();
