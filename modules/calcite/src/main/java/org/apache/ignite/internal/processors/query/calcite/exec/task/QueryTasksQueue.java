@@ -83,12 +83,14 @@ class QueryTasksQueue {
 
     /** Add a task to the queue. */
     public void addTask(QueryAwareTask task) {
+        Node node = new Node(task);
+
         lock.lock();
 
         try {
             assert last.next == null : "Unexpected last.next: " + last.next;
 
-            last = last.next = new Node(task);
+            last = last.next = node;
 
             cnt.getAndIncrement();
 
@@ -101,12 +103,12 @@ class QueryTasksQueue {
 
     /** Poll task and block query. */
     public QueryAwareTask pollTaskAndBlockQuery(long timeout, TimeUnit unit) throws InterruptedException {
+        long nanos = unit.toNanos(timeout);
+
         lock.lockInterruptibly();
 
         try {
             QueryAwareTask res;
-
-            long nanos = unit.toNanos(timeout);
 
             while (cnt.get() == 0 || (res = dequeue()) == null) {
                 if (nanos <= 0L)
@@ -141,8 +143,7 @@ class QueryTasksQueue {
 
                 unlink(pred, cur);
 
-                if (cnt.decrementAndGet() > 0)
-                    notEmpty.signal();
+                cnt.getAndDecrement();
 
                 return res;
             }
@@ -159,9 +160,6 @@ class QueryTasksQueue {
             boolean removed = blockedQrys.remove(qryKey);
 
             assert removed;
-
-            if (cnt.get() > 0)
-                notEmpty.signal();
         }
         finally {
             lock.unlock();
