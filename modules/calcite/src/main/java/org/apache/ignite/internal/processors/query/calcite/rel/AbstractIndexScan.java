@@ -19,6 +19,9 @@ package org.apache.ignite.internal.processors.query.calcite.rel;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -82,7 +85,17 @@ public abstract class AbstractIndexScan extends ProjectableFilterableTableScan {
     @Override protected RelWriter explainTerms0(RelWriter pw) {
         pw = pw.item("index", idxName);
         pw = super.explainTerms0(pw);
-        pw = pw.itemIf("searchBounds", searchBounds, searchBounds != null);
+
+        if (searchBounds != null) {
+            if (pw.nest())
+                pw = pw.item("searchBounds", searchBounds);
+            else {
+                String formatted = searchBounds.stream().filter(Objects::nonNull).map(SearchBounds::condition)
+                    .collect(Collectors.toList()).toString();
+
+                pw = pw.item("searchBounds", formatted);
+            }
+        }
 
         if (pw.getDetailLevel() == SqlExplainLevel.ALL_ATTRIBUTES)
             pw = pw.item("inlineScan", isInlineScan());
