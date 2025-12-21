@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Deque;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.type.RelDataType;
@@ -41,8 +42,8 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
     /** */
     protected final BiPredicate<Row, Row> cond;
 
-    /** */
-    protected final RowHandler<Row> handler;
+    /** Output row factory. */
+    protected final BiFunction<Row, Row, Row> rowFactory;
 
     /** */
     protected int requested;
@@ -72,11 +73,16 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
      * @param ctx Execution context.
      * @param cond Join expression.
      */
-    private NestedLoopJoinNode(ExecutionContext<Row> ctx, RelDataType rowType, BiPredicate<Row, Row> cond) {
+    private NestedLoopJoinNode(
+        ExecutionContext<Row> ctx,
+        RelDataType rowType,
+        BiFunction<Row, Row, Row> rowFactory,
+        BiPredicate<Row, Row> cond
+    ) {
         super(ctx, rowType);
 
+        this.rowFactory = rowFactory;
         this.cond = cond;
-        handler = ctx.rowHandler();
     }
 
     /** {@inheritDoc} */
@@ -221,36 +227,46 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
     protected abstract void join() throws Exception;
 
     /** */
-    @NotNull public static <Row> NestedLoopJoinNode<Row> create(ExecutionContext<Row> ctx, RelDataType outputRowType,
-        RelDataType leftRowType, RelDataType rightRowType, JoinRelType joinType, BiPredicate<Row, Row> cond) {
+    @NotNull public static <Row> NestedLoopJoinNode<Row> create(
+        ExecutionContext<Row> ctx,
+        RelDataType outputRowType,
+        RelDataType leftRowType,
+        RelDataType rightRowType,
+        JoinRelType joinType,
+        BiPredicate<Row, Row> cond
+    ) {
+        RowHandler<Row> hnd = ctx.rowHandler();
+
+        BiFunction<Row, Row, Row> outputRowFactory = hnd::concat;
+
         switch (joinType) {
             case INNER:
-                return new InnerJoin<>(ctx, outputRowType, cond);
+                return new InnerJoin<>(ctx, outputRowType, outputRowFactory, cond);
 
             case LEFT: {
                 RowHandler.RowFactory<Row> rightRowFactory = ctx.rowHandler().factory(ctx.getTypeFactory(), rightRowType);
 
-                return new LeftJoin<>(ctx, outputRowType, cond, rightRowFactory);
+                return new LeftJoin<>(ctx, outputRowType, outputRowFactory, cond, rightRowFactory);
             }
 
             case RIGHT: {
                 RowHandler.RowFactory<Row> leftRowFactory = ctx.rowHandler().factory(ctx.getTypeFactory(), leftRowType);
 
-                return new RightJoin<>(ctx, outputRowType, cond, leftRowFactory);
+                return new RightJoin<>(ctx, outputRowType, outputRowFactory, cond, leftRowFactory);
             }
 
             case FULL: {
                 RowHandler.RowFactory<Row> leftRowFactory = ctx.rowHandler().factory(ctx.getTypeFactory(), leftRowType);
                 RowHandler.RowFactory<Row> rightRowFactory = ctx.rowHandler().factory(ctx.getTypeFactory(), rightRowType);
 
-                return new FullOuterJoin<>(ctx, outputRowType, cond, leftRowFactory, rightRowFactory);
+                return new FullOuterJoin<>(ctx, outputRowType, outputRowFactory, cond, leftRowFactory, rightRowFactory);
             }
 
             case SEMI:
-                return new SemiJoin<>(ctx, outputRowType, cond);
+                return new SemiJoin<>(ctx, outputRowType, outputRowFactory, cond);
 
             case ANTI:
-                return new AntiJoin<>(ctx, outputRowType, cond);
+                return new AntiJoin<>(ctx, outputRowType, outputRowFactory, cond);
 
             default:
                 throw new IllegalStateException("Join type \"" + joinType + "\" is not supported yet");
@@ -263,8 +279,13 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
          * @param ctx Execution context.
          * @param cond Join expression.
          */
-        public InnerJoin(ExecutionContext<Row> ctx, RelDataType rowType, BiPredicate<Row, Row> cond) {
-            super(ctx, rowType, cond);
+        public InnerJoin(
+            ExecutionContext<Row> ctx,
+            RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
+            BiPredicate<Row, Row> cond
+        ) {
+            super(ctx, rowType, rowFactory, cond);
         }
 
         /** */
@@ -283,7 +304,7 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
                                 continue;
 
                             requested--;
-                            Row row = handler.concat(left, rightMaterialized.get(rightIdx - 1));
+                            Row row = rowFactory.apply(left, rightMaterialized.get(rightIdx - 1));
                             downstream().push(row);
                         }
 
@@ -307,8 +328,8 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
 
     /** */
     private static class LeftJoin<Row> extends NestedLoopJoinNode<Row> {
-        /** Right row factory. */
-        private final RowHandler.RowFactory<Row> rightRowFactory;
+        /** Empty right row. */
+        private final Row emptyRightRow;
 
         /** Whether current left row was matched or not. */
         private boolean matched;
@@ -320,12 +341,13 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
         public LeftJoin(
             ExecutionContext<Row> ctx,
             RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
             BiPredicate<Row, Row> cond,
             RowHandler.RowFactory<Row> rightRowFactory
         ) {
-            super(ctx, rowType, cond);
+            super(ctx, rowType, rowFactory, cond);
 
-            this.rightRowFactory = rightRowFactory;
+            emptyRightRow = rightRowFactory.create();
         }
 
         /** */
@@ -356,7 +378,7 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
                             requested--;
                             matched = true;
 
-                            Row row = handler.concat(left, rightMaterialized.get(rightIdx - 1));
+                            Row row = rowFactory.apply(left, rightMaterialized.get(rightIdx - 1));
                             downstream().push(row);
                         }
 
@@ -367,7 +389,7 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
                                 requested--;
                                 wasPushed = true;
 
-                                downstream().push(handler.concat(left, rightRowFactory.create()));
+                                downstream().push(rowFactory.apply(left, emptyRightRow));
                             }
 
                             if (matched || wasPushed) {
@@ -391,8 +413,8 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
 
     /** */
     private static class RightJoin<Row> extends NestedLoopJoinNode<Row> {
-        /** Right row factory. */
-        private final RowHandler.RowFactory<Row> leftRowFactory;
+        /** Empty left row. */
+        private final Row emptyLeftRow;
 
         /** */
         private BitSet rightNotMatchedIndexes;
@@ -407,12 +429,13 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
         public RightJoin(
             ExecutionContext<Row> ctx,
             RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
             BiPredicate<Row, Row> cond,
             RowHandler.RowFactory<Row> leftRowFactory
         ) {
-            super(ctx, rowType, cond);
+            super(ctx, rowType, rowFactory, cond);
 
-            this.leftRowFactory = leftRowFactory;
+            emptyLeftRow = leftRowFactory.create();
         }
 
         /** {@inheritDoc} */
@@ -449,7 +472,7 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
                             requested--;
                             rightNotMatchedIndexes.clear(rightIdx - 1);
 
-                            Row joined = handler.concat(left, right);
+                            Row joined = rowFactory.apply(left, right);
                             downstream().push(joined);
                         }
 
@@ -477,7 +500,7 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
                         if (lastPushedInd < 0)
                             break;
 
-                        Row row = handler.concat(leftRowFactory.create(), rightMaterialized.get(lastPushedInd));
+                        Row row = rowFactory.apply(emptyLeftRow, rightMaterialized.get(lastPushedInd));
 
                         rightNotMatchedIndexes.clear(lastPushedInd);
 
@@ -502,11 +525,11 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
 
     /** */
     private static class FullOuterJoin<Row> extends NestedLoopJoinNode<Row> {
-        /** Left row factory. */
-        private final RowHandler.RowFactory<Row> leftRowFactory;
+        /** Empty left row. */
+        private final Row emptyLeftRow;
 
-        /** Right row factory. */
-        private final RowHandler.RowFactory<Row> rightRowFactory;
+        /** Empty right row. */
+        private final Row emptyRightRow;
 
         /** Whether current left row was matched or not. */
         private boolean leftMatched;
@@ -524,14 +547,15 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
         public FullOuterJoin(
             ExecutionContext<Row> ctx,
             RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
             BiPredicate<Row, Row> cond,
             RowHandler.RowFactory<Row> leftRowFactory,
             RowHandler.RowFactory<Row> rightRowFactory
         ) {
-            super(ctx, rowType, cond);
+            super(ctx, rowType, rowFactory, cond);
 
-            this.leftRowFactory = leftRowFactory;
-            this.rightRowFactory = rightRowFactory;
+            emptyLeftRow = leftRowFactory.create();
+            emptyRightRow = rightRowFactory.create();
         }
 
         /** {@inheritDoc} */
@@ -573,7 +597,7 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
                             leftMatched = true;
                             rightNotMatchedIndexes.clear(rightIdx - 1);
 
-                            Row joined = handler.concat(left, right);
+                            Row joined = rowFactory.apply(left, right);
                             downstream().push(joined);
                         }
 
@@ -584,7 +608,7 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
                                 requested--;
                                 wasPushed = true;
 
-                                downstream().push(handler.concat(left, rightRowFactory.create()));
+                                downstream().push(rowFactory.apply(left, emptyRightRow));
                             }
 
                             if (leftMatched || wasPushed) {
@@ -612,7 +636,7 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
                         if (lastPushedInd < 0)
                             break;
 
-                        Row row = handler.concat(leftRowFactory.create(), rightMaterialized.get(lastPushedInd));
+                        Row row = rowFactory.apply(emptyLeftRow, rightMaterialized.get(lastPushedInd));
 
                         rightNotMatchedIndexes.clear(lastPushedInd);
 
@@ -641,8 +665,13 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
          * @param ctx Execution context.
          * @param cond Join expression.
          */
-        public SemiJoin(ExecutionContext<Row> ctx, RelDataType rowType, BiPredicate<Row, Row> cond) {
-            super(ctx, rowType, cond);
+        public SemiJoin(
+            ExecutionContext<Row> ctx,
+            RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
+            BiPredicate<Row, Row> cond
+        ) {
+            super(ctx, rowType, rowFactory, cond);
         }
 
         /** {@inheritDoc} */
@@ -686,8 +715,13 @@ public abstract class NestedLoopJoinNode<Row> extends MemoryTrackingNode<Row> {
          * @param ctx Execution context.
          * @param cond Join expression.
          */
-        public AntiJoin(ExecutionContext<Row> ctx, RelDataType rowType, BiPredicate<Row, Row> cond) {
-            super(ctx, rowType, cond);
+        public AntiJoin(
+            ExecutionContext<Row> ctx,
+            RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
+            BiPredicate<Row, Row> cond
+        ) {
+            super(ctx, rowType, rowFactory, cond);
         }
 
         /** {@inheritDoc} */

@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -290,6 +291,11 @@ public class ExpressionFactoryImpl<Row> implements ExpressionFactory<Row> {
     }
 
     /** {@inheritDoc} */
+    @Override public BiFunction<Row, Row, Row> biProject(List<RexNode> projects, RelDataType rowType) {
+        return new BiProjectImpl(biScalar(projects, rowType), ctx.rowHandler().factory(typeFactory, RexUtil.types(projects)));
+    }
+
+    /** {@inheritDoc} */
     @Override public Supplier<Row> rowSource(List<RexNode> values) {
         return new ValuesImpl(scalar(values, null), ctx.rowHandler().factory(typeFactory,
             Commons.transform(values, v -> v != null ? v.getType() : NULL_TYPE)));
@@ -483,6 +489,17 @@ public class ExpressionFactoryImpl<Row> implements ExpressionFactory<Row> {
     private BiScalar biScalar(RexNode node, RelDataType type) {
         ImmutableList<RexNode> nodes = ImmutableList.of(node);
 
+        return biScalar(nodes, type);
+    }
+
+    /**
+     * Creates {@link BiScalar}, a code-generated expressions evaluator.
+     *
+     * @param nodes Expressions. {@code Null} expressions will be evaluated to {@link ExecutionContext#unspecifiedValue()}.
+     * @param type Row type.
+     * @return BiScalar.
+     */
+    private BiScalar biScalar(List<RexNode> nodes, RelDataType type) {
         return (BiScalar)SCALAR_CACHE.computeIfAbsent(digest(nodes, type, true),
             k -> compile(nodes, type, true));
     }
@@ -690,6 +707,32 @@ public class ExpressionFactoryImpl<Row> implements ExpressionFactory<Row> {
         @Override public Row apply(Row r) {
             Row res = factory.create();
             scalar.execute(ctx, r, res);
+
+            return res;
+        }
+    }
+
+    /** */
+    private class BiProjectImpl implements BiFunction<Row, Row, Row> {
+        /** */
+        private final BiScalar scalar;
+
+        /** */
+        private final RowFactory<Row> factory;
+
+        /**
+         * @param scalar Scalar.
+         */
+        private BiProjectImpl(BiScalar scalar, RowFactory<Row> factory) {
+            this.scalar = scalar;
+            this.factory = factory;
+        }
+
+        /** {@inheritDoc} */
+        @Override public Row apply(Row r1, Row r2) {
+            Row res = factory.create();
+
+            scalar.execute(ctx, r1, r2, res);
 
             return res;
         }

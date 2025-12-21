@@ -19,6 +19,7 @@ package org.apache.ignite.internal.processors.query.calcite.exec.exp;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -93,6 +94,14 @@ public interface ExpressionFactory<Row> {
      * @return Project function.
      */
     Function<Row, Row> project(List<RexNode> projects, RelDataType rowType);
+
+    /**
+     * Creates a Project function (result of project on two rows).
+     * @param projects Projection expressions.
+     * @param rowType Input row type.
+     * @return Filter predicate.
+     */
+    BiFunction<Row, Row, Row> biProject(List<RexNode> projects, RelDataType rowType);
 
     /**
      * Creates a Values relational node rows source.

@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
+import java.util.function.BiFunction;
 
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.type.RelDataType;
@@ -41,8 +42,8 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
     /** */
     protected final Comparator<Row> comp;
 
-    /** */
-    protected final RowHandler<Row> handler;
+    /** Output row factory. */
+    protected final BiFunction<Row, Row, Row> rowFactory;
 
     /** */
     protected int requested;
@@ -91,12 +92,18 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
      * @param ctx Execution context.
      * @param comp Join expression.
      */
-    private MergeJoinNode(ExecutionContext<Row> ctx, RelDataType rowType, Comparator<Row> comp, boolean distributed) {
+    private MergeJoinNode(
+        ExecutionContext<Row> ctx,
+        RelDataType rowType,
+        BiFunction<Row, Row, Row> rowFactory,
+        Comparator<Row> comp,
+        boolean distributed
+    ) {
         super(ctx, rowType);
 
+        this.rowFactory = rowFactory;
         this.comp = comp;
         this.distributed = distributed;
-        handler = ctx.rowHandler();
     }
 
     /** */
@@ -285,36 +292,48 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
     }
 
     /** */
-    @NotNull public static <Row> MergeJoinNode<Row> create(ExecutionContext<Row> ctx, RelDataType outputRowType, RelDataType leftRowType,
-        RelDataType rightRowType, JoinRelType joinType, Comparator<Row> comp, boolean distributed) {
+    @NotNull public static <Row> MergeJoinNode<Row> create(
+        ExecutionContext<Row> ctx,
+        RelDataType outputRowType,
+        RelDataType leftRowType,
+        RelDataType rightRowType,
+        JoinRelType joinType,
+        Comparator<Row> comp,
+        boolean distributed
+    ) {
+        RowHandler<Row> hnd = ctx.rowHandler();
+
+        BiFunction<Row, Row, Row> outputRowFactory = hnd::concat;
+
         switch (joinType) {
             case INNER:
-                return new InnerJoin<>(ctx, outputRowType, comp, distributed);
+                return new InnerJoin<>(ctx, outputRowType, outputRowFactory, comp, distributed);
 
             case LEFT: {
                 RowHandler.RowFactory<Row> rightRowFactory = ctx.rowHandler().factory(ctx.getTypeFactory(), rightRowType);
 
-                return new LeftJoin<>(ctx, outputRowType, comp, distributed, rightRowFactory);
+                return new LeftJoin<>(ctx, outputRowType, outputRowFactory, comp, distributed, rightRowFactory);
             }
 
             case RIGHT: {
                 RowHandler.RowFactory<Row> leftRowFactory = ctx.rowHandler().factory(ctx.getTypeFactory(), leftRowType);
 
-                return new RightJoin<>(ctx, outputRowType, comp, distributed, leftRowFactory);
+                return new RightJoin<>(ctx, outputRowType, outputRowFactory, comp, distributed, leftRowFactory);
             }
 
             case FULL: {
                 RowHandler.RowFactory<Row> leftRowFactory = ctx.rowHandler().factory(ctx.getTypeFactory(), leftRowType);
                 RowHandler.RowFactory<Row> rightRowFactory = ctx.rowHandler().factory(ctx.getTypeFactory(), rightRowType);
 
-                return new FullOuterJoin<>(ctx, outputRowType, comp, distributed, leftRowFactory, rightRowFactory);
+                return new FullOuterJoin<>(ctx, outputRowType, outputRowFactory, comp, distributed, leftRowFactory,
+                    rightRowFactory);
             }
 
             case SEMI:
-                return new SemiJoin<>(ctx, outputRowType, comp, distributed);
+                return new SemiJoin<>(ctx, outputRowType, outputRowFactory, comp, distributed);
 
             case ANTI:
-                return new AntiJoin<>(ctx, outputRowType, comp, distributed);
+                return new AntiJoin<>(ctx, outputRowType, outputRowFactory, comp, distributed);
 
             default:
                 throw new IllegalStateException("Join type \"" + joinType + "\" is not supported yet");
@@ -329,8 +348,14 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
          * @param comp Join expression comparator.
          * @param distributed If one of the inputs has exchange underneath.
          */
-        public InnerJoin(ExecutionContext<Row> ctx, RelDataType rowType, Comparator<Row> comp, boolean distributed) {
-            super(ctx, rowType, comp, distributed);
+        public InnerJoin(
+            ExecutionContext<Row> ctx,
+            RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
+            Comparator<Row> comp,
+            boolean distributed
+        ) {
+            super(ctx, rowType, rowFactory, comp, distributed);
         }
 
         /** {@inheritDoc} */
@@ -388,7 +413,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                                 rightMaterialization = new ArrayList<>();
                         }
 
-                        row = handler.concat(left, right);
+                        row = rowFactory.apply(left, right);
 
                         if (rightMaterialization != null) {
                             rightMaterialization.add(right);
@@ -418,7 +443,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                             continue;
                         }
 
-                        row = handler.concat(left, right);
+                        row = rowFactory.apply(left, right);
                     }
 
                     requested--;
@@ -438,8 +463,8 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
 
     /** */
     private static class LeftJoin<Row> extends MergeJoinNode<Row> {
-        /** Right row factory. */
-        private final RowHandler.RowFactory<Row> rightRowFactory;
+        /** Empty right row. */
+        private final Row emptyRightRow;
 
         /** Whether current left row was matched (hence pushed to downstream) or not. */
         private boolean matched;
@@ -454,13 +479,14 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
         public LeftJoin(
             ExecutionContext<Row> ctx,
             RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
             Comparator<Row> comp,
             boolean distributed,
             RowHandler.RowFactory<Row> rightRowFactory
         ) {
-            super(ctx, rowType, comp, distributed);
+            super(ctx, rowType, rowFactory, comp, distributed);
 
-            this.rightRowFactory = rightRowFactory;
+            emptyRightRow = rightRowFactory.create();
         }
 
         /** {@inheritDoc} */
@@ -495,7 +521,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                     Row row;
                     if (!drainMaterialization) {
                         if (right == null) {
-                            row = handler.concat(left, rightRowFactory.create());
+                            row = rowFactory.apply(left, emptyRightRow);
 
                             requested--;
                             downstream().push(row);
@@ -509,7 +535,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
 
                         if (cmp < 0) {
                             if (!matched) {
-                                row = handler.concat(left, rightRowFactory.create());
+                                row = rowFactory.apply(left, emptyRightRow);
 
                                 requested--;
                                 downstream().push(row);
@@ -541,7 +567,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                                 rightMaterialization = new ArrayList<>();
                         }
 
-                        row = handler.concat(left, right);
+                        row = rowFactory.apply(left, right);
 
                         if (rightMaterialization != null) {
                             rightMaterialization.add(right);
@@ -571,7 +597,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                             continue;
                         }
 
-                        row = handler.concat(left, right);
+                        row = rowFactory.apply(left, right);
                     }
 
                     requested--;
@@ -591,8 +617,8 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
 
     /** */
     private static class RightJoin<Row> extends MergeJoinNode<Row> {
-        /** Right row factory. */
-        private final RowHandler.RowFactory<Row> leftRowFactory;
+        /** Empty left row. */
+        private final Row emptyLeftRow;
 
         /** Whether current right row was matched (hence pushed to downstream) or not. */
         private boolean matched;
@@ -607,13 +633,14 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
         public RightJoin(
             ExecutionContext<Row> ctx,
             RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
             Comparator<Row> comp,
             boolean distributed,
             RowHandler.RowFactory<Row> leftRowFactory
         ) {
-            super(ctx, rowType, comp, distributed);
+            super(ctx, rowType, rowFactory, comp, distributed);
 
-            this.leftRowFactory = leftRowFactory;
+            emptyLeftRow = leftRowFactory.create();
         }
 
         /** {@inheritDoc} */
@@ -649,7 +676,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                     if (!drainMaterialization) {
                         if (left == null) {
                             if (!matched) {
-                                row = handler.concat(leftRowFactory.create(), right);
+                                row = rowFactory.apply(emptyLeftRow, right);
 
                                 requested--;
                                 downstream().push(row);
@@ -673,7 +700,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                         }
                         else if (cmp > 0) {
                             if (!matched) {
-                                row = handler.concat(leftRowFactory.create(), right);
+                                row = rowFactory.apply(emptyLeftRow, right);
 
                                 requested--;
                                 downstream().push(row);
@@ -696,7 +723,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
 
                         matched = true;
 
-                        row = handler.concat(left, right);
+                        row = rowFactory.apply(left, right);
 
                         if (rightMaterialization != null) {
                             rightMaterialization.add(right);
@@ -736,7 +763,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                             continue;
                         }
 
-                        row = handler.concat(left, right);
+                        row = rowFactory.apply(left, right);
                     }
 
                     requested--;
@@ -756,11 +783,11 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
 
     /** */
     private static class FullOuterJoin<Row> extends MergeJoinNode<Row> {
-        /** Left row factory. */
-        private final RowHandler.RowFactory<Row> leftRowFactory;
+        /** Empty left row. */
+        private final Row emptyLeftRow;
 
-        /** Right row factory. */
-        private final RowHandler.RowFactory<Row> rightRowFactory;
+        /** Empty right row. */
+        private final Row emptyRightRow;
 
         /** Whether current left row was matched (hence pushed to downstream) or not. */
         private boolean leftMatched;
@@ -779,15 +806,16 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
         public FullOuterJoin(
             ExecutionContext<Row> ctx,
             RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
             Comparator<Row> comp,
             boolean distributed,
             RowHandler.RowFactory<Row> leftRowFactory,
             RowHandler.RowFactory<Row> rightRowFactory
         ) {
-            super(ctx, rowType, comp, distributed);
+            super(ctx, rowType, rowFactory, comp, distributed);
 
-            this.leftRowFactory = leftRowFactory;
-            this.rightRowFactory = rightRowFactory;
+            emptyLeftRow = leftRowFactory.create();
+            emptyRightRow = rightRowFactory.create();
         }
 
         /** {@inheritDoc} */
@@ -827,7 +855,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                         if (left == null || right == null) {
                             if (left == null && right != null) {
                                 if (!rightMatched) {
-                                    row = handler.concat(leftRowFactory.create(), right);
+                                    row = rowFactory.apply(emptyLeftRow, right);
 
                                     requested--;
                                     downstream().push(row);
@@ -840,7 +868,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
 
                             if (left != null && right == null) {
                                 if (!leftMatched) {
-                                    row = handler.concat(left, rightRowFactory.create());
+                                    row = rowFactory.apply(left, emptyRightRow);
 
                                     requested--;
                                     downstream().push(row);
@@ -858,7 +886,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
 
                         if (cmp < 0) {
                             if (!leftMatched) {
-                                row = handler.concat(left, rightRowFactory.create());
+                                row = rowFactory.apply(left, emptyRightRow);
 
                                 requested--;
                                 downstream().push(row);
@@ -874,7 +902,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                         }
                         else if (cmp > 0) {
                             if (!rightMatched) {
-                                row = handler.concat(leftRowFactory.create(), right);
+                                row = rowFactory.apply(emptyLeftRow, right);
 
                                 requested--;
                                 downstream().push(row);
@@ -898,7 +926,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
                         leftMatched = true;
                         rightMatched = true;
 
-                        row = handler.concat(left, right);
+                        row = rowFactory.apply(left, right);
 
                         if (rightMaterialization != null) {
                             rightMaterialization.add(right);
@@ -940,7 +968,7 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
 
                         leftMatched = true;
 
-                        row = handler.concat(left, right);
+                        row = rowFactory.apply(left, right);
                     }
 
                     requested--;
@@ -966,8 +994,14 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
          * @param comp Join expression comparator.
          * @param distributed If one of the inputs has exchange underneath.
          */
-        public SemiJoin(ExecutionContext<Row> ctx, RelDataType rowType, Comparator<Row> comp, boolean distributed) {
-            super(ctx, rowType, comp, distributed);
+        public SemiJoin(
+            ExecutionContext<Row> ctx,
+            RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
+            Comparator<Row> comp,
+            boolean distributed
+        ) {
+            super(ctx, rowType, rowFactory, comp, distributed);
         }
 
         /** {@inheritDoc} */
@@ -1021,8 +1055,14 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
          * @param comp Join expression comparator.
          * @param distributed If one of the inputs has exchange underneath.
          */
-        public AntiJoin(ExecutionContext<Row> ctx, RelDataType rowType, Comparator<Row> comp, boolean distributed) {
-            super(ctx, rowType, comp, distributed);
+        public AntiJoin(
+            ExecutionContext<Row> ctx,
+            RelDataType rowType,
+            BiFunction<Row, Row, Row> rowFactory,
+            Comparator<Row> comp,
+            boolean distributed
+        ) {
+            super(ctx, rowType, rowFactory, comp, distributed);
         }
 
         /** {@inheritDoc} */
