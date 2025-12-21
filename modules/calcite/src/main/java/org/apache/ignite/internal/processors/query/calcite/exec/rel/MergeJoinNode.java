@@ -295,16 +295,13 @@ public abstract class MergeJoinNode<Row> extends AbstractNode<Row> {
     @NotNull public static <Row> MergeJoinNode<Row> create(
         ExecutionContext<Row> ctx,
         RelDataType outputRowType,
+        BiFunction<Row, Row, Row> outputRowFactory,
         RelDataType leftRowType,
         RelDataType rightRowType,
         JoinRelType joinType,
         Comparator<Row> comp,
         boolean distributed
     ) {
-        RowHandler<Row> hnd = ctx.rowHandler();
-
-        BiFunction<Row, Row, Row> outputRowFactory = hnd::concat;
-
         switch (joinType) {
             case INNER:
                 return new InnerJoin<>(ctx, outputRowType, outputRowFactory, comp, distributed);

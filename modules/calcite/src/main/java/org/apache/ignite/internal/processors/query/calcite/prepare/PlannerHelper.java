@@ -36,6 +36,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelRoot;
 import org.apache.calcite.rel.RelShuttle;
 import org.apache.calcite.rel.core.Join;
+import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.SetOp;
 import org.apache.calcite.rel.core.Spool;
 import org.apache.calcite.rel.core.TableScan;
@@ -53,6 +54,7 @@ import org.apache.calcite.util.Util;
 import org.apache.ignite.IgniteLogger;
 import org.apache.ignite.internal.processors.query.calcite.hint.HintDefinition;
 import org.apache.ignite.internal.processors.query.calcite.hint.HintUtils;
+import org.apache.ignite.internal.processors.query.calcite.rel.AbstractIgniteJoin;
 import org.apache.ignite.internal.processors.query.calcite.rel.AbstractIndexScan;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteConvention;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteIndexScan;
@@ -157,6 +159,8 @@ public class PlannerHelper {
 
             if (sqlNode.isA(ImmutableSet.of(SqlKind.INSERT, SqlKind.UPDATE, SqlKind.MERGE)))
                 igniteRel = new FixDependentModifyNodeShuttle().visit(igniteRel);
+
+            igniteRel = new MergeProjectJoinNodeShuttle().visit(igniteRel);
 
             return igniteRel;
         }
@@ -520,6 +524,27 @@ public class PlannerHelper {
          */
         private boolean modifyNodeInsertsData() {
             return modifyNode.isInsert();
+        }
+    }
+
+    /**
+     * Merges project Node into Join node
+     */
+    private static class MergeProjectJoinNodeShuttle extends IgniteRelShuttle {
+        /** {@inheritDoc} */
+        @Override public IgniteRel visit(IgniteProject rel) {
+            RelNode input = rel.getInput();
+
+            input = visit((IgniteRel)input);
+
+            if (input instanceof AbstractIgniteJoin) {
+                AbstractIgniteJoin join = (AbstractIgniteJoin)input;
+
+                if (join.projects() == null && join.getJoinType() != JoinRelType.SEMI && join.getJoinType() != JoinRelType.ANTI)
+                    return join.mergeProject(rel);
+            }
+
+            return rel;
         }
     }
 

@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -43,7 +42,6 @@ import org.apache.ignite.internal.processors.query.calcite.externalize.RelInputE
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCost;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCostFactory;
 import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
-import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.calcite.rel.RelCollations.EMPTY;
@@ -84,18 +82,11 @@ public class IgniteMergeJoin extends AbstractIgniteJoin {
 
     /** */
     public IgniteMergeJoin(RelInput input) {
-        this(
-            input.getCluster(),
-            input.getTraitSet().replace(IgniteConvention.INSTANCE),
-            input.getInputs().get(0),
-            input.getInputs().get(1),
-            input.getExpression("condition"),
-            input.getBitSet("allowNulls"),
-            ImmutableSet.copyOf(Commons.transform(input.getIntegerList("variablesSet"), CorrelationId::new)),
-            input.getEnum("joinType", JoinRelType.class),
-            ((RelInputEx)input).getCollation("leftCollation"),
-            ((RelInputEx)input).getCollation("rightCollation")
-        );
+        super(input);
+
+        allowNulls = input.getBitSet("allowNulls");
+        leftCollation = ((RelInputEx)input).getCollation("leftCollation");
+        rightCollation = ((RelInputEx)input).getCollation("rightCollation");
     }
 
     /** */
@@ -132,8 +123,13 @@ public class IgniteMergeJoin extends AbstractIgniteJoin {
 
     /** {@inheritDoc} */
     @Override public IgniteRel clone(RelOptCluster cluster, List<IgniteRel> inputs) {
-        return new IgniteMergeJoin(cluster, getTraitSet(), inputs.get(0), inputs.get(1), getCondition(), allowNulls,
-            getVariablesSet(), getJoinType(), leftCollation, rightCollation);
+        IgniteMergeJoin join = new IgniteMergeJoin(cluster, getTraitSet(), inputs.get(0), inputs.get(1), getCondition(),
+            allowNulls, getVariablesSet(), getJoinType(), leftCollation, rightCollation);
+
+        join.projects = projects;
+        join.rowType = rowType;
+
+        return join;
     }
 
     /** {@inheritDoc} */

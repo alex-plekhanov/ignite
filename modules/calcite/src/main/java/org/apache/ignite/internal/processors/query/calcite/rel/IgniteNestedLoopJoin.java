@@ -19,8 +19,6 @@ package org.apache.ignite.internal.processors.query.calcite.rel;
 
 import java.util.List;
 import java.util.Set;
-
-import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -34,7 +32,6 @@ import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexNode;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCost;
 import org.apache.ignite.internal.processors.query.calcite.metadata.cost.IgniteCostFactory;
-import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 
 /**
  * Relational expression that combines two relational expressions according to
@@ -65,13 +62,7 @@ public class IgniteNestedLoopJoin extends AbstractIgniteJoin {
 
     /** */
     public IgniteNestedLoopJoin(RelInput input) {
-        this(input.getCluster(),
-            input.getTraitSet().replace(IgniteConvention.INSTANCE),
-            input.getInputs().get(0),
-            input.getInputs().get(1),
-            input.getExpression("condition"),
-            ImmutableSet.copyOf(Commons.transform(input.getIntegerList("variablesSet"), CorrelationId::new)),
-            input.getEnum("joinType", JoinRelType.class));
+        super(input);
     }
 
     /** {@inheritDoc} */
@@ -109,7 +100,12 @@ public class IgniteNestedLoopJoin extends AbstractIgniteJoin {
 
     /** {@inheritDoc} */
     @Override public IgniteRel clone(RelOptCluster cluster, List<IgniteRel> inputs) {
-        return new IgniteNestedLoopJoin(cluster, getTraitSet(), inputs.get(0), inputs.get(1), getCondition(),
-            getVariablesSet(), getJoinType());
+        IgniteNestedLoopJoin join = new IgniteNestedLoopJoin(cluster, getTraitSet(), inputs.get(0), inputs.get(1),
+            getCondition(), getVariablesSet(), getJoinType());
+
+        join.projects = projects;
+        join.rowType = rowType;
+
+        return join;
     }
 }

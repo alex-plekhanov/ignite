@@ -22,6 +22,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -72,6 +73,7 @@ import org.apache.ignite.internal.processors.query.calcite.exec.rel.UnionAllNode
 import org.apache.ignite.internal.processors.query.calcite.metadata.AffinityService;
 import org.apache.ignite.internal.processors.query.calcite.metadata.ColocationGroup;
 import org.apache.ignite.internal.processors.query.calcite.prepare.bounds.SearchBounds;
+import org.apache.ignite.internal.processors.query.calcite.rel.AbstractIgniteJoin;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteCollect;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteCorrelatedNestedLoopJoin;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteExchange;
@@ -258,7 +260,8 @@ public class LogicalRelImplementor<Row> implements IgniteRelVisitor<Node<Row>> {
 
         BiPredicate<Row, Row> cond = expressionFactory.biPredicate(rel.getCondition(), rowType);
 
-        Node<Row> node = NestedLoopJoinNode.create(ctx, outType, leftType, rightType, joinType, cond);
+        Node<Row> node = NestedLoopJoinNode.create(ctx, outType, joinRowFactory(rel, rowType), leftType, rightType,
+            joinType, cond);
 
         Node<Row> leftInput = visit(rel.getLeft());
         Node<Row> rightInput = visit(rel.getRight());
@@ -280,8 +283,8 @@ public class LogicalRelImplementor<Row> implements IgniteRelVisitor<Node<Row>> {
         assert rel.getJoinType() == JoinRelType.INNER || rel.getJoinType() == JoinRelType.LEFT
             : CNLJ_NOT_SUPPORTED_JOIN_ASSERTION_MSG;
 
-        Node<Row> node = new CorrelatedNestedLoopJoinNode<>(ctx, outType, cond, rel.getVariablesSet(),
-            rel.getJoinType());
+        Node<Row> node = new CorrelatedNestedLoopJoinNode<>(ctx, outType, joinRowFactory(rel, rowType), cond,
+            rel.getVariablesSet(), rel.getJoinType());
 
         Node<Row> leftInput = visit(rel.getLeft());
         Node<Row> rightInput = visit(rel.getRight());
@@ -334,7 +337,10 @@ public class LogicalRelImplementor<Row> implements IgniteRelVisitor<Node<Row>> {
             collsAllowNullsBuilder.build()
         );
 
-        Node<Row> node = MergeJoinNode.create(ctx, outType, leftType, rightType, joinType, comp, hasExchange(rel));
+        RelDataType rowType = combinedRowType(ctx.getTypeFactory(), leftType, rightType);
+
+        Node<Row> node = MergeJoinNode.create(ctx, outType, joinRowFactory(rel, rowType), leftType, rightType, joinType,
+            comp, hasExchange(rel));
 
         Node<Row> leftInput = visit(rel.getLeft());
         Node<Row> rightInput = visit(rel.getRight());
@@ -342,6 +348,11 @@ public class LogicalRelImplementor<Row> implements IgniteRelVisitor<Node<Row>> {
         node.register(F.asList(leftInput, rightInput));
 
         return node;
+    }
+
+    /** */
+    private BiFunction<Row, Row, Row> joinRowFactory(AbstractIgniteJoin rel, RelDataType rowType) {
+        return rel.projects() != null ? expressionFactory.biProject(rel.projects(), rowType) : ctx.rowHandler()::concat;
     }
 
     /** */

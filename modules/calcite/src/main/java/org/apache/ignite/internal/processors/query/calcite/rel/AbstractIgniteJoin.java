@@ -23,14 +23,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelFieldCollation;
+import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.CorrelationId;
@@ -52,6 +53,7 @@ import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
 import org.apache.ignite.internal.processors.query.calcite.trait.TraitsAwareIgniteRel;
 import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.util.typedef.F;
+import org.jetbrains.annotations.Nullable;
 
 import static org.apache.calcite.rel.RelDistribution.Type.HASH_DISTRIBUTED;
 import static org.apache.calcite.rel.core.JoinRelType.RIGHT;
@@ -67,11 +69,30 @@ public abstract class AbstractIgniteJoin extends Join implements TraitsAwareIgni
     protected final JoinInfo joinInfo;
 
     /** */
+    @Nullable protected List<RexNode> projects;
+
+    /** */
     protected AbstractIgniteJoin(RelOptCluster cluster, RelTraitSet traitSet, RelNode left, RelNode right,
         RexNode condition, Set<CorrelationId> variablesSet, JoinRelType joinType) {
         super(cluster, traitSet, ImmutableList.of(), left, right, condition, variablesSet, joinType);
 
         joinInfo = JoinInfo.of(left, right, condition);
+    }
+
+    /** */
+    protected AbstractIgniteJoin(RelInput input) {
+        this(
+            input.getCluster(),
+            input.getTraitSet().replace(IgniteConvention.INSTANCE),
+            input.getInputs().get(0),
+            input.getInputs().get(1),
+            input.getExpression("condition"),
+            ImmutableSet.copyOf(Commons.transform(input.getIntegerList("variablesSet"), CorrelationId::new)),
+            input.getEnum("joinType", JoinRelType.class)
+        );
+
+        projects = input.get("projects") == null ? null : input.getExpressionList("projects");
+        rowType = input.get("rowType") == null ? null : input.getRowType("rowType");
     }
 
     /** */
@@ -82,6 +103,9 @@ public abstract class AbstractIgniteJoin extends Join implements TraitsAwareIgni
     /** {@inheritDoc} */
     @Override public RelWriter explainTerms(RelWriter pw) {
         return super.explainTerms(pw)
+            .itemIf("projects", projects, projects != null)
+            // Explicit rowType is required only if projects provided.
+            .itemIf("rowType", rowType, projects != null)
             .itemIf("variablesSet", Commons.transform(variablesSet.asList(), CorrelationId::getId),
                 pw.getDetailLevel() == SqlExplainLevel.ALL_ATTRIBUTES);
     }
@@ -324,5 +348,37 @@ public abstract class AbstractIgniteJoin extends Join implements TraitsAwareIgni
             (left2Right ? left : right).getRowType().getFieldCount(),
             (left2Right ? right : left).getRowType().getFieldCount()
         );
+    }
+
+    /** */
+    public AbstractIgniteJoin mergeProject(IgniteProject project) {
+        AbstractIgniteJoin join = (AbstractIgniteJoin)copy(traitSet, getInputs());
+
+        join.rowType = project.getRowType();
+        join.projects = project.getProjects();
+
+        return join;
+    }
+
+    /**
+     * @return Merged projects.
+     */
+    public @Nullable List<RexNode> projects() {
+        return projects;
+    }
+
+    /** {@inheritDoc} */
+    @Override public Join copy(RelTraitSet traitSet, List<RelNode> inputs) {
+        AbstractIgniteJoin join = (AbstractIgniteJoin)super.copy(traitSet, inputs);
+
+        join.projects = projects;
+        join.rowType = rowType;
+
+        return join;
+    }
+
+    /** {@inheritDoc} */
+    @Override public IgniteRel clone(RelOptCluster cluster, List<IgniteRel> inputs) {
+        return null;
     }
 }

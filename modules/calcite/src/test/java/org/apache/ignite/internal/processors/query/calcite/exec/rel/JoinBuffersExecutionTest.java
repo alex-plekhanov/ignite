@@ -52,7 +52,8 @@ public class JoinBuffersExecutionTest extends AbstractExecutionTest {
     @Test
     public void testMergeJoinBuffers() throws Exception {
         JoinFactory joinFactory = (ctx, outType, leftType, rightType, joinType, cond) ->
-            MergeJoinNode.create(ctx, outType, leftType, rightType, joinType, Comparator.comparingInt(r -> (Integer)r[0]), true);
+            MergeJoinNode.create(ctx, outType, ctx.rowHandler()::concat, leftType, rightType, joinType,
+                Comparator.comparingInt(r -> (Integer)r[0]), true);
 
         Consumer<AbstractNode<?>> bufChecker = (node) -> {
             assertTrue(((MergeJoinNode<?>)node).leftInBuf.size() <= IN_BUFFER_SIZE);
@@ -67,7 +68,8 @@ public class JoinBuffersExecutionTest extends AbstractExecutionTest {
     @Test
     public void testNLJoinBuffers() throws Exception {
         JoinFactory joinFactory = (ctx, outType, leftType, rightType, joinType, cond) ->
-            NestedLoopJoinNode.create(ctx, outType, leftType, rightType, joinType, (r1, r2) -> r1[0].equals(r2[0]));
+            NestedLoopJoinNode.create(ctx, outType, ctx.rowHandler()::concat, leftType, rightType, joinType,
+                (r1, r2) -> r1[0].equals(r2[0]));
 
         Consumer<AbstractNode<?>> bufChecker = (node) ->
             assertTrue(((NestedLoopJoinNode<?>)node).leftInBuf.size() <= IN_BUFFER_SIZE);

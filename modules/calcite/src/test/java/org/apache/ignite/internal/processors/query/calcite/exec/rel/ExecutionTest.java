@@ -99,8 +99,9 @@ public class ExecutionTest extends AbstractExecutionTest {
 
         RowHandler<Object[]> hnd = ctx.rowHandler();
 
-        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, leftType, rightType, INNER,
-            (r1, r2) -> getFieldFromBiRows(hnd, 0, r1, r2) == getFieldFromBiRows(hnd, 4, r1, r2));
+        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, ctx.rowHandler()::concat, leftType,
+            rightType, INNER, (r1, r2) -> getFieldFromBiRows(hnd, 0, r1, r2) == getFieldFromBiRows(hnd, 4, r1, r2));
+
         join.register(F.asList(persons, projects));
 
         rowType = TypeUtils.createRowType(tf, int.class, String.class, String.class);
@@ -207,8 +208,8 @@ public class ExecutionTest extends AbstractExecutionTest {
 
         RowHandler<Object[]> hnd = ctx.rowHandler();
 
-        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, leftType, rightType, LEFT,
-            (r1, r2) -> getFieldFromBiRows(hnd, 2, r1, r2) == getFieldFromBiRows(hnd, 3, r1, r2));
+        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, ctx.rowHandler()::concat, leftType,
+            rightType, LEFT, (r1, r2) -> getFieldFromBiRows(hnd, 2, r1, r2) == getFieldFromBiRows(hnd, 3, r1, r2));
         join.register(F.asList(persons, deps));
 
         rowType = TypeUtils.createRowType(tf, int.class, String.class, String.class);
@@ -268,8 +269,9 @@ public class ExecutionTest extends AbstractExecutionTest {
 
         RowHandler<Object[]> hnd = ctx.rowHandler();
 
-        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, leftType, rightType, RIGHT,
-            (r1, r2) -> getFieldFromBiRows(hnd, 0, r1, r2) == getFieldFromBiRows(hnd, 4, r1, r2));
+        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, ctx.rowHandler()::concat, leftType,
+            rightType, RIGHT, (r1, r2) -> getFieldFromBiRows(hnd, 0, r1, r2) == getFieldFromBiRows(hnd, 4, r1, r2));
+
         join.register(F.asList(deps, persons));
 
         rowType = TypeUtils.createRowType(tf, int.class, String.class, String.class);
@@ -329,8 +331,9 @@ public class ExecutionTest extends AbstractExecutionTest {
 
         RowHandler<Object[]> hnd = ctx.rowHandler();
 
-        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, leftType, rightType, FULL,
-            (r1, r2) -> getFieldFromBiRows(hnd, 2, r1, r2) == getFieldFromBiRows(hnd, 3, r1, r2));
+        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, ctx.rowHandler()::concat, leftType,
+            rightType, FULL, (r1, r2) -> getFieldFromBiRows(hnd, 2, r1, r2) == getFieldFromBiRows(hnd, 3, r1, r2));
+
         join.register(F.asList(persons, deps));
 
         rowType = TypeUtils.createRowType(tf, Integer.class, String.class, String.class);
@@ -390,8 +393,9 @@ public class ExecutionTest extends AbstractExecutionTest {
 
         RowHandler<Object[]> hnd = ctx.rowHandler();
 
-        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, leftType, rightType, SEMI,
-            (r1, r2) -> getFieldFromBiRows(hnd, 0, r1, r2) == getFieldFromBiRows(hnd, 4, r1, r2));
+        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, ctx.rowHandler()::concat, leftType,
+            rightType, SEMI, (r1, r2) -> getFieldFromBiRows(hnd, 0, r1, r2) == getFieldFromBiRows(hnd, 4, r1, r2));
+
         join.register(F.asList(deps, persons));
 
         rowType = TypeUtils.createRowType(tf, String.class);
@@ -448,8 +452,9 @@ public class ExecutionTest extends AbstractExecutionTest {
 
         RowHandler<Object[]> hnd = ctx.rowHandler();
 
-        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, leftType, rightType, ANTI,
-            (r1, r2) -> getFieldFromBiRows(hnd, 0, r1, r2) == getFieldFromBiRows(hnd, 4, r1, r2));
+        NestedLoopJoinNode<Object[]> join = NestedLoopJoinNode.create(ctx, outType, ctx.rowHandler()::concat, leftType,
+            rightType, ANTI, (r1, r2) -> getFieldFromBiRows(hnd, 0, r1, r2) == getFieldFromBiRows(hnd, 4, r1, r2));
+
         join.register(F.asList(deps, persons));
 
         rowType = TypeUtils.createRowType(tf, String.class);
@@ -505,6 +510,7 @@ public class ExecutionTest extends AbstractExecutionTest {
                         CorrelatedNestedLoopJoinNode<Object[]> join = new CorrelatedNestedLoopJoinNode<>(
                             ctx,
                             joinRowType,
+                            ctx.rowHandler()::concat,
                             (r1, r2) -> getFieldFromBiRows(hnd, 0, r1, r2).equals(getFieldFromBiRows(hnd, 3, r1, r2)),
                             ImmutableSet.of(new CorrelationId(0)),
                             joinType
@@ -563,6 +569,7 @@ public class ExecutionTest extends AbstractExecutionTest {
                     MergeJoinNode<Object[]> join = MergeJoinNode.create(
                         ctx,
                         joinRowType,
+                        ctx.rowHandler()::concat,
                         null,
                         null,
                         INNER,

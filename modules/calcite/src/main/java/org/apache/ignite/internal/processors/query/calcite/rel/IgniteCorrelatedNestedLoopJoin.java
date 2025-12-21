@@ -20,9 +20,7 @@ package org.apache.ignite.internal.processors.query.calcite.rel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -46,7 +44,6 @@ import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistribut
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
 import org.apache.ignite.internal.processors.query.calcite.trait.RewindabilityTrait;
 import org.apache.ignite.internal.processors.query.calcite.trait.TraitUtils;
-import org.apache.ignite.internal.processors.query.calcite.util.Commons;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.U;
 
@@ -81,13 +78,7 @@ public class IgniteCorrelatedNestedLoopJoin extends AbstractIgniteJoin {
 
     /** */
     public IgniteCorrelatedNestedLoopJoin(RelInput input) {
-        this(input.getCluster(),
-            input.getTraitSet().replace(IgniteConvention.INSTANCE),
-            input.getInputs().get(0),
-            input.getInputs().get(1),
-            input.getExpression("condition"),
-            ImmutableSet.copyOf(Commons.transform(input.getIntegerList("variablesSet"), CorrelationId::new)),
-            input.getEnum("joinType", JoinRelType.class));
+        super(input);
     }
 
     /** {@inheritDoc} */
@@ -258,8 +249,13 @@ public class IgniteCorrelatedNestedLoopJoin extends AbstractIgniteJoin {
 
     /** {@inheritDoc} */
     @Override public IgniteRel clone(RelOptCluster cluster, List<IgniteRel> inputs) {
-        return new IgniteCorrelatedNestedLoopJoin(cluster, getTraitSet(), inputs.get(0), inputs.get(1), getCondition(),
-            getVariablesSet(), getJoinType());
+        IgniteCorrelatedNestedLoopJoin join = new IgniteCorrelatedNestedLoopJoin(cluster, getTraitSet(),
+            inputs.get(0), inputs.get(1), getCondition(), getVariablesSet(), getJoinType());
+
+        join.projects = projects;
+        join.rowType = rowType;
+
+        return join;
     }
 
     /** */
