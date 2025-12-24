@@ -15,24 +15,22 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.testsuites;
+package org.apache.ignite.internal.processors.query.calcite.integration;
 
-import org.apache.ignite.internal.processors.query.calcite.integration.DataTypesTest;
-import org.apache.ignite.internal.processors.query.calcite.integration.UserDefinedFunctionsIntegrationTest;
-import org.apache.ignite.internal.processors.query.calcite.jdbc.JdbcQueryTest;
+import org.apache.ignite.internal.processors.query.IgniteSQLException;
 import org.apache.ignite.internal.processors.query.calcite.planner.TableDmlPlannerTest;
-import org.junit.runner.RunWith;
-import org.junit.runners.Suite;
+import org.junit.Test;
 
-/**
- * Calcite tests.
- */
-@RunWith(Suite.class)
-@Suite.SuiteClasses({
-    TableDmlPlannerTest.class,
-    UserDefinedFunctionsIntegrationTest.class,
-    DataTypesTest.class,
-    JdbcQueryTest.class,
-})
-public class IgniteCalciteTestSuite {
+/** */
+public class OtherTypesTest extends AbstractBasicIntegrationTest {
+    /** */
+    @Test
+    public void testOtherType() throws Exception {
+        TableDmlPlannerTest plannerTest = new TableDmlPlannerTest();
+
+        plannerTest.testDistributedTableModify();
+
+        assertThrows("CREATE TABLE t2(id INT, oth OTHER DEFAULT 'str')", IgniteSQLException.class,
+            "Type 'OTHER' doesn't support default value.");
+    }
 }
