@@ -33,7 +33,7 @@ public class JmhSqlSortBenchmark extends JmhSqlAbstractBenchmark {
      */
     @Benchmark
     public void queryOrderByFull() {
-        List<?> res = executeSql("SELECT name, fld FROM Item ORDER BY fld DESC");
+        List<?> res = executeSql("SELECT name, rnd FROM Item ORDER BY rnd DESC");
 
         if (res.size() != KEYS_CNT)
             throw new AssertionError("Unexpected result size: " + res.size());
@@ -46,7 +46,7 @@ public class JmhSqlSortBenchmark extends JmhSqlAbstractBenchmark {
     public void queryOrderByBatch() {
         int key = ThreadLocalRandom.current().nextInt(KEYS_CNT);
 
-        List<?> res = executeSql("SELECT name, fld FROM Item WHERE fldIdxBatch=? ORDER BY fld DESC", key / BATCH_SIZE);
+        List<?> res = executeSql("SELECT name, rnd FROM Item WHERE fldIdxBatch=? ORDER BY rnd DESC", key / BATCH_SIZE);
 
         if (res.size() != BATCH_SIZE)
             throw new AssertionError("Unexpected result size: " + res.size());
@@ -57,7 +57,7 @@ public class JmhSqlSortBenchmark extends JmhSqlAbstractBenchmark {
      */
     @Benchmark
     public void queryOrderByWithLimit() {
-        List<?> res = executeSql("SELECT name, fld FROM Item ORDER BY fld DESC LIMIT " + BATCH_SIZE);
+        List<?> res = executeSql("SELECT name, rnd FROM Item ORDER BY rnd LIMIT " + BATCH_SIZE);
 
         if (res.size() != BATCH_SIZE)
             throw new AssertionError("Unexpected result size: " + res.size());

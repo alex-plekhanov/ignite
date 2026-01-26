@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.benchmarks.jmh.sql;
 
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
@@ -169,12 +170,17 @@ public abstract class JmhSqlAbstractBenchmark {
         private final int fldIdxBatch;
 
         /** */
+        @QuerySqlField
+        private final int rnd;
+
+        /** */
         public Item(int val) {
             name = "name" + val;
             fld = val;
             fldBatch = val / BATCH_SIZE;
             fldIdx = val;
             fldIdxBatch = val / BATCH_SIZE;
+            rnd = ThreadLocalRandom.current().nextInt();
         }
     }
 }
