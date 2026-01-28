@@ -103,6 +103,8 @@ public class UserDefinedFunctionsIntegrationTest extends AbstractBasicIntegratio
             .setQueryEntities(F.asList(new QueryEntity(Integer.class, Employer.class).setTableName("emp_own")))
         );
 
+        assertQuery("SELECT UPPER(null)").withDefaultSchema("OWN_SCHEMA").returns(0).check(); // TODO for debugging
+
         // Make sure that the new functions didn't affect schema 'PUBLIC'.
         assertQuery("SELECT UPPER(?)").withParams("abc").returns("ABC").check();
         assertQuery("select UNIX_SECONDS(TIMESTAMP '2021-01-01 00:00:00')").returns(1609459200L).check();
@@ -117,6 +119,10 @@ public class UserDefinedFunctionsIntegrationTest extends AbstractBasicIntegratio
         assertQuery("select * from table(\"OWN_SCHEMA\".SYSTEM_RANGE(1, 2))").returns(100L).check();
         assertQuery("select \"OWN_SCHEMA\".TYPEOF('ABC')").returns(1).check();
         assertQuery("select \"OWN_SCHEMA\".PLUS(?, ?)").withParams(1, 2).returns(100).check();
+
+        // Ensure that new functions are picked by default, when executed on schema with these functions.
+        assertQuery("SELECT UPPER(?)").withDefaultSchema("OWN_SCHEMA").withParams("abc").returns(3).check();
+        assertQuery("SELECT UPPER(null)").withDefaultSchema("OWN_SCHEMA").returns(0).check();
 
         LogListener logChecker0 = LogListener.matches("Unable to add user-defined SQL function 'upper'")
             .andMatches("Unable to add user-defined SQL function 'unix_seconds'")

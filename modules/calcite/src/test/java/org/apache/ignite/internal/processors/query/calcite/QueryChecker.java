@@ -41,6 +41,7 @@ import org.apache.ignite.internal.processors.cache.transactions.TransactionProxy
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
 import org.apache.ignite.internal.processors.query.QueryContext;
 import org.apache.ignite.internal.processors.query.QueryEngine;
+import org.apache.ignite.internal.processors.query.QueryUtils;
 import org.apache.ignite.internal.processors.query.calcite.integration.AbstractBasicIntegrationTransactionalTest.SqlTransactionMode;
 import org.apache.ignite.internal.processors.query.schema.management.SchemaManager;
 import org.apache.ignite.internal.util.typedef.F;
@@ -317,6 +318,9 @@ public abstract class QueryChecker {
     private Consumer<List<List<?>>> resultChecker;
 
     /** */
+    private String dfltSchema = QueryUtils.DFLT_SCHEMA;
+
+    /** */
     public QueryChecker(String qry) {
         this(qry, null, SqlTransactionMode.NONE);
     }
@@ -368,6 +372,13 @@ public abstract class QueryChecker {
     /** */
     public QueryChecker withResultChecker(Consumer<List<List<?>>> resultChecker) {
         this.resultChecker = resultChecker;
+
+        return this;
+    }
+
+    /** */
+    public QueryChecker withDefaultSchema(String dfltSchema) {
+        this.dfltSchema = dfltSchema;
 
         return this;
     }
@@ -429,7 +440,7 @@ public abstract class QueryChecker {
             : null;
 
         List<FieldsQueryCursor<List<?>>> explainCursors =
-            engine.query(ctx, "PUBLIC", "EXPLAIN PLAN FOR " + qry, params);
+            engine.query(ctx, dfltSchema, "EXPLAIN PLAN FOR " + qry, params);
 
         FieldsQueryCursor<List<?>> explainCursor = explainCursors.get(0);
         List<List<?>> explainRes = explainCursor.getAll();
@@ -445,7 +456,7 @@ public abstract class QueryChecker {
             assertEquals(exactPlan, actualPlan);
 
         // Check result.
-        List<FieldsQueryCursor<List<?>>> cursors = engine.query(ctx, "PUBLIC", qry, params);
+        List<FieldsQueryCursor<List<?>>> cursors = engine.query(ctx, dfltSchema, qry, params);
 
         FieldsQueryCursor<List<?>> cur = cursors.get(0);
 
