@@ -22,6 +22,7 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.LongFunction;
 import org.apache.calcite.sql.validate.SqlValidatorException;
@@ -520,5 +521,15 @@ public class FunctionsTest extends AbstractBasicIntegrationTest {
         assertQuery("select hour((select max(t) from tbl))").returns(13L).check();
         assertQuery("select minute((select max(t) from tbl))").returns(40L).check();
         assertQuery("select second((select max(t) from tbl))").returns(15L).check();
+    }
+
+    /** */
+    @Test
+    public void test() {
+        sql("CREATE TABLE test (id int, val int)");
+        int paramsCnt = 30;
+        String sql = "INSERT INTO test VALUES " + String.join(", ", Collections.nCopies(paramsCnt, "(?, ?)"));
+        Object[] params = new Object[paramsCnt * 2];
+        sql(sql, params);
     }
 }
