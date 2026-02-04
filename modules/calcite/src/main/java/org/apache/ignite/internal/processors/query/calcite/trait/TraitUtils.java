@@ -171,6 +171,7 @@ public class TraitUtils {
                 RelOptRule.convert(
                     rel,
                     rel.getTraitSet()
+                        .replace(RewindabilityTrait.ONE_WAY)
                         .replace(CorrelationTrait.UNCORRELATED)
                 ),
                 toTrait);

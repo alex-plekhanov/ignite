@@ -46,6 +46,7 @@ import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitDef;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.plan.volcano.VolcanoPlanner;
+import org.apache.calcite.plan.volcano.VolcanoUtils;
 import org.apache.calcite.prepare.CalciteCatalogReader;
 import org.apache.calcite.rel.RelHomogeneousShuttle;
 import org.apache.calcite.rel.RelNode;
@@ -419,6 +420,15 @@ public class IgnitePlanner implements Planner, RelOptTable.ViewExpander {
         StringWriter w = new StringWriter();
 
         ((VolcanoPlanner)planner).dump(new PrintWriter(w));
+
+        return w.toString();
+    }
+
+    /** */
+    public String dump(Class<? extends RelNode> cls) {
+        StringWriter w = new StringWriter();
+
+        VolcanoUtils.dump((VolcanoPlanner)planner, new PrintWriter(w));
 
         return w.toString();
     }
