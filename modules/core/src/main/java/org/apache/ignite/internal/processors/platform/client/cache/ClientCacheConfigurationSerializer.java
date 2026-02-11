@@ -148,6 +148,9 @@ public class ClientCacheConfigurationSerializer {
     /** */
     private static final short IDX_PATH = 409;
 
+    /** */
+    private static final short AFFINITY = 410;
+
     /**
      * Writes the cache configuration.
      * @param writer Writer.
@@ -225,6 +228,9 @@ public class ClientCacheConfigurationSerializer {
             writer.writeStringArray(cfg.getStoragePaths());
             writer.writeString(cfg.getIndexPath());
         }
+
+        if (protocolCtx.isFeatureSupported(ClientBitmaskFeature.CACHE_CFG_AFFINITY))
+            writer.writeObject(cfg.getAffinity());
 
         // Write length (so that part of the config can be skipped).
         writer.writeInt(pos, writer.out().position() - pos - 4);
@@ -470,6 +476,10 @@ public class ClientCacheConfigurationSerializer {
 
                 case IDX_PATH:
                     cfg.setIndexPath(reader.readString());
+                    break;
+
+                case AFFINITY:
+                    cfg.setAffinity(reader.readObject());
                     break;
             }
         }

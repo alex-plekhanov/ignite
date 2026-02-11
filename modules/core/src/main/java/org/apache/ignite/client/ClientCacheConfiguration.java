@@ -26,6 +26,7 @@ import org.apache.ignite.cache.CacheRebalanceMode;
 import org.apache.ignite.cache.CacheWriteSynchronizationMode;
 import org.apache.ignite.cache.PartitionLossPolicy;
 import org.apache.ignite.cache.QueryEntity;
+import org.apache.ignite.cache.affinity.AffinityFunction;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -130,6 +131,9 @@ public final class ClientCacheConfiguration implements Serializable {
 
     /** @serial Expiry policy. */
     private ExpiryPolicy expiryPlc;
+
+    /** @serial Affinity function. */
+    private AffinityFunction aff;
 
     /**
      * Root directories where partition files are stored.
@@ -789,6 +793,27 @@ public final class ClientCacheConfiguration implements Serializable {
      */
     public ClientCacheConfiguration setExpiryPolicy(ExpiryPolicy expiryPlc) {
         this.expiryPlc = expiryPlc;
+
+        return this;
+    }
+
+    /**
+     * Gets affinity function.
+     *
+     * @return Affinity funcion.
+     */
+    public AffinityFunction getAffinity() {
+        return aff;
+    }
+
+    /**
+     * Sets affinity function.
+     *
+     * @param aff Affinity function.
+     * @return {@code this} for chaining.
+     */
+    public ClientCacheConfiguration setAffinity(AffinityFunction aff) {
+        this.aff = aff;
 
         return this;
     }

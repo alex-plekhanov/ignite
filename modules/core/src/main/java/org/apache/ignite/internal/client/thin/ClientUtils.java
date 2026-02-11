@@ -62,6 +62,7 @@ import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.T2;
 import org.jetbrains.annotations.Nullable;
 
+import static org.apache.ignite.internal.client.thin.ProtocolBitmaskFeature.CACHE_CFG_AFFINITY;
 import static org.apache.ignite.internal.client.thin.ProtocolBitmaskFeature.CACHE_STORAGES;
 import static org.apache.ignite.internal.client.thin.ProtocolBitmaskFeature.QRY_INITIATOR_ID;
 import static org.apache.ignite.internal.client.thin.ProtocolBitmaskFeature.QRY_PARTITIONS_BATCH_SIZE;
@@ -382,6 +383,11 @@ public final class ClientUtils {
             else if (!F.isEmpty(cfg.getStoragePaths()) || !F.isEmpty(cfg.getIndexPath()))
                 throw new ClientFeatureNotSupportedByServerException("Cache storages are not supported by the server");
 
+            if (protocolCtx.isFeatureSupported(CACHE_CFG_AFFINITY))
+                itemWriter.accept(CfgItem.AFFINITY, w -> w.writeObject(cfg.getAffinity()));
+            else if (cfg.getAffinity() != null)
+                throw new ClientProtocolError("Affinity configuration by thin client is not supported by the server");
+
             writer.writeInt(origPos, out.position() - origPos - 4); // configuration length
             writer.writeInt(origPos + 4, propCnt.get()); // properties count
         }
@@ -518,7 +524,8 @@ public final class ClientUtils {
                     : reader.readStringArray())
                 .setIndexPath(!protocolCtx.isFeatureSupported(CACHE_STORAGES)
                     ? null
-                    : reader.readString());
+                    : reader.readString())
+                .setAffinity(!protocolCtx.isFeatureSupported(CACHE_CFG_AFFINITY) ? null : reader.readObject());
         }
     }
 
@@ -798,7 +805,10 @@ public final class ClientUtils {
         STORAGE_PATH(408),
 
         /** Index path. */
-        IDX_PATH(409);
+        IDX_PATH(409),
+
+        /** Affinity function. */
+        AFFINITY(410);
 
         /** Code. */
         private final short code;
