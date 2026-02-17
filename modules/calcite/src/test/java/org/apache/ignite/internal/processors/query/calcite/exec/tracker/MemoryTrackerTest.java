@@ -151,10 +151,12 @@ public class MemoryTrackerTest extends GridCommonAbstractTest {
 
                 try {
                     qryTracker.onMemoryAllocated(1_000L);
-                    qryTracker.onMemoryReleased(1_000L);
                 }
                 catch (Exception ignore) {
                     // No-op.
+                }
+                finally {
+                    qryTracker.onMemoryReleased(1_000L);
                 }
 
                 if (ThreadLocalRandom.current().nextInt(10) == 0)
