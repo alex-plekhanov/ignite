@@ -136,12 +136,19 @@ public class MemoryTrackerTest extends GridCommonAbstractTest {
     /** */
     @Test
     public void testConcurrentModification() throws Exception {
-        MemoryTracker globalTracker = new GlobalMemoryTracker(10_000_000L);
-        MemoryTracker qryTracker = new QueryMemoryTracker(globalTracker, 10_000L);
+        MemoryTracker globalTracker = new GlobalMemoryTracker(8_000L);
+
+        MemoryTracker[] qryTrackers = new MemoryTracker[2];
+
+        for (int i = 0; i < qryTrackers.length; i++)
+            qryTrackers[i] = new QueryMemoryTracker(globalTracker, 5_000L);
+
         AtomicBoolean stop = new AtomicBoolean();
 
         IgniteInternalFuture<?> fut = GridTestUtils.runMultiThreadedAsync(() -> {
             while (!stop.get()) {
+                MemoryTracker qryTracker = qryTrackers[ThreadLocalRandom.current().nextInt(qryTrackers.length)];
+
                 try {
                     qryTracker.onMemoryAllocated(1_000L);
                     qryTracker.onMemoryReleased(1_000L);
@@ -163,7 +170,9 @@ public class MemoryTrackerTest extends GridCommonAbstractTest {
 
         fut.get();
 
-        assertEquals(0L, qryTracker.allocated());
+        for (MemoryTracker qryTracker : qryTrackers)
+            assertEquals(0L, qryTracker.allocated());
+
         assertEquals(0L, globalTracker.allocated());
     }
 
