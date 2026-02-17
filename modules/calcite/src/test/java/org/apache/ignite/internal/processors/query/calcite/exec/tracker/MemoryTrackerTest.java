@@ -156,7 +156,8 @@ public class MemoryTrackerTest extends GridCommonAbstractTest {
                     // No-op.
                 }
                 finally {
-                    qryTracker.onMemoryReleased(1_000L);
+                    // Release a little bit more than allocated, to test inaccuracy of row size calculation.
+                    qryTracker.onMemoryReleased(1_001L);
                 }
 
                 if (ThreadLocalRandom.current().nextInt(10) == 0)
@@ -189,11 +190,19 @@ public class MemoryTrackerTest extends GridCommonAbstractTest {
         RowTracker<Object[]> rowTracker1 = new ExecutionNodeMemoryTracker<>(qryTracker1, 1_000L);
         RowTracker<Object[]> rowTracker2 = new ExecutionNodeMemoryTracker<>(qryTracker2, 1_000L);
 
-        GridTestUtils.assertThrows(log, () -> rowTracker1.onRowAdded(new Object[1]), IgniteException.class,
+        Object[] row = new Object[1];
+
+        GridTestUtils.assertThrows(log, () -> rowTracker1.onRowAdded(row), IgniteException.class,
             "Global memory quota");
 
-        GridTestUtils.assertThrows(log, () -> rowTracker2.onRowAdded(new Object[1]), IgniteException.class,
+        GridTestUtils.assertThrows(log, () -> rowTracker2.onRowAdded(row), IgniteException.class,
             "Global memory quota");
+
+        assertEquals(499_000L + ExecutionNodeMemoryTracker.BATCH_SIZE, qryTracker1.allocated());
+        assertEquals(499_000L + ExecutionNodeMemoryTracker.BATCH_SIZE, qryTracker2.allocated());
+
+        rowTracker1.onRowRemoved(row);
+        rowTracker2.onRowRemoved(row);
 
         assertEquals(499_000L, qryTracker1.allocated());
         assertEquals(499_000L, qryTracker2.allocated());
@@ -204,15 +213,15 @@ public class MemoryTrackerTest extends GridCommonAbstractTest {
         assertEquals(0L, qryTracker1.allocated());
         assertEquals(899_000L, qryTracker2.allocated());
 
-        rowTracker1.onRowAdded(new Object[1]);
+        rowTracker1.onRowAdded(row);
 
         assertEquals(ExecutionNodeMemoryTracker.BATCH_SIZE, qryTracker1.allocated());
 
-        GridTestUtils.assertThrows(log, () -> rowTracker2.onRowAdded(new Object[1]), IgniteException.class,
+        GridTestUtils.assertThrows(log, () -> rowTracker2.onRowAdded(row), IgniteException.class,
             "Query quota");
 
-        assertEquals(899_000L, qryTracker2.allocated());
-        assertEquals(899_000L + ExecutionNodeMemoryTracker.BATCH_SIZE, globalTracker.allocated());
+        assertEquals(899_000L + ExecutionNodeMemoryTracker.BATCH_SIZE, qryTracker2.allocated());
+        assertEquals(899_000L + ExecutionNodeMemoryTracker.BATCH_SIZE * 2, globalTracker.allocated());
     }
 
     /** */
