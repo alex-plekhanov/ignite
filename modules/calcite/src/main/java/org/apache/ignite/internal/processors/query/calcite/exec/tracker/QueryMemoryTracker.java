@@ -17,6 +17,8 @@
 
 package org.apache.ignite.internal.processors.query.calcite.exec.tracker;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.IgniteException;
 
@@ -35,6 +37,9 @@ public class QueryMemoryTracker implements MemoryTracker {
     /** Currently allocated. */
     private final AtomicLong allocated = new AtomicLong();
 
+    /** */
+    private final List<String> history = new ArrayList<>();
+
     /** Factory method. */
     public static MemoryTracker create(MemoryTracker parent, long quota) {
         return quota > 0 || parent != NoOpMemoryTracker.INSTANCE ?
@@ -49,18 +54,9 @@ public class QueryMemoryTracker implements MemoryTracker {
 
     /** {@inheritDoc} */
     @Override public void onMemoryAllocated(long size) {
-        try {
-            if (allocated.addAndGet(size) > quota && quota > 0)
-                throw new IgniteException("Query quota exceeded [quota=" + quota + ']');
+        allocate(size);
 
-            parent.onMemoryAllocated(size);
-        }
-        catch (Exception e) {
-            // Undo changes in case of quota exceeded.
-            release(size);
-
-            throw e;
-        }
+        parent.onMemoryAllocated(size);
     }
 
     /** {@inheritDoc} */
@@ -71,10 +67,28 @@ public class QueryMemoryTracker implements MemoryTracker {
             parent.onMemoryReleased(released);
     }
 
+    /** Allocate size, but no more than quota if provided. */
+    private void allocate(long size) {
+        long wasAllocated;
+        long newAllocated;
+
+        do {
+            wasAllocated = allocated.get();
+
+            newAllocated = wasAllocated + size;
+
+            if (newAllocated > quota && quota > 0)
+                throw new IgniteException("Query quota exceeded [quota=" + quota + ']');
+        }
+        while (!allocated.compareAndSet(wasAllocated, newAllocated));
+    }
+
     /** Release size, but no more than currently allocated. */
     private long release(long size) {
         long wasAllocated;
         long released;
+
+        history.add("Try to release " + size);
 
         do {
             wasAllocated = allocated.get();
@@ -83,12 +97,16 @@ public class QueryMemoryTracker implements MemoryTracker {
         }
         while (!allocated.compareAndSet(wasAllocated, wasAllocated - released));
 
+        history.add("-Released " + released);
+
         return released;
     }
 
     /** {@inheritDoc} */
     @Override public void reset() {
         long wasAllocated = allocated.getAndSet(0);
+
+        history.add("-Reset " + wasAllocated);
 
         if (wasAllocated > 0)
             parent.onMemoryReleased(wasAllocated);

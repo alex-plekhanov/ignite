@@ -91,8 +91,11 @@ public class ExecutionNodeMemoryTracker<Row> implements RowTracker<Row> {
 
     /** {@inheritDoc} */
     @Override public void reset() {
-        if (prevReported > 0)
+        if (prevReported > 0) {
             qryMemoryTracker.onMemoryReleased(prevReported);
+
+            prevReported = 0;
+        }
 
         allocated = 0;
     }

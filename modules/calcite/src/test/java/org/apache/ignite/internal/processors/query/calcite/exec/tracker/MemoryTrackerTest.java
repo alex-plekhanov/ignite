@@ -137,13 +137,18 @@ public class MemoryTrackerTest extends GridCommonAbstractTest {
     @Test
     public void testConcurrentModification() throws Exception {
         MemoryTracker globalTracker = new GlobalMemoryTracker(10_000_000L);
-        MemoryTracker qryTracker = new QueryMemoryTracker(globalTracker, 1_000_000L);
+        MemoryTracker qryTracker = new QueryMemoryTracker(globalTracker, 10_000L);
         AtomicBoolean stop = new AtomicBoolean();
 
         IgniteInternalFuture<?> fut = GridTestUtils.runMultiThreadedAsync(() -> {
             while (!stop.get()) {
-                qryTracker.onMemoryAllocated(1_000L);
-                qryTracker.onMemoryReleased(1_000L);
+                try {
+                    qryTracker.onMemoryAllocated(1_000L);
+                    qryTracker.onMemoryReleased(1_000L);
+                }
+                catch (Exception ignore) {
+                    // No-op.
+                }
 
                 if (ThreadLocalRandom.current().nextInt(10) == 0)
                     qryTracker.reset();
