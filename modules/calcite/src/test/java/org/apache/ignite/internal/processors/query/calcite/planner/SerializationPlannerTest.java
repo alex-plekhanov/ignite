@@ -21,12 +21,14 @@ import java.util.List;
 import org.apache.calcite.linq4j.tree.Types;
 import org.apache.calcite.rel.core.Aggregate;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.ignite.internal.processors.query.calcite.exec.exp.IgniteScalarFunction;
 import org.apache.ignite.internal.processors.query.calcite.rel.IgniteRel;
 import org.apache.ignite.internal.processors.query.calcite.schema.IgniteSchema;
 import org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions;
 import org.junit.Test;
 
+import static org.apache.calcite.sql.type.SqlTypeName.OTHER;
 import static org.apache.ignite.internal.processors.query.calcite.trait.IgniteDistributions.single;
 
 /**
@@ -51,6 +53,18 @@ public class SerializationPlannerTest extends AbstractPlannerTest {
 
             checkSplitAndSerialization(phys, publicSchema);
         }
+    }
+
+    /** */
+    @Test
+    public void testRewriter() throws Exception {
+        IgniteSchema schema = createSchema(createTable("TEST", single(), "_KEY", OTHER, "_VAL", OTHER));
+
+        assertPlan("SELECT t.rowid() FROM test t", schema, isTableScan("TEST")
+            .and(t -> t.requiredColumns().equals(ImmutableBitSet.of(0))));
+
+        assertPlan("SELECT t.rowid FROM test t", schema, isTableScan("TEST")
+            .and(t -> t.requiredColumns().equals(ImmutableBitSet.of(0))));
     }
 
     /** */

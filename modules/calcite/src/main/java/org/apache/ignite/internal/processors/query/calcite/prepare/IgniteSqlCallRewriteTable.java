@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
@@ -52,27 +53,46 @@ public class IgniteSqlCallRewriteTable {
      * operator name (string). Rewriter should ensure that it's a correct operator to rewrite (for example,
      * additionally checking operands count) and skip operators with the unknown signature.
      */
-    private final Map<String, BiFunction<SqlValidator, SqlCall, SqlCall>> map = new ConcurrentHashMap<>();
+    private final Map<String, BiFunction<SqlValidator, SqlCall, SqlNode>> map = new ConcurrentHashMap<>();
 
     /** */
     private IgniteSqlCallRewriteTable() {
         register(SqlLibraryOperators.NVL.getName(), IgniteSqlCallRewriteTable::nvlRewriter);
         register(SqlLibraryOperators.DECODE.getName(), IgniteSqlCallRewriteTable::decodeRewriter);
+        register("ROWID", IgniteSqlCallRewriteTable::rowidRewriter);
 
         // TODO Workaround for https://issues.apache.org/jira/browse/CALCITE-6978
         register(SqlStdOperatorTable.COALESCE.getName(), IgniteSqlCallRewriteTable::coalesceRewriter);
     }
 
     /** Registers rewriter for SQL operator. */
-    public void register(String operatorName, BiFunction<SqlValidator, SqlCall, SqlCall> rewriter) {
+    public void register(String operatorName, BiFunction<SqlValidator, SqlCall, SqlNode> rewriter) {
         map.put(operatorName, rewriter);
     }
 
     /** Rewrites SQL call. */
-    SqlNode rewrite(SqlValidator validator, SqlCall call) {
-        BiFunction<SqlValidator, SqlCall, SqlCall> rewriter = map.get(call.getOperator().getName());
+    SqlNode rewrite(SqlValidator validator, SqlNode node) {
+        if (node instanceof SqlCall) {
+            SqlCall call = (SqlCall)node;
 
-        return rewriter == null ? call.getOperator().rewriteCall(validator, call) : rewriter.apply(validator, call);
+            BiFunction<SqlValidator, SqlCall, SqlNode> rewriter = map.get(call.getOperator().getName());
+
+            return rewriter == null ? call.getOperator().rewriteCall(validator, call) : rewriter.apply(validator, call);
+        }
+        else if (node instanceof SqlIdentifier) {
+            SqlIdentifier id = (SqlIdentifier)node;
+
+            if ("ROWID".equals(id.names.get(id.names.size() - 1)))
+                return id.setName(id.names.size() - 1, "_KEY");
+        }
+
+        return node;
+    }
+
+    /** */
+    private static SqlNode rowidRewriter(SqlValidator validator, SqlCall call) {
+        SqlIdentifier oldId = call.getOperator().getNameAsId();
+        return oldId.setName(oldId.names.size() - 1, "_KEY");
     }
 
     /** */
