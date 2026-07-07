@@ -928,7 +928,6 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      *
      * @param schemaOp Schema operation.
      */
-    @SuppressWarnings("unchecked")
     private void startSchemaChange(SchemaOperation schemaOp) {
         assert Thread.holdsLock(stateMux);
         assert !schemaOp.started();
@@ -986,15 +985,6 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         schemaOp.manager(mgr);
 
         mgr.start();
-
-        worker.future().listen(new IgniteInClosure<IgniteInternalFuture>() {
-            @Override public void apply(IgniteInternalFuture fut) {
-                synchronized (stateMux) {
-                    mgr.onLocalNodeFinished(fut);
-                }
-            }
-        });
-
 
         // Unwind pending IO messages.
         if (!ctx.clientNode() && coordinator().isLocal())
@@ -1904,8 +1894,6 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @param err Error (if any).
      */
     public void onCoordinatorFinished(SchemaAbstractOperation op, @Nullable SchemaOperationException err, boolean nop) {
-        log.info(">>>> Acquire stateMux onCoordinatorFinished");
-
         synchronized (stateMux) {
             SchemaFinishDiscoveryMessage msg = new SchemaFinishDiscoveryMessage(op, nop);
 
@@ -1920,8 +1908,6 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                 U.warn(log, "Failed to send schema finish discovery message [opId=" + op.id() + ']', e);
             }
         }
-
-        log.info(">>>> Release stateMux onCoordinatorFinished");
     }
 
     /**
@@ -2196,6 +2182,9 @@ public class GridQueryProcessor extends GridProcessorAdapter {
             else
                 throw new SchemaOperationException("Schema change operation failed: " + e.getMessage(), e);
         }
+
+        if (coordinator().isLocal())
+            sleep(200);
     }
 
     /**
@@ -3919,22 +3908,27 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         }
     }
 
+    /** */
+    public void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        }
+        catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     /**
      * Process status message.
      *
      * @param msg Status message.
      */
     private void processStatusMessage(SchemaOperationStatusMessage msg) {
-        log.info(">>>> Acquire stateMux processStatusMessage");
-
-        try {
-            Thread.sleep(100);
-        }
-        catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        sleep(200);
 
         synchronized (stateMux) {
+            sleep(200);
+
             if (completedOpIds.contains(msg.operationId())) {
                 // Received message from a node which joined topology in the middle of operation execution.
                 if (log.isDebugEnabled())
@@ -3969,8 +3963,6 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                 log.debug("Received status message (added to pending set) [opId=" + msg.operationId() +
                     ", sndNodeId=" + msg.senderNodeId() + ']');
         }
-
-        log.info(">>>> Release stateMux processStatusMessage");
     }
 
     /**

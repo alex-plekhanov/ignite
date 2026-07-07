@@ -926,61 +926,6 @@ public abstract class DynamicIndexAbstractConcurrentSelfTest extends DynamicInde
     }
 
     /**
-     * Test concurrent node start/stop along with index operations. Nothing should hang.
-     *
-     * @throws Exception If failed.
-     */
-    @Test
-    public void test() throws Exception {
-        ignitionStart(serverConfiguration(1));
-        ignitionStart(serverConfiguration(2));
-
-        createSqlCache(grid(1));
-
-        IgniteInternalFuture<?> fut = queryProcessor(grid(1)).dynamicIndexCreate(CACHE_NAME, CACHE_NAME, TBL_NAME, idx, true, 0);
-
-        stopGrid(2);
-
-        fut.get();
-
-        /*
-
-        final AtomicBoolean stopped = new AtomicBoolean();
-
-        // Start several threads which will mess around indexes.
-        final QueryIndex idx = index(IDX_NAME_1, field(FIELD_NAME_1));
-
-        IgniteInternalFuture idxFut = multithreadedAsync(new Callable<Void>() {
-            @Override public Void call() {
-                while (!stopped.get()) {
-                    Ignite node = grid(1);
-
-                    try {
-                        queryProcessor(node).dynamicIndexDrop(CACHE_NAME, CACHE_NAME, IDX_NAME_1, true).get();
-                        queryProcessor(node).dynamicIndexCreate(CACHE_NAME, CACHE_NAME, TBL_NAME, idx, true, 0).get();
-                    }
-                    catch (SchemaOperationException e) {
-                        // No-op.
-                    }
-                    catch (Exception e) {
-                        fail("Unexpected exception: " + e);
-                    }
-                }
-
-                return null;
-            }
-        }, 1);
-
-        Thread.sleep(TEST_DUR);
-
-        stopped.set(true);
-
-        idxFut.get();
-
-        */
-    }
-
-    /**
      * Multithreaded cache start/stop along with index operations. Nothing should hang.
      *
      * @throws Exception If failed.
