@@ -131,11 +131,16 @@ public class SchemaOperationManager {
             err = QueryUtils.wrapIfNeeded(e);
         }
 
-        qryProc.sleep(100);
+        log.info(">>>> onLocalNodeFinished");
 
         synchronized (mux) {
-            if (isLocalCoordinator())
+            if (isLocalCoordinator()) {
+                log.info(">>>> Acquire mux onLocalNodeFinished");
+
                 onNodeFinished(ctx.localNodeId(), err, worker.nop());
+
+                log.info(">>>> Release mux onLocalNodeFinished");
+            }
             else
                 qryProc.sendStatusMessage(crd.id(), operationId(), err, worker.nop());
         }
@@ -148,6 +153,8 @@ public class SchemaOperationManager {
      * @param err Error.
      */
     public void onNodeFinished(UUID nodeId, @Nullable SchemaOperationException err, boolean nop) {
+        log.info(">>>> Acquire mux onNodeFinished nodeId=" + nodeId);
+
         synchronized (mux) {
             assert isLocalCoordinator();
 
@@ -174,6 +181,8 @@ public class SchemaOperationManager {
 
             checkFinished();
         }
+
+        log.info(">>>> Release mux onNodeFinished nodeId=" + nodeId);
     }
 
     /**

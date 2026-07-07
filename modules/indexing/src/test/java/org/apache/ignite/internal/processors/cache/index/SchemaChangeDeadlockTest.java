@@ -47,7 +47,9 @@ public class SchemaChangeDeadlockTest extends GridCommonAbstractTest {
 
         doSleep(100);
 
+        log.info(">>>> Stopping grid");
         stopGrid(1);
+        log.info(">>>> Stopped grid");
 
         fut.get();
     }
