@@ -2015,6 +2015,9 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                 U.warn(log, "Failed to finish index operation [opId=" + op.id() + " op=" + op + ']', e);
             }
         }
+
+        if (coordinator().isLocal())
+            sleep(500);
     }
 
     /**
@@ -3905,13 +3908,27 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         }
     }
 
+    /** */
+    public void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        }
+        catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     /**
      * Process status message.
      *
      * @param msg Status message.
      */
     private void processStatusMessage(SchemaOperationStatusMessage msg) {
+        sleep(400);
+
         synchronized (stateMux) {
+            sleep(200);
+
             if (completedOpIds.contains(msg.operationId())) {
                 // Received message from a node which joined topology in the middle of operation execution.
                 if (log.isDebugEnabled())
