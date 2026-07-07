@@ -30,7 +30,6 @@ import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.processors.query.GridQueryProcessor;
 import org.apache.ignite.internal.processors.query.QueryUtils;
 import org.apache.ignite.internal.util.typedef.T2;
-import org.apache.ignite.lang.IgniteInClosure;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -96,17 +95,8 @@ public class SchemaOperationManager {
     /**
      * Map operation handling.
      */
-    @SuppressWarnings("unchecked")
     public void start() {
         worker.start();
-
-        synchronized (mux) {
-            worker.future().listen(new IgniteInClosure<IgniteInternalFuture>() {
-                @Override public void apply(IgniteInternalFuture fut) {
-                    onLocalNodeFinished(fut);
-                }
-            });
-        }
     }
 
     /**
@@ -114,7 +104,7 @@ public class SchemaOperationManager {
      *
      * @param fut Future.
      */
-    private void onLocalNodeFinished(IgniteInternalFuture fut) {
+    public void onLocalNodeFinished(IgniteInternalFuture fut) {
         assert fut.isDone();
 
         if (ctx.clientNode())
