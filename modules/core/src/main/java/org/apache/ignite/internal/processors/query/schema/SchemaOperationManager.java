@@ -30,7 +30,6 @@ import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.processors.query.GridQueryProcessor;
 import org.apache.ignite.internal.processors.query.QueryUtils;
 import org.apache.ignite.internal.util.typedef.T2;
-import org.apache.ignite.lang.IgniteInClosure;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -96,17 +95,8 @@ public class SchemaOperationManager {
     /**
      * Map operation handling.
      */
-    @SuppressWarnings("unchecked")
     public void start() {
         worker.start();
-
-        synchronized (mux) {
-            worker.future().listen(new IgniteInClosure<IgniteInternalFuture>() {
-                @Override public void apply(IgniteInternalFuture fut) {
-                    onLocalNodeFinished(fut);
-                }
-            });
-        }
     }
 
     /**
@@ -114,7 +104,7 @@ public class SchemaOperationManager {
      *
      * @param fut Future.
      */
-    private void onLocalNodeFinished(IgniteInternalFuture fut) {
+    public void onLocalNodeFinished(IgniteInternalFuture fut) {
         assert fut.isDone();
 
         if (ctx.clientNode())
@@ -131,9 +121,28 @@ public class SchemaOperationManager {
             err = QueryUtils.wrapIfNeeded(e);
         }
 
+        try {
+            Thread.sleep(100);
+        }
+        catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         synchronized (mux) {
-            if (isLocalCoordinator())
+            if (isLocalCoordinator()) {
+                log.info(">>>> Acquire mux");
+
+                try {
+                    Thread.sleep(100);
+                }
+                catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+
                 onNodeFinished(ctx.localNodeId(), err, worker.nop());
+
+                log.info(">>>> Release mux");
+            }
             else
                 qryProc.sendStatusMessage(crd.id(), operationId(), err, worker.nop());
         }
@@ -146,6 +155,8 @@ public class SchemaOperationManager {
      * @param err Error.
      */
     public void onNodeFinished(UUID nodeId, @Nullable SchemaOperationException err, boolean nop) {
+        log.info(">>>> Acquire mux nodeId=" + nodeId);
+
         synchronized (mux) {
             assert isLocalCoordinator();
 
@@ -172,6 +183,8 @@ public class SchemaOperationManager {
 
             checkFinished();
         }
+
+        log.info(">>>> Release mux nodeId=" + nodeId);
     }
 
     /**
