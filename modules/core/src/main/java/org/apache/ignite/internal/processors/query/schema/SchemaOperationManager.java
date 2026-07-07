@@ -131,6 +131,8 @@ public class SchemaOperationManager {
             err = QueryUtils.wrapIfNeeded(e);
         }
 
+        qryProc.sleep(100);
+
         synchronized (mux) {
             if (isLocalCoordinator())
                 onNodeFinished(ctx.localNodeId(), err, worker.nop());

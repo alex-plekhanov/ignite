@@ -2182,6 +2182,9 @@ public class GridQueryProcessor extends GridProcessorAdapter {
             else
                 throw new SchemaOperationException("Schema change operation failed: " + e.getMessage(), e);
         }
+
+        if (coordinator().isLocal())
+            sleep(200);
     }
 
     /**
@@ -3905,13 +3908,27 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         }
     }
 
+    /** */
+    public void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        }
+        catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     /**
      * Process status message.
      *
      * @param msg Status message.
      */
     private void processStatusMessage(SchemaOperationStatusMessage msg) {
+        sleep(200);
+
         synchronized (stateMux) {
+            sleep(200);
+
             if (completedOpIds.contains(msg.operationId())) {
                 // Received message from a node which joined topology in the middle of operation execution.
                 if (log.isDebugEnabled())
