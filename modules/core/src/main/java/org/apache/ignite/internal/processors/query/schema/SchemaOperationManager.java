@@ -114,7 +114,7 @@ public class SchemaOperationManager {
      *
      * @param fut Future.
      */
-    public void onLocalNodeFinished(IgniteInternalFuture fut) {
+    private void onLocalNodeFinished(IgniteInternalFuture fut) {
         assert fut.isDone();
 
         if (ctx.clientNode())
