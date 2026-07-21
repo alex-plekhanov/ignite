@@ -190,7 +190,7 @@ public class BinaryMetadata implements Externalizable {
     /**
      * @return Schemas.
      */
-    Collection<BinarySchema> schemas() {
+    public Collection<BinarySchema> schemas() {
         return schemas != null ? schemas : Collections.<BinarySchema>emptyList();
     }
 
@@ -304,7 +304,7 @@ public class BinaryMetadata implements Externalizable {
         if (fieldsSize == -1)
             fields = null;
         else {
-            fields = new HashMap<>();
+            fields = new LinkedHashMap<>();
 
             for (int i = 0; i < fieldsSize; i++) {
                 String fieldName = CommonUtils.readString(in);
